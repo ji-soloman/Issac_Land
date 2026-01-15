@@ -1,9 +1,21 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
-import { BootScene } from '../scene/bootscene.js';
+import BootScene from '../scene/bootscene.js';
+import { SaveSelectScene } from '../scene/SaveSelectScene.js';
+import { SaveCreateScene } from '../scene/SaveCreateScene.js';
+import WorldScene from '../scene/WorldScene.js';
 
 export const GameConfig = {
   type: Phaser.AUTO,
-  width: 1280,
-  height: 720,
-  scene: [BootScene]
+  width: window.innerWidth,
+  height: window.innerHeight,
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH
+  },
+  scene: [
+    BootScene,
+    SaveSelectScene,
+    SaveCreateScene,
+    WorldScene,
+  ]
 };

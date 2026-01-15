@@ -1,14 +1,39 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
+import { SaveSystem } from '../system/saveSystem.js';
 
-export class BootScene extends Phaser.Scene {
+export default class BootScene extends Phaser.Scene {
   constructor() {
     super('Boot');
   }
 
-  create() {
-    this.add.text(100, 100, 'Phaser 已启动', {
-      fontSize: '32px',
-      color: '#ffffff'
-    });
+  async create() {
+    // 任意 Scene 的 create()
+    const bg = this.add.image(0, 0, 'main_bg').setOrigin(0);
+
+    const resizeBg = () => {
+      const scaleX = this.scale.width / bg.width;
+      const scaleY = this.scale.height / bg.height;
+      const scale = Math.max(scaleX, scaleY);
+      bg.setScale(scale);
+    };
+
+    resizeBg();
+    this.scale.on('resize', resizeBg);
+
+    const saves = await SaveSystem.list();
+
+    if (saves.length === 0) {
+      // 没有任何存档 → 创建新存档
+      this.scene.start('SaveCreate');
+    } else {
+      // 有存档 → 进入存档选择
+      this.scene.start('SaveSelect');
+    }
   }
+
+  preload() {
+    this.load.image('main_bg', 'assets/background/main_bg.jpg');
+  }
+
 }
+
