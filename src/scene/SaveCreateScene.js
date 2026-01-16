@@ -41,22 +41,32 @@ export class SaveCreateScene extends Phaser.Scene {
     //this.add.image(cx, cy, 'input_box');
 
     // 提示文字
-    this.add.text(cx, cy - 80, '输入文明名称', {
-      fontSize: '24px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+    this.add.text(cx, cy - 130, '输入文明名称', {
+      fontSize: '60px',
+      color: '#ffffff',
+      padding: { top: 10 },
+      stroke: 'black',
+      strokeThickness: 3.5
+    }).setOrigin(0.5, 0.8);
 
     // HTML 输入框（最稳定方案）
     const input = document.createElement('input');
     input.type = 'text';
     input.style.position = 'absolute';
-    input.style.left = `${cx - 150}px`;
-    input.style.top = `${cy - 20}px`;
-    input.style.width = '300px';
+    input.style.left = `${cx - 250}px`;
+    input.style.top = `${cy - 10}px`;
+    input.style.height = '80px';
+    input.style.width = '500px';
+    input.style.fontSize = '4rem';
+    input.style.display = 'flex';
+    input.style.textAlign = 'center';
+    input.style.fontFamily = 'fangsong';
+    input.style.alignItems = 'center';
     document.body.appendChild(input);
 
     // 确认按钮
-    this.add.image(cx, cy + 80, 'btn_confirm')
+    this.add.image(cx, cy + 220, 'btn_confirm')
+      .setScale(0.3)
       .setInteractive()
       .on('pointerdown', () => {
         this.civName = input.value || '无名文明';
@@ -68,37 +78,129 @@ export class SaveCreateScene extends Phaser.Scene {
   startRaceSelect() {
     this.children.removeAll();
 
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    let selected = null;
+    const width = this.scale.width;
+    const height = this.scale.height;
 
-    Object.entries(RACES).forEach(([id, race], i) => {
+    const CARD_WIDTH = 150;
+    const races = Object.entries(RACES);
+
+    let selectedRaceId = null;
+    let currentHighlight = null;
+
+    // ====== 横向容器 ======
+    const container = this.add.container(0, 0);
+
+    races.forEach(([id, race], index) => {
+      const x = index * CARD_WIDTH;
+
+      // --- 背景遮罩（等价 background-size: cover） ---
+      const maskShape = this.make.graphics({ x: 0, y: 0, add: false });
+      maskShape.fillStyle(0xffffff);
+      maskShape.fillRect(x, 0, CARD_WIDTH, height);
+      const mask = maskShape.createGeometryMask();
+
+      // --- 图片 ---
       const img = this.add.image(
-        cx - 200 + i * 200,
-        cy,
-        `race_${id}`   // ✅ 用 preload 时的 key
-      )
-        .setScale(0.5)
-        .setInteractive();
+        x + CARD_WIDTH / 2,
+        height / 2,
+        `race_${id}`
+      );
 
-      img.on('pointerdown', () => {
-        selected = id;
-        img.setTint(0x88ff88);
+      const scale = Math.max(
+        CARD_WIDTH / img.width,
+        height / img.height
+      );
+      img.setScale(scale);
+      img.setMask(mask);
+
+      // --- 选中高亮（必须先创建） ---
+      const highlight = this.add.rectangle(
+        x + CARD_WIDTH / 2,
+        height / 2,
+        CARD_WIDTH,
+        height,
+        0x00ff00,
+        0.18
+      ).setVisible(false);
+
+      // --- 点击区域 ---
+      const hit = this.add.rectangle(
+        x + CARD_WIDTH / 2,
+        height / 2,
+        CARD_WIDTH,
+        height,
+        0x000000,
+        0
+      ).setInteractive();
+
+      hit.on('pointerdown', () => {
+        if (currentHighlight) {
+          currentHighlight.setVisible(false);
+        }
+        highlight.setVisible(true);
+        currentHighlight = highlight;
+        selectedRaceId = id;
       });
+
+      // --- 种族名 ---
+      const nameText = this.add.text(
+        x + CARD_WIDTH / 2,
+        height / 2,
+        race.name,
+        {
+          fontSize: '24px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 4
+        }
+      ).setOrigin(0.5);
+
+      container.add([img, highlight, hit, nameText]);
     });
 
-    this.add.text(cx, this.scale.height - 100, '确认', {
-      fontSize: '24px',
-      color: '#00ff00'
-    })
-      .setOrigin(0.5)
+    // ====== 横向拖拽滚动（修复裁剪问题） ======
+    let dragStartX = 0;
+    let containerStartX = 0;
+    let isDragging = false;
+
+    this.input.on('pointerdown', p => {
+      dragStartX = p.x;
+      containerStartX = container.x;
+      isDragging = false;
+    });
+
+    this.input.on('pointermove', p => {
+      if (!p.isDown) return;
+
+      const dx = p.x - dragStartX;
+      if (Math.abs(dx) > 6) isDragging = true;
+
+      const minX = Math.min(0, width - races.length * CARD_WIDTH);
+      container.x = Phaser.Math.Clamp(
+        containerStartX + dx,
+        minX,
+        0
+      );
+    });
+
+    this.input.on('pointerup', () => {
+      isDragging = false;
+    });
+
+    // ====== 确认按钮 ======
+    const cx = width / 2;
+    const cy = height / 2;
+
+    this.add.image(cx, cy + 220, 'btn_confirm')
+      .setScale(0.3)
       .setInteractive()
       .on('pointerdown', () => {
-        if (!selected) return;
-        this.race = selected; // 存 id，不存对象
-        this.startTarotSelect();
+        if (!selectedRaceId) return;
+        this.selectedRace = selectedRaceId;
+        this.startSubRaceSelect();
       });
   }
+
 
 
   startTarotSelect() {
