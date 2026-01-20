@@ -4,6 +4,7 @@ import { SaveSystem } from '../system/saveSystem.js';
 import { createInitialWorld } from '../world/createInitialWorld.js';
 import { RACES } from '../data/race.js';
 import { TAROT } from '../data/tarot.js';
+import { REGION } from '../data/region.js';
 
 export class SaveCreateScene extends Phaser.Scene {
   constructor() {
@@ -13,6 +14,7 @@ export class SaveCreateScene extends Phaser.Scene {
   preload() {
     this.load.image('input_box', '/assets/ui/input_box.png');
     this.load.image('btn_confirm', '/assets/ui/button_confirm.png');
+    this.load.image('btn_back', '/assets/ui/input_box.png');
     Object.entries(RACES).forEach(([id, race]) => {
       if (race.image) {
         this.load.image(`race_${id}`, `/${race.image}`);
@@ -20,10 +22,7 @@ export class SaveCreateScene extends Phaser.Scene {
     });
   }
 
-  create() {
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    // 任意 Scene 的 create()
+  createBackground() {
     const bg = this.add.image(0, 0, 'main_bg').setOrigin(0);
 
     const resizeBg = () => {
@@ -35,6 +34,13 @@ export class SaveCreateScene extends Phaser.Scene {
 
     resizeBg();
     this.scale.on('resize', resizeBg);
+  }
+
+  create() {
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    // 任意 Scene 的 create()
+    this.createBackground();
 
 
     // 输入框背景
@@ -220,7 +226,218 @@ export class SaveCreateScene extends Phaser.Scene {
       });
   }
 
+  startSubRaceSelect() {
+    this.children.removeAll();
+    this.createBackground();
 
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    const CARD_WIDTH = 200;
+    const CARD_HEIGHT = 300;
+    const CARD_SPACING = 20; // 卡片间距
+
+    // 获取选中种族的子种族数据
+    const selectedRaceData = RACES[this.selectedRace];
+    const subraces = Object.entries(selectedRaceData.subraces);
+
+    let selectedSubRaceId = null;
+    let currentHighlight = null;
+
+    // ====== 计算总宽度和起始位置 ======
+    const totalCardsWidth = subraces.length * CARD_WIDTH + (subraces.length - 1) * CARD_SPACING;
+    const containerWidth = totalCardsWidth;
+
+    // 判断是否需要滚动
+    const needsScroll = containerWidth > width;
+
+    // 如果不需要滚动，居中显示；否则从左边开始
+    const initialX = needsScroll ? 0 : (width - containerWidth) / 2;
+
+    // ====== 横向容器 ======
+    const container = this.add.container(initialX, 0);
+
+    subraces.forEach(([id, subrace], index) => {
+      const x = index * (CARD_WIDTH + CARD_SPACING);
+
+      const card = this.add.container(
+        x + CARD_WIDTH / 2,
+        height / 2
+      );
+
+      // --- 白色半透明背景 ---
+      const bg = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0xffffff, 0.3
+      );
+
+      // --- 透明边框 ---
+      const border = this.add.graphics();
+      border.lineStyle(2, 0xffffff, 0.8);
+      border.strokeRect(
+        -CARD_WIDTH / 2,
+        -CARD_HEIGHT / 2,
+        CARD_WIDTH,
+        CARD_HEIGHT
+      );
+
+      // --- 选中高亮 ---
+      const highlight = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0x00ff00, 0.25
+      ).setVisible(false);
+
+      // --- 子种族名称 ---
+      const nameText = this.add.text(
+        0, -CARD_HEIGHT / 2 + 30,
+        subrace.name,
+        {
+          fontSize: '24px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 4,
+          fontStyle: 'bold'
+        }
+      ).setOrigin(0.5);
+
+      // --- 地区 ---
+      const districtText = this.add.text(
+        0, -CARD_HEIGHT / 2 + 70,
+        ` ${REGION[subrace.district]}`,
+        {
+          fontSize: '16px',
+          color: '#ffff00',
+          stroke: '#000000',
+          strokeThickness: 3
+        }
+      ).setOrigin(0.5);
+
+      // --- 描述（自动换行） ---
+      const desText = this.add.text(
+        0, -CARD_HEIGHT / 2 + 110,
+        subrace.des,
+        {
+          fontSize: '14px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 2,
+          align: 'center',
+          wordWrap: { width: CARD_WIDTH - 20 }
+        }
+      ).setOrigin(0.5, 0);
+
+      // --- 交互区域 ---
+      const hit = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0x000000, 0
+      ).setInteractive();
+
+      hit.on('pointerdown', () => {
+        if (currentHighlight) {
+          currentHighlight.setVisible(false);
+        }
+        highlight.setVisible(true);
+        currentHighlight = highlight;
+        selectedSubRaceId = id;
+      });
+
+      // --- 添加到卡片 ---
+      card.add([bg, border, highlight, nameText, districtText, desText, hit]);
+      container.add(card);
+    });
+
+    // ====== 横向拖拽滚动（仅在需要时启用） ======
+    if (needsScroll) {
+      let dragStartX = 0;
+      let containerStartX = 0;
+      let isDragging = false;
+
+      this.input.on('pointerdown', p => {
+        dragStartX = p.x;
+        containerStartX = container.x;
+        isDragging = false;
+      });
+
+      this.input.on('pointermove', p => {
+        if (!p.isDown) return;
+
+        const dx = p.x - dragStartX;
+        if (Math.abs(dx) > 6) isDragging = true;
+
+        // 限制滚动范围：右边界为0，左边界为容器宽度-屏幕宽度
+        const minX = width - containerWidth;
+        const maxX = 0;
+
+        container.x = Phaser.Math.Clamp(
+          containerStartX + dx,
+          minX,
+          maxX
+        );
+      });
+
+      this.input.on('pointerup', () => {
+        isDragging = false;
+      });
+    }
+
+    // ====== 确认按钮 ======
+    const cx = width / 2;
+    const cy = height / 2;
+
+    this.add.image(cx, cy + 220, 'btn_confirm')
+      .setScale(0.3)
+      .setInteractive()
+      .on('pointerdown', () => {
+        if (!selectedSubRaceId) return;
+
+        this.selectedSubRace = selectedSubRaceId;
+
+        this.startTarotSelect();
+      });
+
+    // ====== 返回按钮 ======
+    const backBtn = this.add.container(80, 50);
+
+    const backBg = this.add.image(0, 0, 'btn_back')
+      .setScale(0.15) // 调整大小
+      .setInteractive();
+
+    const backText = this.add.text(0, 0, '← 返回', {
+      fontSize: '18px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+
+    backBtn.add([backBg, backText]);
+
+    backBtn.setSize(backBg.displayWidth, backBg.displayHeight);
+    backBtn.setInteractive(
+      new Phaser.Geom.Rectangle(
+        -backBg.displayWidth / 2,
+        -backBg.displayHeight / 2,
+        backBg.displayWidth,
+        backBg.displayHeight
+      ),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    backBtn.on('pointerdown', () => {
+      this.startRaceSelect(); // 返回种族选择
+    });
+
+    // 可选：悬停效果
+    backBtn.on('pointerover', () => {
+      backBg.setTint(0xcccccc);
+    });
+
+    backBtn.on('pointerout', () => {
+      backBg.clearTint();
+    });
+  }
 
   startTarotSelect() {
     this.children.removeAll();

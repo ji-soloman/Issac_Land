@@ -10,32 +10,32 @@ export const RACES = {
       a: {
         name: '平原种',
         district: 'trade',
-        effects: [
-        ]
+        des: '剑专精+2 格斗类单位只需要食物维护 农田食物物产+1 每时代全学派升级+1',
+
       },
       b: {
         name: '高原种',
         district: 'mine',
-        effects: [
-        ]
+        des: '斧专精+2 斧破甲+2 矿场矿物物产+1 每时代游牧学派升级+1',
+
       },
       c: {
         name: '海岛种',
         district: 'harbor',
-        effects: [
-        ]
+        des: '弩专精+2 船只维护费-2每组 港口海产+1 每时代全学派升级+1',
+
       },
       d: {
         name: '沼泽种',
         district: 'academy',
-        effects: [
-        ]
+        des: '灵能掌握+2 投矛投斧+2灵魂伤害 牧场畜牧+1 每时代咒术学派升级+1',
+
       },
       e: {
         name: '沙漠种',
         district: 'holy',
-        effects: [
-        ]
+        des: '弓专精+2 骑兵攻击+d2  贸易区贸易路线+1 每时代全学派升级+1',
+
       }
     }
   },
@@ -51,38 +51,38 @@ export const RACES = {
       a: {
         name: '魔能种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '咒能种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '森林种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '幽泉种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '潮汐种',
         district: 'harbor',
-        effects: [
-        ]
+        des: '',
+
       },
       f: {
         name: '业火种',
         district: 'living',
-        effects: [
-        ]
+        des: '',
+
       },
     }
   },
@@ -97,32 +97,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   },
@@ -137,32 +137,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Dwarf
@@ -177,32 +177,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Goblin
@@ -217,32 +217,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Beastkin
@@ -257,32 +257,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Centaur
@@ -297,32 +297,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Lizardfolk
@@ -337,32 +337,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Merfolk
@@ -377,32 +377,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Corvidian
@@ -417,32 +417,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Insectoid
@@ -457,32 +457,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Plantfolk
@@ -497,32 +497,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Undead
@@ -537,32 +537,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Primordial
@@ -577,32 +577,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Giant
@@ -617,32 +617,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   }, // Ancient Revenant
@@ -657,32 +657,32 @@ export const RACES = {
       a: {
         name: '邪刃种',
         district: 'holy',
-        effects: [
-        ]
+        des: '',
+
       },
       b: {
         name: '霜狼种',
         district: 'pasture',
-        effects: [
-        ]
+        des: '',
+
       },
       c: {
         name: '黑手种',
         district: 'mine',
-        effects: [
-        ]
+        des: '',
+
       },
       d: {
         name: '战歌种',
         district: 'entertainment',
-        effects: [
-        ]
+        des: '',
+
       },
       e: {
         name: '暗眼种',
         district: 'farm',
-        effects: [
-        ]
+        des: '',
+
       }
     }
   } // Voidwalker
