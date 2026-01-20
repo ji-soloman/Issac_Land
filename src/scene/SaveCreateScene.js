@@ -93,44 +93,35 @@ export class SaveCreateScene extends Phaser.Scene {
     races.forEach(([id, race], index) => {
       const x = index * CARD_WIDTH;
 
-      // --- 背景遮罩（等价 background-size: cover） ---
-      const maskShape = this.make.graphics({ x: 0, y: 0, add: false });
-      maskShape.fillStyle(0xffffff);
-      maskShape.fillRect(x, 0, CARD_WIDTH, height);
-      const mask = maskShape.createGeometryMask();
-
-      // --- 图片 ---
-      const img = this.add.image(
+      const card = this.add.container(
         x + CARD_WIDTH / 2,
-        height / 2,
-        `race_${id}`
+        height / 2
       );
+
+      // --- image ---
+      const img = this.add.image(0, 0, `race_${id}`);
 
       const scale = Math.max(
         CARD_WIDTH / img.width,
         height / img.height
       );
       img.setScale(scale);
-      img.setMask(mask);
 
-      // --- 选中高亮（必须先创建） ---
+      // --- mask（⚠️ 关键：mask 需要在世界坐标系中，并跟随 card 位置） ---
+      const maskShape = this.make.graphics();
+
+      // --- highlight ---
       const highlight = this.add.rectangle(
-        x + CARD_WIDTH / 2,
-        height / 2,
-        CARD_WIDTH,
-        height,
-        0x00ff00,
-        0.18
+        0, 0,
+        CARD_WIDTH, height,
+        0x00ff00, 0.18
       ).setVisible(false);
 
-      // --- 点击区域 ---
+      // --- hit area ---
       const hit = this.add.rectangle(
-        x + CARD_WIDTH / 2,
-        height / 2,
-        CARD_WIDTH,
-        height,
-        0x000000,
-        0
+        0, 0,
+        CARD_WIDTH, height,
+        0x000000, 0
       ).setInteractive();
 
       hit.on('pointerdown', () => {
@@ -142,23 +133,42 @@ export class SaveCreateScene extends Phaser.Scene {
         selectedRaceId = id;
       });
 
-      // --- 种族名 ---
-      const nameText = this.add.text(
-        x + CARD_WIDTH / 2,
-        height / 2,
-        race.name,
-        {
-          fontSize: '24px',
-          color: '#ffffff',
-          stroke: '#000000',
-          strokeThickness: 4
-        }
-      ).setOrigin(0.5);
+      // --- text ---
+      const nameText = this.add.text(0, 0, race.name, {
+        fontSize: '24px',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 4
+      }).setOrigin(0.5);
 
-      container.add([img, highlight, hit, nameText]);
+      // --- add ---
+      card.add([img, highlight, hit, nameText]);
+      container.add(card);
+
+      // ⚠️ 在容器添加后，更新 mask 位置的函数
+      const updateMask = () => {
+        const worldX = card.x + container.x;
+        const worldY = card.y + container.y;
+
+        maskShape.clear();
+        maskShape.fillStyle(0xffffff);
+        maskShape.fillRect(
+          worldX - CARD_WIDTH / 2,
+          worldY - height / 2,
+          CARD_WIDTH,
+          height
+        );
+      };
+
+      updateMask();
+      const mask = maskShape.createGeometryMask();
+      img.setMask(mask);
+
+      // 保存更新函数以便拖拽时调用
+      card.setData('updateMask', updateMask);
     });
 
-    // ====== 横向拖拽滚动（修复裁剪问题） ======
+    // ====== 横向拖拽滚动 ======
     let dragStartX = 0;
     let containerStartX = 0;
     let isDragging = false;
@@ -181,6 +191,12 @@ export class SaveCreateScene extends Phaser.Scene {
         minX,
         0
       );
+
+      // ⚠️ 更新所有 mask 位置
+      container.each(card => {
+        const updateMask = card.getData('updateMask');
+        if (updateMask) updateMask();
+      });
     });
 
     this.input.on('pointerup', () => {
@@ -195,7 +211,10 @@ export class SaveCreateScene extends Phaser.Scene {
       .setScale(0.3)
       .setInteractive()
       .on('pointerdown', () => {
-        if (!selectedRaceId) return;
+        if (!selectedRaceId) {
+          this.cameras.main.shake(100, 0.005);
+          return;
+        }
         this.selectedRace = selectedRaceId;
         this.startSubRaceSelect();
       });

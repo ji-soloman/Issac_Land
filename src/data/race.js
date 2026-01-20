@@ -42,7 +42,7 @@ export const RACES = {
   elf: {
     name: '精灵',
     district: 'academy',
-    image: 'assets/data/race/elf.jpg',
+    image: 'assets/races/elf.jpg',
     base: {
       food: 1,
       civil: 1,
