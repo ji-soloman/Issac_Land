@@ -12,9 +12,8 @@ export class SaveCreateScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('input_box', '/assets/ui/input_box.png');
-    this.load.image('btn_confirm', '/assets/ui/button_confirm.png');
-    this.load.image('btn_back', '/assets/ui/input_box.png');
+    this.load.image('btn_confirm', '/assets/ui/confirm.png?v=2');
+    this.load.image('btn_back', '/assets/ui/unconfirm.png?v=2');
     Object.entries(RACES).forEach(([id, race]) => {
       if (race.image) {
         this.load.image(`race_${id}`, `/${race.image}`);
@@ -41,15 +40,101 @@ export class SaveCreateScene extends Phaser.Scene {
     this.scale.on('resize', resizeBg);
   }
 
-  create() {
+  createConfirmBtn(x, y, text, onClickCallback) {
+    const confirmBtn = this.add.container(x, y);
+    const btnBg = this.add.image(0, 0, 'btn_confirm');
+
+    const BTN_WIDTH = 300;
+    const BTN_HEIGHT = 100;
+
+    const btnScale = Math.min(
+      BTN_WIDTH / btnBg.width,
+      BTN_HEIGHT / btnBg.height
+    );
+    btnBg.setScale(btnScale);
+
+    const btnText = this.add.text(0, 0, text, {
+      fontSize: '28px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
+      fontStyle: 'bold',
+      padding: { top: 10 },
+    }).setOrigin(0.5);
+
+    confirmBtn.add([btnBg, btnText]);
+
+    btnBg.setInteractive({ useHandCursor: true });
+
+    btnBg.on('pointerover', () => {
+      btnBg.setTint(0xcccccc);
+    });
+
+    btnBg.on('pointerout', () => {
+      btnBg.clearTint();
+    });
+
+    btnBg.on('pointerdown', () => {
+      if (onClickCallback) {
+        onClickCallback.call(this);
+      }
+    });
+
+    return confirmBtn;
+  }
+
+  createReturnBtn(x, y, text, onClickCallback) {
+    const returnBtn = this.add.container(x, y);
+    const btnBg = this.add.image(0, 0, 'btn_back');
+
+    const BTN_WIDTH = 300;
+    const BTN_HEIGHT = 100;
+
+    const btnScale = Math.min(
+      BTN_WIDTH / btnBg.width,
+      BTN_HEIGHT / btnBg.height
+    );
+    btnBg.setScale(btnScale);
+
+    const btnText = this.add.text(0, 0, text, {
+      fontSize: '28px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
+      fontStyle: 'bold',
+      padding: { top: 10 },
+    }).setOrigin(0.5);
+
+    returnBtn.add([btnBg, btnText]);
+
+    btnBg.setInteractive({ useHandCursor: true });
+
+    btnBg.on('pointerover', () => {
+      btnBg.setTint(0xcccccc);
+    });
+
+    btnBg.on('pointerout', () => {
+      btnBg.clearTint();
+    });
+
+    btnBg.on('pointerdown', () => {
+      if (onClickCallback) {
+        onClickCallback.call(this);
+      }
+    });
+
+    return returnBtn;
+  }
+
+  create(){
+    this.createName();
+  }
+
+  createName() {
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     // 任意 Scene 的 create()
     this.createBackground();
-
-
-    // 输入框背景
-    //this.add.image(cx, cy, 'input_box');
 
     // 提示文字
     this.add.text(cx, cy - 130, '输入文明名称', {
@@ -75,15 +160,15 @@ export class SaveCreateScene extends Phaser.Scene {
     input.style.alignItems = 'center';
     document.body.appendChild(input);
 
-    // 确认按钮
-    this.add.image(cx, cy + 220, 'btn_confirm')
-      .setScale(0.3)
-      .setInteractive()
-      .on('pointerdown', () => {
-        this.civName = input.value || '无名文明';
-        input.remove();
-        this.startRaceSelect();
-      });
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+      this.civName = input.value || '无名文明';
+      input.remove();
+      this.startRaceSelect();
+    });
+    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
+      input.remove();
+      this.createName();
+    });
   }
 
   startRaceSelect() {
@@ -218,17 +303,18 @@ export class SaveCreateScene extends Phaser.Scene {
     const cx = width / 2;
     const cy = height / 2;
 
-    this.add.image(cx, cy + 220, 'btn_confirm')
-      .setScale(0.3)
-      .setInteractive()
-      .on('pointerdown', () => {
-        if (!selectedRaceId) {
-          this.cameras.main.shake(100, 0.005);
-          return;
-        }
-        this.selectedRace = selectedRaceId;
-        this.startSubRaceSelect();
-      });
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+      if (!selectedRaceId) {
+        this.cameras.main.shake(100, 0.005);
+        return;
+      }
+      this.selectedRace = selectedRaceId;
+      this.startSubRaceSelect();
+    });
+    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
+      this.createName();
+    });
+
   }
 
   startSubRaceSelect() {
@@ -391,56 +477,15 @@ export class SaveCreateScene extends Phaser.Scene {
     // ====== 确认按钮 ======
     const cx = width / 2;
     const cy = height / 2;
-
-    this.add.image(cx, cy + 220, 'btn_confirm')
-      .setScale(0.3)
-      .setInteractive()
-      .on('pointerdown', () => {
-        if (!selectedSubRaceId) return;
-
-        this.selectedSubRace = selectedSubRaceId;
-
-        this.startTarotSelect();
-      });
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+      if (!selectedSubRaceId) return;
+      this.selectedSubRace = selectedSubRaceId;
+      this.startTarotSelect();
+    });
 
     // ====== 返回按钮 ======
-    const backBtn = this.add.container(80, 50);
-
-    const backBg = this.add.image(0, 0, 'btn_back')
-      .setScale(0.15) // 调整大小
-      .setInteractive();
-
-    const backText = this.add.text(0, 0, '← 返回', {
-      fontSize: '18px',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3
-    }).setOrigin(0.5);
-
-    backBtn.add([backBg, backText]);
-
-    backBtn.setSize(backBg.displayWidth, backBg.displayHeight);
-    backBtn.setInteractive(
-      new Phaser.Geom.Rectangle(
-        -backBg.displayWidth / 2,
-        -backBg.displayHeight / 2,
-        backBg.displayWidth,
-        backBg.displayHeight
-      ),
-      Phaser.Geom.Rectangle.Contains
-    );
-
-    backBtn.on('pointerdown', () => {
-      this.startRaceSelect(); // 返回种族选择
-    });
-
-    // 可选：悬停效果
-    backBtn.on('pointerover', () => {
-      backBg.setTint(0xcccccc);
-    });
-
-    backBtn.on('pointerout', () => {
-      backBg.clearTint();
+    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
+      this.startRaceSelect();
     });
   }
 
@@ -473,7 +518,7 @@ export class SaveCreateScene extends Phaser.Scene {
     const cardsToAnimate = Math.min(visibleCardCount, tarots.length);
 
     // ====== 横向容器 ======
-    const container = this.add.container(initialX, 0);
+    const container = this.add.container(initialX, -20);
 
     tarots.forEach(([id, tarot], index) => {
       const x = index * (CARD_WIDTH + CARD_SPACING);
@@ -653,86 +698,57 @@ export class SaveCreateScene extends Phaser.Scene {
     // ====== 确认按钮 ======
     const cx = width / 2;
     const cy = height / 2;
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+      if (isAnimating) return; // 动画期间不响应
+      if (!selectedTarotId) return;
 
-    const confirmBtn = this.add.image(cx, cy + 220, 'btn_confirm')
-      .setScale(0.3)
-      .setInteractive()
-      .on('pointerdown', () => {
-        if (isAnimating) return; // 动画期间不响应
-        if (!selectedTarotId) return;
-
-        this.selectedTarot = selectedTarotId;
-        this.startCapitalInput();
-
-      });
+      this.selectedTarot = selectedTarotId;
+      this.createCapitalName();
+    });
 
     // ====== 返回按钮 ======
-    const backBtn = this.add.container(80, 50);
-
-    const backBg = this.add.image(0, 0, 'btn_back')
-      .setScale(0.5)
-      .setInteractive();
-
-    const backText = this.add.text(0, 0, '← 返回', {
-      fontSize: '18px',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3
-    }).setOrigin(0.5);
-
-    backBtn.add([backBg, backText]);
-
-    backBtn.setSize(backBg.displayWidth, backBg.displayHeight);
-    backBtn.setInteractive(
-      new Phaser.Geom.Rectangle(
-        -backBg.displayWidth / 2,
-        -backBg.displayHeight / 2,
-        backBg.displayWidth,
-        backBg.displayHeight
-      ),
-      Phaser.Geom.Rectangle.Contains
-    );
-
-    backBtn.on('pointerdown', () => {
+    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
       if (isAnimating) return;
       this.startSubRaceSelect();
     });
-
-    backBtn.on('pointerover', () => {
-      if (!isAnimating) backBg.setTint(0xcccccc);
-    });
-
-    backBtn.on('pointerout', () => {
-      backBg.clearTint();
-    });
   }
 
-  startCapitalInput() {
-    this.children.removeAll();
-
+  createCapitalName() {
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
+    this.createBackground();
 
-    this.add.image(cx, cy, 'input_box');
-    this.add.text(cx, cy - 80, '输入首都名称', {
-      fontSize: '24px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+    this.add.text(cx, cy - 130, '输入首都名称', {
+      fontSize: '60px',
+      color: '#ffffff',
+      padding: { top: 10 },
+      stroke: 'black',
+      strokeThickness: 3.5
+    }).setOrigin(0.5, 0.8);
 
     const input = document.createElement('input');
+    input.type = 'text';
     input.style.position = 'absolute';
-    input.style.left = `${cx - 150}px`;
-    input.style.top = `${cy - 20}px`;
-    input.style.width = '300px';
+    input.style.left = `${cx - 250}px`;
+    input.style.top = `${cy - 10}px`;
+    input.style.height = '80px';
+    input.style.width = '500px';
+    input.style.fontSize = '4rem';
+    input.style.display = 'flex';
+    input.style.textAlign = 'center';
+    input.style.fontFamily = 'fangsong';
+    input.style.alignItems = 'center';
     document.body.appendChild(input);
 
-    this.add.image(cx, cy + 80, 'btn_confirm')
-      .setInteractive()
-      .on('pointerdown', async () => {
-        this.capitalName = input.value || '首都';
-        input.remove();
-        await this.finishCreate();
-      });
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', async ()=> {
+      this.civName = input.value || '都城';
+      input.remove();
+      await this.finishCreate();
+    });
+    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
+      input.remove();
+      this.startTarotSelect();
+    });
   }
 
   async finishCreate() {
