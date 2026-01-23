@@ -741,7 +741,7 @@ export class SaveCreateScene extends Phaser.Scene {
     document.body.appendChild(input);
 
     this.createConfirmBtn(cx - 180, cy + 200, '确认', async ()=> {
-      this.civName = input.value || '都城';
+      this.capitalName = input.value || '都城';
       input.remove();
       await this.finishCreate();
     });
@@ -753,10 +753,11 @@ export class SaveCreateScene extends Phaser.Scene {
 
   async finishCreate() {
     const world = createInitialWorld({
-      civilizationName: this.civName,
-      capitalName: this.capitalName,
-      race: this.race.id,
-      tarot: this.tarot.id
+      civilization: this.civName,
+      capital: this.capitalName,
+      race: this.selectedRace,
+      subRace:this.selectedSubRace,
+      tarot: this.selectedTarot
     });
 
     const id = `slot_${Date.now()}`;
