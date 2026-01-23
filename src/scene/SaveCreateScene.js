@@ -20,6 +20,11 @@ export class SaveCreateScene extends Phaser.Scene {
         this.load.image(`race_${id}`, `/${race.image}`);
       }
     });
+    Object.entries(TAROT).forEach(([id, tarot]) => {
+      if (tarot.image) {
+        this.load.image(`tarot_${id}`, `/${tarot.image}`);
+      }
+    });
   }
 
   createBackground() {
@@ -441,43 +446,265 @@ export class SaveCreateScene extends Phaser.Scene {
 
   startTarotSelect() {
     this.children.removeAll();
+    this.createBackground();
 
-    const container = this.add.container(100, this.scale.height / 2);
-    let selected = null;
+    const width = this.scale.width;
+    const height = this.scale.height;
 
-    Object.entries(TAROT).forEach((t, i) => {
-      const x = i * 220;
+    const CARD_WIDTH = 200 * 1.25;
+    const CARD_HEIGHT = 320 * 1.25;
+    const CARD_SPACING = 22;
 
-      const img = this.add.image(x, 0, t.image).setScale(0.4).setInteractive();
-      const text = this.add.text(x, 120,
-        `${t.name}\n${t.desc}\n${t.trait}\n${t.unit}`,
-        { fontSize: '14px', color: '#ffffff', align: 'center' }
-      ).setOrigin(0.5, 0);
+    const tarots = Object.entries(TAROT);
 
-      img.on('pointerdown', () => {
-        selected = t;
-        img.setTint(0x88ff88);
+    let selectedTarotId = null;
+    let currentHighlight = null;
+    let isAnimating = true;
+
+    // ====== 计算总宽度和起始位置 ======
+    const totalCardsWidth = tarots.length * CARD_WIDTH + (tarots.length - 1) * CARD_SPACING;
+    const containerWidth = totalCardsWidth;
+
+    const needsScroll = containerWidth > width;
+    const initialX = needsScroll ? 0 : (width - containerWidth) / 2;
+
+    // ====== 计算屏幕内可见的卡片数量 ======
+    const visibleCardCount = Math.ceil(width / (CARD_WIDTH + CARD_SPACING)) + 1; // 多1张保证覆盖
+    const cardsToAnimate = Math.min(visibleCardCount, tarots.length);
+
+    // ====== 横向容器 ======
+    const container = this.add.container(initialX, 0);
+
+    tarots.forEach(([id, tarot], index) => {
+      const x = index * (CARD_WIDTH + CARD_SPACING);
+      const finalX = x + CARD_WIDTH / 2;
+
+      // 判断卡片是否在初始屏幕内
+      const isVisible = index < cardsToAnimate;
+
+      const card = this.add.container(
+        isVisible ? width + 200 : finalX,
+        height / 2
+      );
+
+      // --- 塔罗牌图片 ---
+      const img = this.add.image(0, 0, `tarot_${id}`);
+
+      // contain
+      const scale = Math.min(
+        CARD_WIDTH / img.width,
+        CARD_HEIGHT / img.height
+      );
+      img.setScale(scale);
+
+      // --- 选中高亮 ---
+      const highlight = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0xffff00, 0.25
+      ).setVisible(false);
+
+      // --- 信息框 ---
+      const INFO_BOX_WIDTH = CARD_WIDTH - 40;
+      const INFO_BOX_HEIGHT = 110 * 1.25;
+      const INFO_BOX_Y = CARD_HEIGHT / 2 - INFO_BOX_HEIGHT / 2 - 8;
+
+      const infoBg = this.add.rectangle(
+        0, INFO_BOX_Y,
+        INFO_BOX_WIDTH, INFO_BOX_HEIGHT,
+        0xffffff, 0.85
+      ); // 保持居中
+
+      // --- 塔罗牌名称 ---
+      const nameText = this.add.text(
+        0, INFO_BOX_Y - INFO_BOX_HEIGHT / 2 - 25,
+        tarot.name,
+        {
+          fontSize: '27px',
+          color: '#ffd700',
+          stroke: '#000000',
+          strokeThickness: 4,
+          fontStyle: 'bold',
+          padding: { top: 10 },
+        }
+      ).setOrigin(0.5);
+
+      const districtText = this.add.text(
+        0, INFO_BOX_Y - 45,
+        `特区：${tarot.district}`,
+        {
+          fontSize: '15px',
+          color: '#000000',
+          align: 'center',
+          padding: { top: 10 },
+          lineSpacing: 3.6,
+          wordWrap: { width: INFO_BOX_WIDTH - 10 }
+        }
+      ).setOrigin(0.5);
+
+      const traitText = this.add.text(
+        0, INFO_BOX_Y - 10,
+        `特性: ${tarot.trait}`,
+        {
+          fontSize: '15px',
+          color: '#0066cc',
+          align: 'center',
+          padding: { top: 10 },
+          lineSpacing: 3.6,
+          wordWrap: { width: INFO_BOX_WIDTH - 10 }
+        }
+      ).setOrigin(0.5);
+
+      const troopText = this.add.text(
+        0, INFO_BOX_Y + 28,
+        `特兵: ${tarot.troop}`,
+        {
+          fontSize: '15px',
+          color: '#cc0066',
+          align: 'center',
+          padding: { top: 10 },
+          lineSpacing: 3.6,
+          wordWrap: { width: INFO_BOX_WIDTH - 10 }
+        }
+      ).setOrigin(0.5);
+
+      // --- 交互区域 ---
+      const hit = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0x000000, 0
+      ).setInteractive();
+
+      hit.on('pointerdown', () => {
+        if (isAnimating) return; // 动画期间不响应点击
+
+        if (currentHighlight) {
+          currentHighlight.setVisible(false);
+        }
+        highlight.setVisible(true);
+        currentHighlight = highlight;
+        selectedTarotId = id;
       });
 
-      container.add([img, text]);
+      // --- 添加到卡片 ---
+      card.add([img, highlight, infoBg, nameText, districtText, traitText, troopText, hit]);
+      container.add(card);
+
+      // ====== 飞入动画 ======
+      if (isVisible) {
+        const delay = index * (1200 / cardsToAnimate);
+
+        this.tweens.add({
+          targets: card,
+          x: finalX,
+          duration: 500,
+          delay: delay,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            // 最后一张可见卡片飞入后，解除动画锁定
+            if (index === cardsToAnimate - 1) {
+              isAnimating = false;
+            }
+          }
+        });
+      }
     });
 
-    // 滚轮滚动
-    this.input.on('wheel', (_, __, ___, deltaY) => {
-      container.x -= deltaY * 0.5;
-    });
+    // 如果所有卡片都不需要动画（全部可见），直接解锁
+    if (cardsToAnimate === 0) {
+      isAnimating = false;
+    }
 
-    this.add.text(this.scale.width / 2, this.scale.height - 80, '确认', {
-      fontSize: '24px',
-      color: '#00ff00'
-    })
-      .setOrigin(0.5)
+    // ====== 横向拖拽滚动（仅在需要时启用） ======
+    if (needsScroll) {
+      let dragStartX = 0;
+      let containerStartX = 0;
+      let isDragging = false;
+
+      this.input.on('pointerdown', p => {
+        if (isAnimating) return; // 动画期间不响应拖拽
+
+        dragStartX = p.x;
+        containerStartX = container.x;
+        isDragging = false;
+      });
+
+      this.input.on('pointermove', p => {
+        if (!p.isDown || isAnimating) return; // 动画期间不响应拖拽
+
+        const dx = p.x - dragStartX;
+        if (Math.abs(dx) > 6) isDragging = true;
+
+        const minX = width - containerWidth;
+        const maxX = 0;
+
+        container.x = Phaser.Math.Clamp(
+          containerStartX + dx,
+          minX,
+          maxX
+        );
+      });
+
+      this.input.on('pointerup', () => {
+        isDragging = false;
+      });
+    }
+
+    // ====== 确认按钮 ======
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const confirmBtn = this.add.image(cx, cy + 220, 'btn_confirm')
+      .setScale(0.3)
       .setInteractive()
       .on('pointerdown', () => {
-        if (!selected) return;
-        this.tarot = selected;
+        if (isAnimating) return; // 动画期间不响应
+        if (!selectedTarotId) return;
+
+        this.selectedTarot = selectedTarotId;
         this.startCapitalInput();
+
       });
+
+    // ====== 返回按钮 ======
+    const backBtn = this.add.container(80, 50);
+
+    const backBg = this.add.image(0, 0, 'btn_back')
+      .setScale(0.5)
+      .setInteractive();
+
+    const backText = this.add.text(0, 0, '← 返回', {
+      fontSize: '18px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+
+    backBtn.add([backBg, backText]);
+
+    backBtn.setSize(backBg.displayWidth, backBg.displayHeight);
+    backBtn.setInteractive(
+      new Phaser.Geom.Rectangle(
+        -backBg.displayWidth / 2,
+        -backBg.displayHeight / 2,
+        backBg.displayWidth,
+        backBg.displayHeight
+      ),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    backBtn.on('pointerdown', () => {
+      if (isAnimating) return;
+      this.startSubRaceSelect();
+    });
+
+    backBtn.on('pointerover', () => {
+      if (!isAnimating) backBg.setTint(0xcccccc);
+    });
+
+    backBtn.on('pointerout', () => {
+      backBg.clearTint();
+    });
   }
 
   startCapitalInput() {
