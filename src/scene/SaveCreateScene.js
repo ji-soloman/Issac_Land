@@ -126,7 +126,7 @@ export class SaveCreateScene extends Phaser.Scene {
     return returnBtn;
   }
 
-  create(){
+  create() {
     this.createName();
   }
 
@@ -703,13 +703,156 @@ export class SaveCreateScene extends Phaser.Scene {
       if (!selectedTarotId) return;
 
       this.selectedTarot = selectedTarotId;
-      this.createCapitalName();
+      this.startEffectSelect();
     });
 
     // ====== 返回按钮 ======
     this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
       if (isAnimating) return;
       this.startSubRaceSelect();
+    });
+  }
+
+  startEffectSelect() {
+    this.children.removeAll();
+    this.createBackground();
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    const CARD_WIDTH = 200;
+    const CARD_HEIGHT = 300;
+    const CARD_SPACING = 40;
+
+    const effects = [
+      { id: 'trait', name: '特性' },
+      { id: 'troop', name: '特兵' },
+      { id: 'district', name: '特区' }
+    ];
+
+    const selectedEffects = new Set(); // 存储已选择的效果
+
+    // ====== 计算总宽度和起始位置（居中显示） ======
+    const totalCardsWidth = effects.length * CARD_WIDTH + (effects.length - 1) * CARD_SPACING;
+    const initialX = (width - totalCardsWidth) / 2;
+
+    // ====== 横向容器 ======
+    const container = this.add.container(initialX, 0);
+
+    const highlightMap = {}; // 存储每个卡片的高亮框
+
+    effects.forEach((effect, index) => {
+      const x = index * (CARD_WIDTH + CARD_SPACING);
+
+      const card = this.add.container(
+        x + CARD_WIDTH / 2,
+        height / 2
+      );
+
+      // --- 白色半透明背景 ---
+      const bg = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0xffffff, 0.3
+      );
+
+      // --- 透明边框 ---
+      const border = this.add.graphics();
+      border.lineStyle(2, 0xffffff, 0.8);
+      border.strokeRect(
+        -CARD_WIDTH / 2,
+        -CARD_HEIGHT / 2,
+        CARD_WIDTH,
+        CARD_HEIGHT
+      );
+
+      // --- 选中高亮 ---
+      const highlight = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0x00ff00, 0.25
+      ).setVisible(false);
+
+      highlightMap[effect.id] = highlight;
+
+      // --- 效果名称 ---
+      const nameText = this.add.text(
+        0, 0,
+        effect.name,
+        {
+          fontSize: '48px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 4,
+          fontStyle: 'bold',
+          padding: { top: 10 },
+        }
+      ).setOrigin(0.5);
+
+      // --- 交互区域 ---
+      const hit = this.add.rectangle(
+        0, 0,
+        CARD_WIDTH, CARD_HEIGHT,
+        0x000000, 0
+      ).setInteractive();
+
+      hit.on('pointerdown', () => {
+        // 切换选中状态
+        if (selectedEffects.has(effect.id)) {
+          // 取消选中
+          selectedEffects.delete(effect.id);
+          highlight.setVisible(false);
+        } else {
+          // 检查是否已经选了2个
+          if (selectedEffects.size >= 2) {
+            return; // 已经选了2个，不能再选
+          }
+          // 选中
+          selectedEffects.add(effect.id);
+          highlight.setVisible(true);
+        }
+      });
+
+      // 鼠标悬停效果
+      hit.on('pointerover', () => {
+        this.input.setDefaultCursor('pointer');
+        if (!selectedEffects.has(effect.id)) {
+          bg.setAlpha(0.5);
+        }
+      });
+
+      hit.on('pointerout', () => {
+        this.input.setDefaultCursor('default');
+        bg.setAlpha(0.3);
+      });
+
+      // --- 添加到卡片 ---
+      card.add([bg, border, highlight, nameText, hit]);
+      container.add(card);
+    });
+
+    // ====== 确认按钮 ======
+    const cx = width / 2;
+    const cy = height / 2;
+
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+      // 必须选择2个才能确认
+      if (selectedEffects.size !== 2) {
+        console.log('必须选择2个效果！');
+        return;
+      }
+
+      // 保存选择的效果
+      this.selectedEffects = Array.from(selectedEffects);
+      console.log('已选择效果:', this.selectedEffects);
+
+      // 进入下一步
+      this.createCapitalName();
+    });
+
+    // ====== 返回按钮 ======
+    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
+      this.startTarotSelect();
     });
   }
 
@@ -740,7 +883,7 @@ export class SaveCreateScene extends Phaser.Scene {
     input.style.alignItems = 'center';
     document.body.appendChild(input);
 
-    this.createConfirmBtn(cx - 180, cy + 200, '确认', async ()=> {
+    this.createConfirmBtn(cx - 180, cy + 200, '确认', async () => {
       this.capitalName = input.value || '都城';
       input.remove();
       await this.finishCreate();
@@ -756,7 +899,7 @@ export class SaveCreateScene extends Phaser.Scene {
       civilization: this.civName,
       capital: this.capitalName,
       race: this.selectedRace,
-      subRace:this.selectedSubRace,
+      subRace: this.selectedSubRace,
       tarot: this.selectedTarot
     });
 

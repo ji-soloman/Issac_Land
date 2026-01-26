@@ -8,17 +8,17 @@ export class SaveSelectScene extends Phaser.Scene {
 
   async create() {
     // 任意 Scene 的 create()
-const bg = this.add.image(0, 0, 'main_bg').setOrigin(0);
+    const bg = this.add.image(0, 0, 'main_bg').setOrigin(0);
 
-const resizeBg = () => {
-  const scaleX = this.scale.width / bg.width;
-  const scaleY = this.scale.height / bg.height;
-  const scale = Math.max(scaleX, scaleY);
-  bg.setScale(scale);
-};
+    const resizeBg = () => {
+      const scaleX = this.scale.width / bg.width;
+      const scaleY = this.scale.height / bg.height;
+      const scale = Math.max(scaleX, scaleY);
+      bg.setScale(scale);
+    };
 
-resizeBg();
-this.scale.on('resize', resizeBg);
+    resizeBg();
+    this.scale.on('resize', resizeBg);
 
     // 标题
     this.add.text(40, 20, '存档选择', {
@@ -31,10 +31,10 @@ this.scale.on('resize', resizeBg);
       fontSize: '24px',
       color: '#00ff00'
     })
-    .setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => {
-      this.scene.start('SaveCreate');
-    });
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        this.scene.start('SaveCreate');
+      });
 
     // 已有存档列表
     const saves = await SaveSystem.list();
@@ -49,14 +49,14 @@ this.scale.on('resize', resizeBg);
         fontSize: '22px',
         color: '#ffffff'
       })
-      .setInteractive({ useHandCursor: true })
-      .on('pointerdown', async () => {
-        const fullSave = await SaveSystem.load(save.id);
-        this.scene.start('World', {
-          world: fullSave.world,
-          slot: save.id
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', async () => {
+          const fullSave = await SaveSystem.load(save.id);
+          this.scene.start('World', {
+            world: fullSave.world,
+            slot: save.id
+          });
         });
-      });
     });
   }
 }
