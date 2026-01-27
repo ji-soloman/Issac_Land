@@ -1,5 +1,5 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
-import { SaveSystem } from '../system/saveSystem.js';
+import { saveSystem } from '../system/saveSystem.js';
 
 export default class BootScene extends Phaser.Scene {
   constructor() {
@@ -20,7 +20,8 @@ export default class BootScene extends Phaser.Scene {
     resizeBg();
     this.scale.on('resize', resizeBg);
 
-    const saves = await SaveSystem.list();
+    var saves = await saveSystem.listSaves();
+    saves=Object.keys(saves)
 
     if (saves.length === 0) {
       // 没有任何存档 → 创建新存档

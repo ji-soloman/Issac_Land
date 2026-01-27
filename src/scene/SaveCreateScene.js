@@ -1,10 +1,11 @@
 // src/scene/SaveCreateScene.js
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
-import { SaveSystem } from '../system/saveSystem.js';
+import { saveSystem } from '../system/saveSystem.js';
 import { createInitialWorld } from '../world/createInitialWorld.js';
 import { RACES } from '../data/race.js';
 import { TAROT } from '../data/tarot.js';
 import { REGION } from '../data/region.js';
+import { MAPS } from '../data/map.js';
 
 export class SaveCreateScene extends Phaser.Scene {
   constructor() {
@@ -165,9 +166,20 @@ export class SaveCreateScene extends Phaser.Scene {
       input.remove();
       this.startRaceSelect();
     });
-    this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
+    this.createReturnBtn(cx + 180, cy + 200, '返回', async function () {
       input.remove();
-      this.createName();
+      // 检查存档数量
+      const saves = await saveSystem.listSaves();
+
+      if (saves.length > 0) {
+        // 有存档，返回存档选择
+        this.scene.start('SaveSelect');
+      } else {
+        // 没有存档，弹出警告
+        alert('请先创建一个存档');
+        // 重新显示输入框
+        this.createName();
+      }
     });
   }
 
@@ -895,18 +907,43 @@ export class SaveCreateScene extends Phaser.Scene {
   }
 
   async finishCreate() {
-    const world = createInitialWorld({
-      civilization: this.civName,
+    // 从 MAPS 中随机抽一个
+    const mapTypes = Object.keys(MAPS);
+    const randomMapType = mapTypes[Math.floor(Math.random() * mapTypes.length)];
+
+    // 准备初始数据
+    const initialData = {
+      name: this.civName,
       capital: this.capitalName,
       race: this.selectedRace,
       subRace: this.selectedSubRace,
-      tarot: this.selectedTarot
-    });
+      tarot: this.selectedTarot,
+      map_type: randomMapType,
 
-    const id = `slot_${Date.now()}`;
-    await SaveSystem.create(id, this.civName, world);
+      // 根据 selectedEffects 设置对应的值为 true
+      trait: this.selectedEffects.includes('trait'),
+      troop: this.selectedEffects.includes('troop'),
+      district: this.selectedEffects.includes('district')
+    };
 
-    this.scene.start('World', { world });
+    try {
+      // 创建并保存存档
+      const saveId = await saveSystem.createNewSave(initialData);
+
+      // 立即保存到数据库
+      await saveSystem.save();
+
+      console.log('存档创建并保存成功:', saveId);
+      console.log('存档数据:', saveSystem.currentSaveData);
+
+      // TODO: 进入游戏主界面
+      // this.scene.start('GameScene');
+
+      return saveId;
+    } catch (error) {
+      console.error('创建存档失败:', error);
+      throw error;
+    }
   }
 
 }
