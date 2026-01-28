@@ -936,8 +936,7 @@ export class SaveCreateScene extends Phaser.Scene {
       console.log('存档创建并保存成功:', saveId);
       console.log('存档数据:', saveSystem.currentSaveData);
 
-      // TODO: 进入游戏主界面
-      // this.scene.start('GameScene');
+      this.scene.start('Boot');
 
       return saveId;
     } catch (error) {
