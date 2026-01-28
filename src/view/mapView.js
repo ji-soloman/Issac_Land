@@ -1,0 +1,232 @@
+import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
+
+export class MapView {
+  constructor(scene, mapConfig, saveData) {
+    this.scene = scene;
+    this.mapConfig = mapConfig; // MAPS 中的配置（包含 grids 模板）
+    this.saveData = saveData; // 存档中的地图数据
+
+    // --- 地图尺寸配置 ---
+    this.MAP_WIDTH = 3280;
+    this.MAP_HEIGHT = 3280 * 3 / 4; // 2460px
+
+    // --- 六边形尺寸配置 ---
+    // 原始中心到边的距离
+    this.HEX_APOTHEM = 60; 
+    // 原始外接圆半径 (未倾斜时)
+    this.HEX_RADIUS = this.HEX_APOTHEM / 0.866025; 
+    
+    // --- 3D 倾斜配置 (新) ---
+    // 这个因子决定了“压扁”的程度，数值越小，看起来倾斜角度越大。
+    // 0.6 到 0.7 之间通常能带来不错的立体感。
+    this.TILT_FACTOR = 0.65; 
+
+    // --- 缩放配置 ---
+    this.minZoom = 0.5;
+    this.maxZoom = 4.0;
+    this.currentZoom = 1.0;
+    this.zoomStep = 0.1;
+
+    // --- 拖拽状态 ---
+    this.isDragging = false;
+    this.dragStartX = 0;
+    this.dragStartY = 0;
+
+    // --- 回调 ---
+    this.onGridClick = null;
+
+    this.create();
+  }
+
+  create() {
+    // 1. 创建地图容器
+    this.container = this.scene.add.container(0, 0);
+
+    // 2. 加载地图背景
+    this.mapBg = this.scene.add.image(0, 0, 'map_bg').setOrigin(0);
+    this.mapBg.setDisplaySize(this.MAP_WIDTH, this.MAP_HEIGHT);
+    this.container.add(this.mapBg);
+
+    // 3. 创建格子容器
+    this.gridsContainer = this.scene.add.container(0, 0);
+    this.container.add(this.gridsContainer);
+
+    // 4. 绘制格子
+    this.gridObjects = {};
+    this.drawGrids();
+
+    // 5. 初始居中
+    this.centerMap();
+
+    // 6. 绑定事件
+    this.setupInteraction();
+  }
+
+  drawGrids() {
+    const grids = this.mapConfig.grids || {};
+    // console.log('开始绘制，格子数据:', grids);
+
+    Object.entries(grids).forEach(([gridId, gridTemplate]) => {
+      if (gridTemplate.coord) {
+        const saveGridData = this.saveData.grids?.[gridId] || {};
+        const gridData = {
+          ...gridTemplate,
+          ...saveGridData
+        };
+        const hex = this.createHexagon(gridId, gridData);
+        this.gridObjects[gridId] = hex;
+      }
+    });
+  }
+
+  createHexagon(gridId, gridData) {
+    const { coord, type } = gridData;
+
+    const x = coord[0] * this.MAP_WIDTH;
+    const y = coord[1] * this.MAP_HEIGHT;
+
+    const graphics = this.scene.add.graphics();
+
+    // 获取经过 3D 倾斜处理的顶点
+    const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
+
+    const fillColor = type === 'land' ? 0x90EE90 : 0x4169E1;
+
+    // 1. 填充
+    graphics.fillStyle(fillColor, 0.6); // 稍微增加点不透明度看起来更实
+    graphics.fillPoints(hexPoints, true);
+
+    // 2. 描边
+    graphics.lineStyle(3, 0xffff00, 0.8); // 线条加粗一点，增强立体感边界
+    graphics.strokePoints(hexPoints, true);
+
+    // 3. 设置交互区域 (HitArea 会自动匹配压扁后的形状，非常方便)
+    const hitArea = new Phaser.Geom.Polygon(hexPoints);
+    graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
+
+    // 4. 交互事件
+    graphics.on('pointerover', () => {
+      graphics.clear();
+      graphics.fillStyle(fillColor, 0.9);
+      graphics.fillPoints(hexPoints, true);
+      graphics.lineStyle(4, 0xffffff, 1);
+      graphics.strokePoints(hexPoints, true);
+      this.scene.input.setDefaultCursor('pointer');
+    });
+
+    graphics.on('pointerout', () => {
+      graphics.clear();
+      graphics.fillStyle(fillColor, 0.6);
+      graphics.fillPoints(hexPoints, true);
+      graphics.lineStyle(3, 0xffff00, 0.8);
+      graphics.strokePoints(hexPoints, true);
+      this.scene.input.setDefaultCursor('default');
+    });
+
+    graphics.on('pointerdown', () => {
+      if (!this.isDragging && this.onGridClick) {
+        this.onGridClick(gridId);
+      }
+    });
+
+    // 5. 设置位置
+    graphics.x = x;
+    graphics.y = y;
+
+    this.gridsContainer.add(graphics);
+    return graphics;
+  }
+
+  // --- 核心修改：计算带有立体倾斜效果的六边形顶点 ---
+  getHexagonPoints(radius) {
+    const points = [];
+    for (let i = 0; i < 6; i++) {
+      // 1. 使用标准的尖顶角度 (Pointy-topped): -30, 30, 90...
+      const angleDeg = 60 * i - 30;
+      const angleRad = Phaser.Math.DegToRad(angleDeg);
+
+      // 2. 计算原始坐标
+      let px = radius * Math.cos(angleRad);
+      let py = radius * Math.sin(angleRad);
+
+      // --- 关键点：应用 3D 倾斜 ---
+      // 通过乘以 tiltFactor 压扁 Y 轴，创造向后倒的透视感。
+      py = py * this.TILT_FACTOR;
+
+      points.push({ x: px, y: py });
+    }
+    return points;
+  }
+
+  setupInteraction() {
+    // 滚轮缩放
+    this.scene.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+      const oldZoom = this.currentZoom;
+      if (deltaY < 0) this.currentZoom += this.zoomStep;
+      else this.currentZoom -= this.zoomStep;
+
+      this.currentZoom = Phaser.Math.Clamp(this.currentZoom, this.minZoom, this.maxZoom);
+
+      if (oldZoom !== this.currentZoom) {
+        const worldX = (pointer.x - this.container.x) / oldZoom;
+        const worldY = (pointer.y - this.container.y) / oldZoom;
+
+        this.container.setScale(this.currentZoom);
+
+        this.container.x = pointer.x - worldX * this.currentZoom;
+        this.container.y = pointer.y - worldY * this.currentZoom;
+
+        this.constrainMapPosition();
+      }
+    });
+
+    // 拖拽逻辑
+    this.scene.input.on('pointerdown', (pointer) => {
+      if (pointer.leftButtonDown()) {
+        this.isDragging = false;
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
+        this.containerStartX = this.container.x;
+        this.containerStartY = this.container.y;
+      }
+    });
+
+    this.scene.input.on('pointermove', (pointer) => {
+      if (pointer.leftButtonDown()) {
+        const dx = pointer.x - this.dragStartX;
+        const dy = pointer.y - this.dragStartY;
+
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+          this.isDragging = true;
+          this.container.x = this.containerStartX + dx;
+          this.container.y = this.containerStartY + dy;
+          this.constrainMapPosition();
+        }
+      }
+    });
+  }
+
+  centerMap() {
+    const { width, height } = this.scene.scale;
+    this.container.x = (width - this.MAP_WIDTH * this.currentZoom) / 2;
+    this.container.y = (height - this.MAP_HEIGHT * this.currentZoom) / 2;
+    this.container.setScale(this.currentZoom);
+  }
+
+  constrainMapPosition() {
+    const { width, height } = this.scene.scale;
+    const mapW = this.MAP_WIDTH * this.currentZoom;
+    const mapH = this.MAP_HEIGHT * this.currentZoom;
+
+    const minX = width - mapW;
+    const maxX = 0;
+    const minY = height - mapH;
+    const maxY = 0;
+
+    if (mapW < width) this.container.x = (width - mapW) / 2;
+    else this.container.x = Phaser.Math.Clamp(this.container.x, minX, maxX);
+
+    if (mapH < height) this.container.y = (height - mapH) / 2;
+    else this.container.y = Phaser.Math.Clamp(this.container.y, minY, maxY);
+  }
+}

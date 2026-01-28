@@ -2,7 +2,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import BootScene from '../scene/bootscene.js';
 import { SaveSelectScene } from '../scene/SaveSelectScene.js';
 import { SaveCreateScene } from '../scene/SaveCreateScene.js';
-import WorldScene from '../scene/WorldScene.js';
+import { GameScene } from '../scene/gameScene.js';
 
 export const GameConfig = {
   type: Phaser.AUTO,
@@ -16,6 +16,6 @@ export const GameConfig = {
     BootScene,
     SaveSelectScene,
     SaveCreateScene,
-    WorldScene,
+    GameScene,
   ]
 };
