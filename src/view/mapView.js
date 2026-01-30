@@ -12,14 +12,14 @@ export class MapView {
 
     // --- 六边形尺寸配置 ---
     // 原始中心到边的距离
-    this.HEX_APOTHEM = 60; 
+    this.HEX_APOTHEM = 60;
     // 原始外接圆半径 (未倾斜时)
-    this.HEX_RADIUS = this.HEX_APOTHEM / 0.866025; 
-    
+    this.HEX_RADIUS = this.HEX_APOTHEM / 0.866025;
+
     // --- 3D 倾斜配置 (新) ---
     // 这个因子决定了“压扁”的程度，数值越小，看起来倾斜角度越大。
     // 0.6 到 0.7 之间通常能带来不错的立体感。
-    this.TILT_FACTOR = 0.65; 
+    this.TILT_FACTOR = 0.65;
 
     // --- 缩放配置 ---
     this.minZoom = 0.5;
@@ -80,56 +80,87 @@ export class MapView {
   }
 
   createHexagon(gridId, gridData) {
-    const { coord, type } = gridData;
+    const { coord, type, area = [], locked = false } = gridData || {};
 
     const x = coord[0] * this.MAP_WIDTH;
     const y = coord[1] * this.MAP_HEIGHT;
 
     const graphics = this.scene.add.graphics();
-
-    // 获取经过 3D 倾斜处理的顶点
     const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
 
-    const fillColor = type === 'land' ? 0x90EE90 : 0x4169E1;
+    // 判断格子状态
+    const isMain = area.includes('main');
+    const isUnlocked = locked; // 鉴定为将错就错，locked为true才是解锁了hhh
 
-    // 1. 填充
-    graphics.fillStyle(fillColor, 0.6); // 稍微增加点不透明度看起来更实
+    // 配置颜色和样式
+    let fillColor, fillAlpha, strokeColor, strokeAlpha, strokeWidth, interactive;
+
+    if (isMain) {
+      // 主城格子：红色
+      fillColor = 0xff0000;
+      fillAlpha = 0.8;
+      strokeColor = 0xffff00;
+      strokeAlpha = 0.8;
+      strokeWidth = 3;
+      interactive = true;
+    } else if (isUnlocked) {
+      // 已解锁格子：根据地形类型
+      fillColor = type === 'land' ? 0x90EE90 : 0x4169E1;
+      fillAlpha = 0.6;
+      strokeColor = 0xffff00;
+      strokeAlpha = 0.8;
+      strokeWidth = 3;
+      interactive = true;
+    } else {
+      // 未解锁格子：灰色、无交互
+      fillColor = 0x808080;
+      fillAlpha = 0.5;
+      strokeColor = 0x606060;
+      strokeAlpha = 0.5;
+      strokeWidth = 2;
+      interactive = false;
+    }
+
+    // 绘制填充和边框
+    graphics.fillStyle(fillColor, fillAlpha);
     graphics.fillPoints(hexPoints, true);
-
-    // 2. 描边
-    graphics.lineStyle(3, 0xffff00, 0.8); // 线条加粗一点，增强立体感边界
+    graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
     graphics.strokePoints(hexPoints, true);
 
-    // 3. 设置交互区域 (HitArea 会自动匹配压扁后的形状，非常方便)
-    const hitArea = new Phaser.Geom.Polygon(hexPoints);
-    graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
+    // 设置交互（仅已解锁格子）
+    if (interactive) {
+      const hitArea = new Phaser.Geom.Polygon(hexPoints);
+      graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
 
-    // 4. 交互事件
-    graphics.on('pointerover', () => {
-      graphics.clear();
-      graphics.fillStyle(fillColor, 0.9);
-      graphics.fillPoints(hexPoints, true);
-      graphics.lineStyle(4, 0xffffff, 1);
-      graphics.strokePoints(hexPoints, true);
-      this.scene.input.setDefaultCursor('pointer');
-    });
+      // 悬停高亮
+      graphics.on('pointerover', () => {
+        graphics.clear();
+        graphics.fillStyle(fillColor, 0.9);
+        graphics.fillPoints(hexPoints, true);
+        graphics.lineStyle(4, 0xffffff, 1);
+        graphics.strokePoints(hexPoints, true);
+        this.scene.input.setDefaultCursor('pointer');
+      });
 
-    graphics.on('pointerout', () => {
-      graphics.clear();
-      graphics.fillStyle(fillColor, 0.6);
-      graphics.fillPoints(hexPoints, true);
-      graphics.lineStyle(3, 0xffff00, 0.8);
-      graphics.strokePoints(hexPoints, true);
-      this.scene.input.setDefaultCursor('default');
-    });
+      // 恢复原样
+      graphics.on('pointerout', () => {
+        graphics.clear();
+        graphics.fillStyle(fillColor, fillAlpha);
+        graphics.fillPoints(hexPoints, true);
+        graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
+        graphics.strokePoints(hexPoints, true);
+        this.scene.input.setDefaultCursor('default');
+      });
 
-    graphics.on('pointerdown', () => {
-      if (!this.isDragging && this.onGridClick) {
-        this.onGridClick(gridId);
-      }
-    });
+      // 点击事件
+      graphics.on('pointerdown', () => {
+        if (!this.isDragging && this.onGridClick) {
+          this.onGridClick(gridId);
+        }
+      });
+    }
 
-    // 5. 设置位置
+    // 设置位置
     graphics.x = x;
     graphics.y = y;
 

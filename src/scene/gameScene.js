@@ -25,30 +25,39 @@ export class GameScene extends Phaser.Scene {
   }
 
   initWorld() {
-    // 确保 map.grids 存在
+    // 确保 map 存在
     if (!this.saveData.map) {
       this.saveData.map = {};
     }
-    
-    if (!this.saveData.map.grids) {
-      // 从 MAPS 数据中初始化格子
-      const mapType = this.saveData.map_type;
-      const mapTemplate = MAPS[mapType];
-      
+
+    // 检查是否需要初始化格子（不存在或为空）
+    const needsInit = !this.saveData.map.grids ||
+      Object.keys(this.saveData.map.grids).length === 0;
+
+    if (needsInit) {
+      console.log('初始化地图格子数据...');
+
       this.saveData.map.grids = {};
-      
-      // 复制模板格子并添加额外字段
-      Object.entries(mapTemplate.grids).forEach(([gridId, gridData]) => {
+
+      // 初始化 g1 到 g9
+      for (let i = 1; i <= 9; i++) {
+        const gridId = `g${i}`;
+
         this.saveData.map.grids[gridId] = {
-          ...gridData,
-          locked: true,  // 初始锁定
-          owner: null,   // 所有者
-          building: null // 建筑
+          locked: true,
+          area: i === 1 ? ['main'] : [],  // g1 包含 'main'
+          terrain: [],
+          building: [],
+          product: []
         };
+      }
+
+      console.log('地图格子初始化完成:', this.saveData.map.grids);
+
+      // 立即保存，不标记为脏
+      saveSystem.save().then(() => {
+        console.log('初始化数据已保存');
       });
-      
-      // 标记存档已修改
-      saveSystem.isDirty = true;
     }
   }
 
@@ -56,7 +65,7 @@ export class GameScene extends Phaser.Scene {
     // 获取当前地图类型的配置
     const mapType = this.saveData.map_type;
     const mapConfig = MAPS[mapType];
-    
+
     // 三个参数：scene, mapConfig (从 MAPS), saveData.map
     this.mapView = new MapView(this, mapConfig, this.saveData.map);
   }
@@ -66,7 +75,7 @@ export class GameScene extends Phaser.Scene {
       console.log('clicked grid:', gridId);
       const gridData = this.saveData.map.grids[gridId];
       console.log('grid data:', gridData);
-      
+
       // TODO: 处理格子点击逻辑
     };
   }
