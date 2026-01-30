@@ -1,6 +1,7 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 
 import { MapView } from '../view/mapView.js';
+import { BottomBar } from '../scene/bottomBar.js';
 import { saveSystem } from '../system/saveSystem.js';
 import { MAPS } from '../data/map.js';
 
@@ -14,6 +15,7 @@ export class GameScene extends Phaser.Scene {
     const mapType = saveSystem.currentSaveData.map_type;
     const mapConfig = MAPS[mapType];
     this.load.image('map_bg', mapConfig.image);
+    this.load.image('btm_ui', '/assets/ui/btm_ui.png');
   }
 
   create() {
@@ -21,7 +23,10 @@ export class GameScene extends Phaser.Scene {
 
     this.initWorld();
     this.createMap();
+    this.createBottomBar();
     this.bindEvents();
+
+    this.currentSystem = null;
   }
 
   initWorld() {
@@ -70,7 +75,12 @@ export class GameScene extends Phaser.Scene {
     this.mapView = new MapView(this, mapConfig, this.saveData.map);
   }
 
+  createBottomBar() {
+    this.bottomBar = new BottomBar(this);
+  }
+
   bindEvents() {
+    // 地图格子点击事件
     this.mapView.onGridClick = (gridId) => {
       console.log('clicked grid:', gridId);
       const gridData = this.saveData.map.grids[gridId];
@@ -78,5 +88,55 @@ export class GameScene extends Phaser.Scene {
 
       // TODO: 处理格子点击逻辑
     };
+
+    // 底部栏按钮事件
+    this.bottomBar.onPersonalClick = () => {
+      this.openSystem('personal');
+    };
+
+    this.bottomBar.onPackageClick = () => {
+      this.openSystem('package');
+    };
+  }
+
+  /**
+   * 打开系统面板
+   * @param {string} systemType - 系统类型：'personal' 或 'package'
+   */
+  openSystem(systemType) {
+    console.log('打开系统:', systemType);
+
+    // 如果已有打开的系统，先关闭
+    if (this.currentSystem) {
+      this.closeCurrentSystem();
+    }
+
+    // 根据类型创建对应的系统
+    switch (systemType) {
+      case 'personal':
+        // TODO: 创建个人信息面板
+        // this.currentSystem = new InfoSystem(this, this.saveData);
+        console.log('TODO: 创建个人信息面板');
+        break;
+
+      case 'package':
+        // TODO: 创建背包面板
+        // this.currentSystem = new PackageSystem(this, this.saveData);
+        console.log('TODO: 创建背包面板');
+        break;
+
+      default:
+        console.warn('未知的系统类型:', systemType);
+    }
+  }
+
+  /**
+   * 关闭当前打开的系统
+   */
+  closeCurrentSystem() {
+    if (this.currentSystem && this.currentSystem.destroy) {
+      this.currentSystem.destroy();
+      this.currentSystem = null;
+    }
   }
 }
