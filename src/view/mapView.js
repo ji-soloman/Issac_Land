@@ -3,7 +3,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 export class MapView {
   constructor(scene, mapConfig, saveData) {
     this.scene = scene;
-    this.mapConfig = mapConfig; // MAPS 中的配置（包含 grids 模板）
+    this.mapConfig = mapConfig; // MAPS 中的配置
     this.saveData = saveData; // 存档中的地图数据
 
     // --- 地图尺寸配置 ---
@@ -13,10 +13,10 @@ export class MapView {
     // --- 六边形尺寸配置 ---
     // 原始中心到边的距离
     this.HEX_APOTHEM = 60;
-    // 原始外接圆半径 (未倾斜时)
+    // 原始外接圆半径
     this.HEX_RADIUS = this.HEX_APOTHEM / 0.866025;
 
-    // --- 3D 倾斜配置 (新) ---
+    // --- 3D 倾斜配置 ---
     // 这个因子决定了“压扁”的程度，数值越小，看起来倾斜角度越大。
     // 0.6 到 0.7 之间通常能带来不错的立体感。
     this.TILT_FACTOR = 0.65;
@@ -34,6 +34,7 @@ export class MapView {
 
     // --- 回调 ---
     this.onGridClick = null;
+    this.interactionEnabled = true;
 
     this.create();
   }
@@ -127,7 +128,7 @@ export class MapView {
     graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
     graphics.strokePoints(hexPoints, true);
 
-    // 设置交互（仅已解锁格子）
+    // 设置交互
     if (interactive) {
       const hitArea = new Phaser.Geom.Polygon(hexPoints);
       graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
@@ -168,11 +169,11 @@ export class MapView {
     return graphics;
   }
 
-  // --- 核心修改：计算带有立体倾斜效果的六边形顶点 ---
+  // --- 计算带有立体倾斜效果的六边形顶点 ---
   getHexagonPoints(radius) {
     const points = [];
     for (let i = 0; i < 6; i++) {
-      // 1. 使用标准的尖顶角度 (Pointy-topped): -30, 30, 90...
+      // 1. 使用标准的尖顶角度: -30, 30, 90...
       const angleDeg = 60 * i - 30;
       const angleRad = Phaser.Math.DegToRad(angleDeg);
 
@@ -180,7 +181,7 @@ export class MapView {
       let px = radius * Math.cos(angleRad);
       let py = radius * Math.sin(angleRad);
 
-      // --- 关键点：应用 3D 倾斜 ---
+      // --- 应用 3D 倾斜 ---
       // 通过乘以 tiltFactor 压扁 Y 轴，创造向后倒的透视感。
       py = py * this.TILT_FACTOR;
 
@@ -192,6 +193,7 @@ export class MapView {
   setupInteraction() {
     // 滚轮缩放
     this.scene.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+      if (!this.interactionEnabled) return;
       const oldZoom = this.currentZoom;
       if (deltaY < 0) this.currentZoom += this.zoomStep;
       else this.currentZoom -= this.zoomStep;
@@ -213,6 +215,7 @@ export class MapView {
 
     // 拖拽逻辑
     this.scene.input.on('pointerdown', (pointer) => {
+      if (!this.interactionEnabled) return;
       if (pointer.leftButtonDown()) {
         this.isDragging = false;
         this.dragStartX = pointer.x;
@@ -223,6 +226,7 @@ export class MapView {
     });
 
     this.scene.input.on('pointermove', (pointer) => {
+      if (!this.interactionEnabled) return;
       if (pointer.leftButtonDown()) {
         const dx = pointer.x - this.dragStartX;
         const dy = pointer.y - this.dragStartY;
@@ -259,5 +263,15 @@ export class MapView {
 
     if (mapH < height) this.container.y = (height - mapH) / 2;
     else this.container.y = Phaser.Math.Clamp(this.container.y, minY, maxY);
+  }
+
+  enableInteraction() {
+    this.interactionEnabled = true;
+  }
+
+  // 禁用地图交互
+  disableInteraction() {
+    this.interactionEnabled = false;
+    this.isDragging = false; // 重置拖拽状态
   }
 }

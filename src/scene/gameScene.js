@@ -30,6 +30,9 @@ export class GameScene extends Phaser.Scene {
     this.bindEvents();
 
     this.currentSystem = null;
+    this.systemOpen = false;
+    this.overlay = null;
+    this.overlayWheelHandler = null;
   }
 
   initWorld() {
@@ -94,7 +97,7 @@ export class GameScene extends Phaser.Scene {
 
     // 底部栏按钮事件
     this.bottomBar.onPersonalClick = () => {
-      this.openSystem('personal');
+      this.openSystem('info');
     };
 
     this.bottomBar.onPackageClick = () => {
@@ -103,8 +106,86 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * 创建全屏遮罩层
+   */
+  createOverlay() {
+    if (this.overlay) return; // 已存在则不重复创建
+
+    const { width, height } = this.scale;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    if (this.mapView) {
+      this.mapView.disableInteraction();
+    }
+
+    // 创建半透明黑色遮罩
+    this.overlay = this.add.rectangle(centerX, centerY, width, height, 0x000000, 0.5);
+    this.overlay.setDepth(999);
+    this.overlay.setInteractive();
+    this.overlay.setAlpha(0); // 初始透明，用于动画
+
+    // 阻止所有鼠标事件穿透
+    this.overlay.on('pointerdown', (pointer) => {
+      pointer.event.stopPropagation();
+    });
+    this.overlay.on('pointermove', (pointer) => {
+      pointer.event.stopPropagation();
+    });
+    this.overlay.on('pointerup', (pointer) => {
+      pointer.event.stopPropagation();
+    });
+
+    // 阻止鼠标滚轮事件
+    this.overlayWheelHandler = (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+      if (this.systemOpen) {
+        pointer.event.preventDefault();
+        pointer.event.stopPropagation();
+      }
+    };
+    this.input.on('wheel', this.overlayWheelHandler);
+
+    // 淡入动画
+    this.tweens.add({
+      targets: this.overlay,
+      alpha: 0.5,
+      duration: 300,
+      ease: 'Linear'
+    });
+  }
+
+  /**
+   * 移除遮罩层
+   */
+  removeOverlay() {
+    if (!this.overlay) return;
+    if (this.mapView) {
+      this.mapView.enableInteraction();
+    }
+
+    // 淡出动画
+    this.tweens.add({
+      targets: this.overlay,
+      alpha: 0,
+      duration: 200,
+      ease: 'Linear',
+      onComplete: () => {
+        if (this.overlay) {
+          this.overlay.destroy();
+          this.overlay = null;
+        }
+      }
+    });
+
+    // 移除滚轮事件监听
+    if (this.overlayWheelHandler) {
+      this.input.off('wheel', this.overlayWheelHandler);
+      this.overlayWheelHandler = null;
+    }
+  }
+
+  /**
    * 打开系统面板
-   * @param {string} systemType - 系统类型：'personal' 或 'package'
+   * @param {string} systemType - 系统类型
    */
   openSystem(systemType) {
     console.log('打开系统:', systemType);
@@ -114,12 +195,15 @@ export class GameScene extends Phaser.Scene {
       this.closeCurrentSystem();
     }
 
+    // 标记系统已打开并创建遮罩
+    this.systemOpen = true;
+    this.createOverlay();
+
     // 根据类型创建对应的系统
     switch (systemType) {
-      case 'personal':
-        // TODO: 创建个人信息面板
+      case 'info':
         this.currentSystem = new InfoSystem(this, this.saveData);
-        console.log('TODO: 创建个人信息面板');
+        console.log('创建个人信息面板');
         break;
 
       case 'package':
@@ -130,6 +214,9 @@ export class GameScene extends Phaser.Scene {
 
       default:
         console.warn('未知的系统类型:', systemType);
+        // 如果系统类型无效，关闭遮罩
+        this.systemOpen = false;
+        this.removeOverlay();
     }
   }
 
@@ -141,5 +228,9 @@ export class GameScene extends Phaser.Scene {
       this.currentSystem.destroy();
       this.currentSystem = null;
     }
+
+    // 标记系统已关闭并移除遮罩
+    this.systemOpen = false;
+    this.removeOverlay();
   }
 }
