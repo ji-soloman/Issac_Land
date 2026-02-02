@@ -4,6 +4,8 @@ import { MapView } from '../view/mapView.js';
 import { BottomBar } from '../scene/bottomBar.js';
 import { saveSystem } from '../system/saveSystem.js';
 import { MAPS } from '../data/map.js';
+import { InfoSystem } from '../view/system/infoView.js';
+
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -16,6 +18,7 @@ export class GameScene extends Phaser.Scene {
     const mapConfig = MAPS[mapType];
     this.load.image('map_bg', mapConfig.image);
     this.load.image('btm_ui', '/assets/ui/btm_ui.png');
+    this.load.image('info_page', 'assets/ui/info_page.png');
   }
 
   create() {
@@ -115,7 +118,7 @@ export class GameScene extends Phaser.Scene {
     switch (systemType) {
       case 'personal':
         // TODO: 创建个人信息面板
-        // this.currentSystem = new InfoSystem(this, this.saveData);
+        this.currentSystem = new InfoSystem(this, this.saveData);
         console.log('TODO: 创建个人信息面板');
         break;
 

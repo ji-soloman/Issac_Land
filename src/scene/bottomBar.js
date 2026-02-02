@@ -23,7 +23,7 @@ export class BottomBar {
     this.barBg = this.scene.add.image(0, 0, 'btm_ui').setOrigin(0.5, 1);
     this.container.add(this.barBg);
 
-    // ===== 高度 = min(120, 屏幕高度 / 6) =====
+    // ===== 高度 =====
     const targetHeight = Math.min(this.MAX_HEIGHT, height / 6);
     const scale = targetHeight / this.barBg.height;
     this.barBg.setScale(scale);
