@@ -67,7 +67,7 @@ export class GameScene extends Phaser.Scene {
 
       console.log('地图格子初始化完成:', this.saveData.map.grids);
 
-      // 立即保存，不标记为脏
+      // 立即保存
       saveSystem.save().then(() => {
         console.log('初始化数据已保存');
       });
@@ -86,6 +86,7 @@ export class GameScene extends Phaser.Scene {
   createBottomBar() {
     this.bottomBar = new BottomBar(this);
   }
+
   bindEvents() {
     // 地图格子点击事件
     this.mapView.onGridClick = (gridId) => {
@@ -134,34 +135,6 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  // bindEvents() {
-  //   // 地图格子点击事件
-  //   this.mapView.onGridClick = (gridId) => {
-  //     console.log('clicked grid:', gridId);
-  //     const gridData = this.saveData.map.grids[gridId];
-  //     console.log('grid data:', gridData);
-  //     if (this.currentSystem) {
-  //       this.closeCurrentSystem();
-  //     }
-  //     if (this.currentGridPanel) {
-  //       this.closeGridPanel();
-  //     }
-  //     this.currentGridPanel = new GridPanel(this, gridId, gridData);
-  //   };
-
-  //   // 底部栏按钮事件
-  //   this.bottomBar.onPersonalClick = () => {
-  //     this.openSystem('info');
-  //   };
-
-  //   this.bottomBar.onPackageClick = () => {
-  //     this.openSystem('package');
-  //   };
-  // }
-
-  /**
-   * 创建全屏遮罩层
-   */
   createOverlay() {
     if (this.overlay) return; // 已存在则不重复创建
 
@@ -207,9 +180,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * 移除遮罩层
-   */
+  // 移除遮罩层
   removeOverlay() {
     if (!this.overlay) return;
     if (this.mapView) {
@@ -276,9 +247,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * 关闭当前打开的系统
-   */
+  // 关闭当前打开的系统
   closeCurrentSystem() {
     if (this.currentSystem && this.currentSystem.destroy) {
       this.currentSystem.destroy();

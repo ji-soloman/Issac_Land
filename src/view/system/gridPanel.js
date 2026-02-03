@@ -137,7 +137,7 @@ export class GridPanel {
    */
   playEnterAnimation(bottomWidth) {
     const { width } = this.scene.scale;
-    
+
     // 初始位置：在屏幕右侧外
     this.container.x = bottomWidth;
     this.isAnimating = true;
@@ -160,7 +160,7 @@ export class GridPanel {
   playExitAnimation(onComplete) {
     const { width } = this.scene.scale;
     const bottomWidth = width * 0.6;
-    
+
     this.isAnimating = true;
 
     // 平移退出到右侧
@@ -179,7 +179,7 @@ export class GridPanel {
   }
 
   /**
-   * 关闭面板（带动画）
+   * 关闭面板
    */
   close() {
     this.playExitAnimation(() => {
@@ -192,7 +192,7 @@ export class GridPanel {
 
   /**
    * 获取格子显示名称
-   * @param {string} gridId - 格子ID (如 'g1', 'g3')
+   * @param {string} gridId - 格子ID
    * @returns {string} 显示名称
    */
   getGridName(gridId) {
@@ -200,7 +200,6 @@ export class GridPanel {
       return '主城';
     }
 
-    // 提取数字并减1
     const num = parseInt(gridId.replace('g', ''));
     const areaNum = num - 1;
 
@@ -208,7 +207,7 @@ export class GridPanel {
   }
 
   /**
-   * 销毁面板（无动画，直接销毁）
+   * 销毁面板
    */
   destroy() {
     if (this.container) {
