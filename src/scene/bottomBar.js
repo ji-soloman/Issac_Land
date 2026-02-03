@@ -69,7 +69,7 @@ export class BottomBar {
     this.container.add(personalText);
 
     // ===== 右侧文字 =====
-    const packageText = this.scene.add.text(rightBtnX, btnY, '背包', {
+    const packageText = this.scene.add.text(rightBtnX, btnY, '仓库', {
       fontSize: '28px',
       color: '#ffffff',
       stroke: '#000000',
