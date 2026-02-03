@@ -1,7 +1,7 @@
-import { translation } from '../data/translation.js';
+import { translation } from '../data/translate.js';
 
 export const get = {
   translation(key) {
-    translation[key] ?? key;
+    return translation[key] ?? key;
   }
 };

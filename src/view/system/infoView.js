@@ -2,6 +2,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { MAPS } from '../../data/map.js';
 import { RACES } from '../../data/race.js';
 import { TAROT } from '../../data/tarot.js';
+import { get } from '../../system/i18n.js';
 
 export class InfoSystem {
   constructor(scene, saveData) {
@@ -46,18 +47,18 @@ export class InfoSystem {
 
     const baseInfo = [
       { label: '文明', value: this.saveData.name },
-      { label: '时代', value: this.saveData.process.era },
-      { label: '首都', value: this.saveData.capital },
+      { label: get.translation('era'), value: this.saveData.process.era },
+      { label: get.translation('capital'), value: this.saveData.capital },
       { label: '大陆', value: mapName },
-      { label: '种族', value: raceName },
+      { label: get.translation('race'), value: raceName },
       { label: '塔罗', value: tarotName },
     ];
 
     const resources = [
-      { label: '文化', value: this.saveData.resource.culture },
-      { label: '物资', value: this.saveData.resource.food },
-      { label: '魔法', value: this.saveData.resource.magic },
-      { label: '货币', value: this.saveData.resource.wealth }
+      { label: get.translation('culture'), value: this.saveData.resource.culture },
+      { label: get.translation('food'), value: this.saveData.resource.food },
+      { label: get.translation('magic'), value: this.saveData.resource.magic },
+      { label: get.translation('wealth'), value: this.saveData.resource.wealth }
     ];
 
     const startY = -bgH / 2 + (bgH * 0.16);
@@ -227,19 +228,19 @@ export class InfoSystem {
     this.scrollThumb.on('drag', (pointer, dragX, dragY) => {
       // 计算滑块在容器坐标系中的Y位置
       const localY = dragY;
-      
+
       // 限制滑块在轨道范围内
       const minY = this.scrollbarData.startY + this.scrollbarData.thumbHeight / 2;
       const maxY = this.scrollbarData.startY + this.scrollbarData.height - this.scrollbarData.thumbHeight / 2;
       const clampedY = Phaser.Math.Clamp(localY, minY, maxY);
-      
+
       // 更新滑块位置
       this.scrollThumb.y = clampedY;
-      
+
       // 计算滚动比例
       const scrollRange = maxY - minY;
       const scrollRatio = (clampedY - minY) / scrollRange;
-      
+
       // 更新内容位置
       this.scrollY = scrollRatio * this.maxScrollY;
       this.contentContainer.y = -this.scrollY;
