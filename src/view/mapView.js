@@ -106,7 +106,7 @@ export class MapView {
       interactive = true;
     } else if (isUnlocked) {
       // 已解锁格子：根据地形类型
-      fillColor = type === 'land' ? 0x90EE90 : 0x4169E1;
+      fillColor = 0x90EE90;
       fillAlpha = 0.6;
       strokeColor = 0xffff00;
       strokeAlpha = 0.8;

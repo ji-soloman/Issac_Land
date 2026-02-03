@@ -16,15 +16,15 @@ export const MAPS = {
         coord: [0.342, 0.55]
       },
       g2: {
-        type: 'land',
+        type: 'hills',
         coord: [0.205, 0.71]
       },
       g3: {
-        type: 'land',
+        type: 'coastal',
         coord: [0.45, 0.66]
       },
       g4: {
-        type: 'land',
+        type: 'coastal',
         coord: [0.487, 0.64]
       },
       g5: {
@@ -32,19 +32,19 @@ export const MAPS = {
         coord: [0.52, 0.6]
       },
       g6: {
-        type: 'land',
+        type: 'coastal',
         coord: [0.265, 0.88]
       },
       g7: {
-        type: 'land',
+        type: 'forest',
         coord: [0.535, 0.39]
       },
       g8: {
-        type: 'land',
+        type: 'coastal',
         coord: [0.645, 0.42]
       },
       g9: {
-        type: 'land',
+        type: 'forest',
         coord: [0.51, 0.31]
       },
       g10: {

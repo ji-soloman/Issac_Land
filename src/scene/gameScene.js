@@ -6,7 +6,7 @@ import { saveSystem } from '../system/saveSystem.js';
 import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
 import { GridPanel } from '../view/system/gridPanel.js';
-
+import { terrain } from '../data/terrain.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -20,6 +20,9 @@ export class GameScene extends Phaser.Scene {
     this.load.image('map_bg', mapConfig.image);
     this.load.image('btm_ui', '/assets/ui/btm_ui.png');
     this.load.image('info_page', 'assets/ui/info_page.png');
+    Object.entries(terrain).forEach(([key, terrain]) => {
+      this.load.image(`terrain_${key}`, terrain.image);
+    });
   }
 
   create() {
@@ -92,6 +95,7 @@ export class GameScene extends Phaser.Scene {
     this.mapView.onGridClick = (gridId) => {
       console.log('clicked grid:', gridId);
       const gridData = this.saveData.map.grids[gridId];
+      const data = this.saveData;
       console.log('grid data:', gridData);
 
       if (this.currentSystem) {
@@ -105,11 +109,11 @@ export class GameScene extends Phaser.Scene {
           this.currentGridPanel = null;
 
           // 创建新的网格面板
-          this.currentGridPanel = new GridPanel(this, gridId, gridData);
+          this.currentGridPanel = new GridPanel(this, gridId, data);
         });
       } else {
         // 直接创建新的网格面板
-        this.currentGridPanel = new GridPanel(this, gridId, gridData);
+        this.currentGridPanel = new GridPanel(this, gridId, data);
       }
     };
 
