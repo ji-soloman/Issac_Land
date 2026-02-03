@@ -15,4 +15,5 @@ export const translation = {
   district: '特区',
   trait: '特性',
   troop: '特兵',
+  none:'暂无'
 }

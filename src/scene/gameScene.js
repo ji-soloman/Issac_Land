@@ -5,6 +5,7 @@ import { BottomBar } from '../scene/bottomBar.js';
 import { saveSystem } from '../system/saveSystem.js';
 import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
+import { GridPanel } from '../view/system/gridPanel.js';
 
 
 export class GameScene extends Phaser.Scene {
@@ -33,6 +34,7 @@ export class GameScene extends Phaser.Scene {
     this.systemOpen = false;
     this.overlay = null;
     this.overlayWheelHandler = null;
+    this.currentGridPanel = null;
   }
 
   initWorld() {
@@ -84,7 +86,6 @@ export class GameScene extends Phaser.Scene {
   createBottomBar() {
     this.bottomBar = new BottomBar(this);
   }
-
   bindEvents() {
     // 地图格子点击事件
     this.mapView.onGridClick = (gridId) => {
@@ -92,18 +93,71 @@ export class GameScene extends Phaser.Scene {
       const gridData = this.saveData.map.grids[gridId];
       console.log('grid data:', gridData);
 
-      // TODO: 处理格子点击逻辑
+      if (this.currentSystem) {
+        this.closeCurrentSystem();
+      }
+
+      if (this.currentGridPanel) {
+        // 播放退出动画后再创建新面板
+        this.currentGridPanel.playExitAnimation(() => {
+          this.currentGridPanel.destroy();
+          this.currentGridPanel = null;
+
+          // 创建新的网格面板
+          this.currentGridPanel = new GridPanel(this, gridId, gridData);
+        });
+      } else {
+        // 直接创建新的网格面板
+        this.currentGridPanel = new GridPanel(this, gridId, gridData);
+      }
     };
 
     // 底部栏按钮事件
     this.bottomBar.onPersonalClick = () => {
+      // 如果有打开的格子面板，先关闭
+      if (this.currentGridPanel) {
+        this.currentGridPanel.destroy();
+        this.currentGridPanel = null;
+      }
+
       this.openSystem('info');
     };
 
     this.bottomBar.onPackageClick = () => {
+      // 如果有打开的格子面板，先关闭
+      if (this.currentGridPanel) {
+        this.currentGridPanel.destroy();
+        this.currentGridPanel = null;
+      }
+
       this.openSystem('package');
     };
   }
+
+  // bindEvents() {
+  //   // 地图格子点击事件
+  //   this.mapView.onGridClick = (gridId) => {
+  //     console.log('clicked grid:', gridId);
+  //     const gridData = this.saveData.map.grids[gridId];
+  //     console.log('grid data:', gridData);
+  //     if (this.currentSystem) {
+  //       this.closeCurrentSystem();
+  //     }
+  //     if (this.currentGridPanel) {
+  //       this.closeGridPanel();
+  //     }
+  //     this.currentGridPanel = new GridPanel(this, gridId, gridData);
+  //   };
+
+  //   // 底部栏按钮事件
+  //   this.bottomBar.onPersonalClick = () => {
+  //     this.openSystem('info');
+  //   };
+
+  //   this.bottomBar.onPackageClick = () => {
+  //     this.openSystem('package');
+  //   };
+  // }
 
   /**
    * 创建全屏遮罩层
@@ -210,6 +264,8 @@ export class GameScene extends Phaser.Scene {
         // TODO: 创建背包面板
         // this.currentSystem = new PackageSystem(this, this.saveData);
         console.log('TODO: 创建背包面板');
+        this.systemOpen = false;
+        this.removeOverlay();
         break;
 
       default:
@@ -232,5 +288,11 @@ export class GameScene extends Phaser.Scene {
     // 标记系统已关闭并移除遮罩
     this.systemOpen = false;
     this.removeOverlay();
+  }
+  closeGridPanel() {
+    if (this.currentGridPanel) {
+      this.currentGridPanel.destroy();
+      this.currentGridPanel = null;
+    }
   }
 }
