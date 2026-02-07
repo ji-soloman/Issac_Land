@@ -7,6 +7,9 @@ import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
 import { GridPanel } from '../view/system/gridPanel.js';
 import { terrain } from '../data/terrain.js';
+import { LeftSideBar } from '../scene/leftSideBar.js';
+import { TECH_TREE } from '../data/tech_tree.js';
+import { TechTreeSystem } from '../view/system/techTree.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -23,6 +26,19 @@ export class GameScene extends Phaser.Scene {
     Object.entries(terrain).forEach(([key, terrain]) => {
       this.load.image(`terrain_${key}`, terrain.image);
     });
+    this.load.image('tech_tree_btn', 'assets/ui_button/tech_tree.png');
+    this.load.image('common_btn', 'assets/ui/common_btn.png');
+    this.load.image('common_btn_green', 'assets/ui/common_btn_green.png');
+    this.load.image('common_btn_blue', 'assets/ui/common_btn_blue.png');
+
+    // 加载科技图标
+    this.load.image('tech_icon_default', 'assets/tech_tree/icon/default.png');
+
+    Object.entries(TECH_TREE).forEach(([techId, tech]) => {
+      if (tech.icon) {
+        this.load.image(`tech_icon_${techId}`, tech.icon);
+      }
+    });
   }
 
   create() {
@@ -31,6 +47,7 @@ export class GameScene extends Phaser.Scene {
     this.initWorld();
     this.createMap();
     this.createBottomBar();
+    this.createLeftSideBar();
     this.bindEvents();
 
     this.currentSystem = null;
@@ -90,6 +107,10 @@ export class GameScene extends Phaser.Scene {
     this.bottomBar = new BottomBar(this);
   }
 
+  createLeftSideBar() {
+    this.leftSideBar = new LeftSideBar(this);
+  }
+
   bindEvents() {
     // 地图格子点击事件
     this.mapView.onGridClick = (gridId) => {
@@ -137,6 +158,18 @@ export class GameScene extends Phaser.Scene {
 
       this.openSystem('package');
     };
+    this.leftSideBar.onTechTreeClick = () => {
+      // 如果有打开的格子面板，先关闭
+      if (this.currentGridPanel) {
+        this.currentGridPanel.playExitAnimation(() => {
+          this.currentGridPanel.destroy();
+          this.currentGridPanel = null;
+          this.openSystem('tech_tree');
+        });
+      } else {
+        this.openSystem('tech_tree');
+      }
+    };
   }
 
   createOverlay() {
@@ -147,6 +180,9 @@ export class GameScene extends Phaser.Scene {
     const centerY = height / 2;
     if (this.mapView) {
       this.mapView.disableInteraction();
+    }
+    if (this.leftSideBar) {
+      this.leftSideBar.isDisabled = true;
     }
 
     // 创建半透明黑色遮罩
@@ -190,6 +226,9 @@ export class GameScene extends Phaser.Scene {
     if (this.mapView) {
       this.mapView.enableInteraction();
     }
+    if (this.leftSideBar) {
+      this.leftSideBar.isDisabled = false;
+    }
 
     // 淡出动画
     this.tweens.add({
@@ -232,7 +271,6 @@ export class GameScene extends Phaser.Scene {
     switch (systemType) {
       case 'info':
         this.currentSystem = new InfoSystem(this, this.saveData);
-        console.log('创建个人信息面板');
         break;
 
       case 'package':
@@ -241,6 +279,10 @@ export class GameScene extends Phaser.Scene {
         console.log('TODO: 创建背包面板');
         this.systemOpen = false;
         this.removeOverlay();
+        break;
+
+      case 'tech_tree':
+        this.currentSystem = new TechTreeSystem(this, this.saveData);
         break;
 
       default:

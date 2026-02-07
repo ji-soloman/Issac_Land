@@ -15,7 +15,7 @@ export const TECH_TREE = {
   farming_2: {
     name: '驯化',
     cost: { food: 120, wealth: 30 },
-    requires: ['agriculture_1'],
+    requires: ['farming_1'],
     effects: [
       { type: 'buff', target: 'food', percent: 25 }
     ],
