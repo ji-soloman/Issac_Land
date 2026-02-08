@@ -63,8 +63,6 @@ export class TechTreeSystem {
     this.setupDragging();
   }
 
-  // ================= 布局 =================
-
   calculateTechPositions() {
     this.techPositions = {};
     const used = {};
@@ -154,7 +152,6 @@ export class TechTreeSystem {
     }
     return pref;
   }
-
   // ================= 节点 =================
 
   drawTechNodes() {
@@ -170,29 +167,38 @@ export class TechTreeSystem {
     const bg = this.scene.add.image(
       0,
       0,
-      `common_btn_${tech.color || 'green'}`
+      `common_btn${'_' + tech.color || ''}`
     );
     bg.setDisplaySize(this.NODE_WIDTH, this.NODE_HEIGHT);
     c.add(bg);
 
     // ---------- icon ----------
+    // 检查纹理是否存在，如果不存在则使用默认图标
+    let iconKey = `tech_icon_${id}`;
+    if (!this.scene.textures.exists(iconKey)) {
+      iconKey = 'tech_icon_default';
+    }
+
     const icon = this.scene.add.image(
       -this.NODE_WIDTH / 2 +
       this.NODE_HEIGHT * 0.5 +
       this.ICON_OFFSET_X,
       0,
-      `tech_icon_${id}`
+      iconKey
     );
 
     const maxIcon = this.NODE_HEIGHT * 0.7;
-    const scale = Math.min(maxIcon / icon.width, maxIcon / icon.height);
-    icon.setScale(scale);
+    // 简单的保护，防止图片未加载时宽高为0导致的计算错误
+    if (icon.width > 0 && icon.height > 0) {
+      const scale = Math.min(maxIcon / icon.width, maxIcon / icon.height);
+      icon.setScale(scale);
+    }
     c.add(icon);
 
     // ---------- 文本居中 ----------
     const label = this.scene.add
       .text(
-        this.TEXT_CENTER_OFFSET, // 文本整体微调
+        this.TEXT_CENTER_OFFSET,
         0,
         tech.name,
         {
@@ -238,8 +244,10 @@ export class TechTreeSystem {
   // ================= 连线 =================
 
   drawConnections() {
-    const g = this.scene.add.graphics();
-    g.lineStyle(2, 0xffffff, 0.5);
+    const graphics = this.scene.add.graphics();
+
+    // 1. 先画普通实线
+    graphics.lineStyle(2, 0xffffff, 0.8); // 实线稍微亮一点
 
     Object.entries(TECH_TREE).forEach(([id, tech]) => {
       tech.requires?.forEach(req => {
@@ -247,23 +255,71 @@ export class TechTreeSystem {
         const b = this.techPositions[id];
         if (!a || !b) return;
 
-        g.beginPath();
-        g.moveTo(a.x + this.NODE_WIDTH / 2, a.y);
-        g.lineTo(b.x - this.NODE_WIDTH / 2, b.y);
-        g.strokePath();
+        // 如果距离不超过1列（col<= 1），画实线
+        if (Math.abs(b.col - a.col) <= 1) {
+          graphics.beginPath();
+          graphics.moveTo(a.x + this.NODE_WIDTH / 2, a.y);
+          graphics.lineTo(b.x - this.NODE_WIDTH / 2, b.y);
+          graphics.strokePath();
+        }
       });
     });
 
-    this.contentContainer.add(g);
-    this.contentContainer.sendToBack(g);
+    // 2. 再画长距离虚线
+    graphics.lineStyle(2, 0xffffff, 0.5); // 虚线透明度 50%
+
+    Object.entries(TECH_TREE).forEach(([id, tech]) => {
+      tech.requires?.forEach(req => {
+        const a = this.techPositions[req];
+        const b = this.techPositions[id];
+        if (!a || !b) return;
+
+        // 如果距离超过1列，画虚线
+        if (Math.abs(b.col - a.col) > 1) {
+          const startX = a.x + this.NODE_WIDTH / 2;
+          const startY = a.y;
+          const endX = b.x - this.NODE_WIDTH / 2;
+          const endY = b.y;
+
+          this.drawDashedLine(graphics, startX, startY, endX, endY);
+        }
+      });
+    });
+
+    this.contentContainer.add(graphics);
+    this.contentContainer.moveTo(graphics, 0);
+  }
+
+  // 辅助方法：绘制虚线
+  drawDashedLine(graphics, x1, y1, x2, y2, dashLen = 8, gapLen = 6) {
+    const distance = Phaser.Math.Distance.Between(x1, y1, x2, y2);
+    const angle = Phaser.Math.Angle.Between(x1, y1, x2, y2);
+
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    let currentDist = 0;
+
+    while (currentDist < distance) {
+      // 计算当前这一段实线的长度
+      const len = Math.min(dashLen, distance - currentDist);
+
+      const segX1 = x1 + cos * currentDist;
+      const segY1 = y1 + sin * currentDist;
+      const segX2 = x1 + cos * (currentDist + len);
+      const segY2 = y1 + sin * (currentDist + len);
+
+      graphics.lineBetween(segX1, segY1, segX2, segY2);
+
+      // 跳过实线长度 + 间隙长度
+      currentDist += dashLen + gapLen;
+    }
   }
 
   canResearch(tech) {
     if (!tech.requires?.length) return true;
     return tech.requires.every(id => this.saveData.techs?.[id]);
   }
-
-  // ================= UI =================
 
   createScrollBar() {
     const { width, height } = this.scene.scale;
