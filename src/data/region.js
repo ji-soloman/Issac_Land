@@ -1,0 +1,15 @@
+export const REGION = {
+  farm: '农田特区',
+  trade: '贸易特区',
+  mine: '矿场特区',
+  harbor: '港口特区',
+  academy: '学院特区',
+  holy: '圣地特区',
+  entertainment: '娱乐特区',
+  pasture: '牧场特区',
+  living: '居住特区',
+  military: '军事特区',
+  mainland: '主城特区',
+  housing: '住房特区',
+  industry: '特殊工业区',
+}
