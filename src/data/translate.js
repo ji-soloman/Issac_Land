@@ -15,5 +15,9 @@ export const translation = {
   region: '特区',
   trait: '特性',
   troop: '特兵',
-  none: '暂无'
+  none: '暂无',
+
+  // 左侧边栏
+  techTreeBtn: '科技树',
+  militaryBtn: '斥候',
 }

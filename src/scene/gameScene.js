@@ -26,7 +26,10 @@ export class GameScene extends Phaser.Scene {
     Object.entries(terrain).forEach(([key, terrain]) => {
       this.load.image(`terrain_${key}`, terrain.image);
     });
+
+    // 左侧边栏
     this.load.image('tech_tree_btn', 'assets/ui_button/tech_tree.png');
+    this.load.image('military_btn', 'assets/ui_button/military.png');
     this.load.image('common_btn', 'assets/ui/common_btn.png');
     this.load.image('common_btn_green', 'assets/ui/common_btn_green.png');
     this.load.image('common_btn_blue', 'assets/ui/common_btn_blue.png');

@@ -1,130 +1,134 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
+import { get } from '../system/i18n.js';
 
 export class LeftSideBar {
   constructor(scene) {
     this.scene = scene;
-
-    // 回调函数
     this.onTechTreeClick = null;
-    // 可以添加更多系统的回调
-    // this.onOtherSystemClick = null;
-
+    this.onMilitaryClick = null;
     this.create();
   }
 
   create() {
     const { width, height } = this.scene.scale;
 
-    // ====== 计算侧边栏尺寸和位置 ======
-    const barWidth = Math.min(width * 0.1, 100);
+    // ====== 布局参数调整 ======
+    const barWidth = Math.min(width * 0.12, 120);
     const barHeight = height * 0.7;
+    const paddingLeft = 15;
+    const buttonSpacing = 20;
+    
     const barX = 0;
     const barY = height * 0.15;
 
-    // 创建侧边栏容器
     this.container = this.scene.add.container(barX, barY);
+    this.container.setDepth(1000); 
 
-    // ====== 系统按钮配置 ======
     const systems = [
       {
         key: 'tech_tree',
         image: 'tech_tree_btn',
-        callback: () => {
-          if (this.onTechTreeClick) {
-            this.onTechTreeClick();
-          }
-        }
+        textKey: 'techTreeBtn',
+        callback: () => { if (this.onTechTreeClick) this.onTechTreeClick(); }
+      },
+      {
+        key: 'military',
+        image: 'military_btn',
+        textKey: 'militaryBtn',
+        callback: () => { if (this.onMilitaryClick) this.onMilitaryClick(); }
       }
-      // 未来可以添加更多系统
-      // {
-      //   key: 'diplomacy',
-      //   image: 'diplomacy_btn',
-      //   callback: () => { ... }
-      // }
     ];
 
-    // ====== 从下往上排列按钮 ======
-    const buttonSpacing = 5;
-    let currentY = barHeight; // 从底部开始
+    let currentY = barHeight;
 
-    systems.forEach((system, index) => {
-      // 创建按钮图片
-      const btn = this.scene.add.image(barWidth / 2, 0, system.image);
+    systems.forEach((system) => {
+      const btn = this.scene.add.image(0, 0, system.image);
 
-      // 保持原始比例，适应侧边栏宽度
-      const scale = barWidth / btn.width;
+      const availableWidth = barWidth - paddingLeft - 10; 
+      const scale = availableWidth / btn.width;
       btn.setScale(scale);
+      btn.setOrigin(0, 0);
 
-      // 计算按钮高度
       const btnHeight = btn.height * scale;
+      currentY -= (btnHeight + buttonSpacing);
+      
+      btn.setPosition(paddingLeft, currentY);
 
-      // 从下往上定位
-      currentY -= btnHeight;
-      btn.setPosition(barWidth / 2, currentY);
+      btn.setInteractive({ 
+        pixelPerfect: true, 
+        alphaTolerance: 1,
+        useHandCursor: true 
+      });
 
-      // 设置交互
-      btn.setInteractive({ useHandCursor: true });
+      const labelText = this.scene.add.text(
+        paddingLeft + availableWidth / 2, 
+        currentY + (btnHeight * 0.75),
+        get.translation(system.textKey), 
+        {
+          fontSize: '14px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          stroke: '#000000',
+          strokeThickness: 3
+        }
+      ).setOrigin(0.5);
 
       btn.on('pointerover', () => {
         btn.setTint(0xcccccc);
-        this.scene.input.setDefaultCursor('pointer');
+        labelText.setTint(0xffff00);
       });
 
       btn.on('pointerout', () => {
         btn.clearTint();
-        this.scene.input.setDefaultCursor('default');
+        labelText.clearTint();
       });
 
-      btn.on('pointerdown', () => {
+      btn.on('pointerdown', (pointer, localX, localY, event) => {
+        if (event) event.stopPropagation();
         if (!this.isDisabled && system.callback) {
           system.callback();
         }
       });
 
-      this.container.add(btn);
-
-      // 为下一个按钮预留间距
-      currentY -= buttonSpacing;
+      this.container.add([btn, labelText]);
+      btn.relatedText = labelText;
+      
+      btn.customData = { availableWidth, paddingLeft, btnHeight, buttonSpacing };
     });
 
-    // 禁用标志
     this.isDisabled = false;
-
-    // 监听窗口大小变化
     this.scene.scale.on('resize', this.handleResize, this);
   }
 
-  /**
-   * 处理窗口大小变化
-   */
   handleResize(gameSize) {
     const { width, height } = gameSize;
-
-    const barWidth = Math.min(width * 0.1, 100);
+    const barWidth = Math.min(width * 0.12, 120);
     const barHeight = height * 0.7;
-    const barY = height * 0.15;
+    const paddingLeft = 15;
+    const buttonSpacing = 20;
 
-    // 更新容器位置
-    this.container.y = barY;
+    this.container.y = height * 0.15;
 
-    // 重新计算按钮位置
     let currentY = barHeight;
-    const buttonSpacing = 5;
 
-    this.container.list.forEach((btn) => {
-      const scale = barWidth / (btn.width / btn.scaleX);
-      btn.setScale(scale);
+    this.container.list.forEach((obj) => {
+      if (obj instanceof Phaser.GameObjects.Image) {
+        const availableWidth = barWidth - paddingLeft - 10;
+        const scale = availableWidth / (obj.width);
+        obj.setScale(scale);
+        
+        const btnHeight = obj.height * scale;
+        currentY -= (btnHeight + buttonSpacing);
+        
+        obj.setPosition(paddingLeft, currentY);
 
-      const btnHeight = btn.height * scale;
-      currentY -= btnHeight;
-      btn.setPosition(barWidth / 2, currentY);
-      currentY -= buttonSpacing;
+        if (obj.relatedText) {
+          obj.relatedText.setPosition(paddingLeft + availableWidth / 2, currentY + (btnHeight * 0.75));
+        }
+      }
     });
   }
 
-  /**
-   * 销毁侧边栏
-   */
   destroy() {
     this.scene.scale.off('resize', this.handleResize, this);
     if (this.container) {
