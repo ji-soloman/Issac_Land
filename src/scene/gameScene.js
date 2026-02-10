@@ -72,18 +72,13 @@ export class GameScene extends Phaser.Scene {
 
       this.saveData.map.grids = {};
 
-      // 初始化 g1 到 g9
-      for (let i = 1; i <= 9; i++) {
-        const gridId = `g${i}`;
-
-        this.saveData.map.grids[gridId] = {
-          locked: true,
-          region: i === 1 ? 'main' : null,
-          terrain: null,
-          buildings: [],
-          products: []
-        };
-      }
+      this.saveData.map.grids['g1'] = {
+        locked: true,
+        region: 'main',
+        terrain: null,
+        buildings: [],
+        products: []
+      };
 
       console.log('地图格子初始化完成:', this.saveData.map.grids);
 
