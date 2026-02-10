@@ -406,7 +406,7 @@ export class SaveCreateScene extends Phaser.Scene {
       // --- 地区 ---
       const districtText = this.add.text(
         0, -CARD_HEIGHT / 2 + 70,
-        ` ${REGION[subrace.district]}`,
+        ` ${REGION[subrace.region].name}`,
         {
           fontSize: '16px',
           color: '#ffff00',
@@ -586,7 +586,7 @@ export class SaveCreateScene extends Phaser.Scene {
 
       const districtText = this.add.text(
         0, INFO_BOX_Y - 45,
-        `特区：${tarot.district}`,
+        `特区：${tarot.region}`,
         {
           fontSize: '15px',
           color: '#000000',
@@ -737,7 +737,7 @@ export class SaveCreateScene extends Phaser.Scene {
     const effects = [
       { id: 'trait', name: '特性' },
       { id: 'troop', name: '特兵' },
-      { id: 'district', name: '特区' }
+      { id: 'region', name: '特区' }
     ];
 
     const selectedEffects = new Set(); // 存储已选择的效果
@@ -921,7 +921,7 @@ export class SaveCreateScene extends Phaser.Scene {
       // 根据 selectedEffects 设置对应的值为 true
       trait: this.selectedEffects.includes('trait'),
       troop: this.selectedEffects.includes('troop'),
-      district: this.selectedEffects.includes('district')
+      region: this.selectedEffects.includes('region')
     };
 
     try {

@@ -93,10 +93,10 @@ export class GridPanel {
     let currentY = contentStartY;
 
     const fields = [
-      { key: 'area', value: this.gridData.area || [] },
-      //{ key: 'terrain', value: this.gridData.terrain || [] },
-      { key: 'building', value: this.gridData.building || [] },
-      { key: 'product', value: this.gridData.product || [] }
+      { key: 'terrain', value: this.gridData.terrain || 'none' },
+      { key: 'region', value: this.gridData.region || 'none' },
+      { key: 'building', value: this.gridData.buildings || [] },
+      { key: 'product', value: this.gridData.products || [] }
     ];
 
     fields.forEach(field => {

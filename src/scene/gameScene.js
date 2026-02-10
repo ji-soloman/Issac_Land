@@ -78,10 +78,10 @@ export class GameScene extends Phaser.Scene {
 
         this.saveData.map.grids[gridId] = {
           locked: true,
-          area: i === 1 ? ['main'] : [],
-          terrain: [],
-          building: [],
-          product: []
+          region: i === 1 ? 'main' : null,
+          terrain: null,
+          buildings: [],
+          products: []
         };
       }
 

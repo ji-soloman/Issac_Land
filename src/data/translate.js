@@ -1,5 +1,4 @@
 export const translation = {
-  area: '区域',
   building: '建筑',
   product: '物产',
   terrain: '地形',
@@ -13,7 +12,7 @@ export const translation = {
   capital: '首都',
   race: '种族',
   subRace: '子种族',
-  district: '特区',
+  region: '特区',
   trait: '特性',
   troop: '特兵',
   none: '暂无'

@@ -80,7 +80,7 @@ export class MapView {
   }
 
   createHexagon(gridId, gridData) {
-    const { coord, type, area = [], locked = false } = gridData || {};
+    const { coord, type, region = null, locked = false } = gridData || {};
 
     const x = coord[0] * this.MAP_WIDTH;
     const y = coord[1] * this.MAP_HEIGHT;
@@ -89,7 +89,7 @@ export class MapView {
     const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
 
     // 判断格子状态
-    const isMain = area.includes('main');
+    const isMain = region === 'main';
     const isUnlocked = locked; // 鉴定为将错就错，locked为true才是解锁了hhh
 
     // 配置颜色和样式
