@@ -2,6 +2,7 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { get } from '../../system/i18n.js';
 import { terrain } from '../../data/terrain.js';
+import { REGION } from '../../data/region.js';
 import { MAPS } from '../../data/map.js';
 
 export class GridPanel {
@@ -78,14 +79,14 @@ export class GridPanel {
     this.container.add(titleText);
 
     // ====== 地形类型显示 ======
-    const terrainTypeY = 55; // 标题下方
-    const terrainTypeName = terrainConfig.name || '未知地形';
-    const terrainTypeText = this.scene.add.text(titleX, terrainTypeY, terrainTypeName, {
-      fontSize: '20px',
-      color: '#666666',
-      padding: { top: 5 },
-    }).setOrigin(0.5, 0);
-    this.container.add(terrainTypeText);
+    // const terrainTypeY = 55; // 标题下方
+    // const terrainTypeName = terrainConfig.name || '未知地形';
+    // const terrainTypeText = this.scene.add.text(titleX, terrainTypeY, terrainTypeName, {
+    //   fontSize: '20px',
+    //   color: '#666666',
+    //   padding: { top: 5 },
+    // }).setOrigin(0.5, 0);
+    // this.container.add(terrainTypeText);
 
     // ====== 内容区域 ======
     const contentStartY = 90; // 调整起始位置，为地形类型预留空间
@@ -93,18 +94,20 @@ export class GridPanel {
     let currentY = contentStartY;
 
     const fields = [
-      { key: 'terrain', value: this.gridData.terrain || 'none' },
-      { key: 'region', value: this.gridData.region || 'none' },
+      { key: 'terrain', value: this.gridData.terrain },
+      { key: 'region', value: this.gridData.region },
       { key: 'building', value: this.gridData.buildings || [] },
       { key: 'product', value: this.gridData.products || [] }
     ];
 
     fields.forEach(field => {
+      // --- 布局计算保持不变 ---
       const progress = currentY / panelHeight;
       const currentWidth = topWidth + (bottomWidth - topWidth) * progress;
       const leftX = rightX - currentWidth + 20;
       const maxTextWidth = currentWidth - 40;
 
+      // --- 渲染标签 ---
       const label = get.translation(field.key);
       const labelText = this.scene.add.text(leftX, currentY, `${label}:`, {
         fontSize: '20px',
@@ -115,12 +118,37 @@ export class GridPanel {
       this.container.add(labelText);
 
       let valueStr = '';
-      if (Array.isArray(field.value) && field.value.length > 0) {
-        valueStr = field.value.map(v => get.translation(v)).join(', ');
-      } else {
-        valueStr = get.translation('none');
+
+      if (field.key === 'terrain') {
+        // 地形
+        if (field.value && terrain[field.value]) {
+          valueStr = terrain[field.value].name;
+        } else {
+          valueStr = get.translation('none');
+        }
+      }
+      else if (field.key === 'region') {
+        // 特区
+        if (field.value && REGION[field.value]) {
+          valueStr = REGION[field.value].name;
+        } else {
+          valueStr = get.translation('none');
+        }
+      }
+      else if (Array.isArray(field.value)) {
+        // TODO：建筑和物产
+        if (field.value.length > 0) {
+          valueStr = field.value.map(v => get.translation(v)).join(', ');
+        } else {
+          valueStr = get.translation('none');
+        }
+      }
+      else {
+        // 其他
+        valueStr = field.value ? field.value : get.translation('none');
       }
 
+      // --- 渲染数值 ---
       const valueText = this.scene.add.text(leftX + 120, currentY, valueStr, {
         fontSize: '18px',
         color: '#000000',
