@@ -1,6 +1,5 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { saveSystem } from '../system/saveSystem.js';
-import { createInitialWorld } from '../world/createInitialWorld.js';
 import { RACES } from '../data/race.js';
 import { TAROT } from '../data/tarot.js';
 import { REGION } from '../data/region.js';
