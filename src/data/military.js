@@ -14,4 +14,14 @@ export const MILITARY = {
   explore_resource: {
     name: '探索资源',
   },
+  soldier_check: {
+    name: '查看兵力',
+  },
+  invasion: {
+    name: '派遣军队',
+    filter: () => false,
+  },
+  perform_mission: {
+    name: '执行任务',
+  },
 }

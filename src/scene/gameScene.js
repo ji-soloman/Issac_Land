@@ -10,6 +10,7 @@ import { terrain } from '../data/terrain.js';
 import { LeftSideBar } from '../scene/leftSideBar.js';
 import { TECH_TREE } from '../data/tech_tree.js';
 import { TechTreeSystem } from '../view/system/techTree.js';
+import { MilitarySystem } from '../view/system/military.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -153,8 +154,10 @@ export class GameScene extends Phaser.Scene {
 
       this.openSystem('package');
     };
+
+    // 侧边栏功能
+    // 科技树
     this.leftSideBar.onTechTreeClick = () => {
-      // 如果有打开的格子面板，先关闭
       if (this.currentGridPanel) {
         this.currentGridPanel.playExitAnimation(() => {
           this.currentGridPanel.destroy();
@@ -163,6 +166,18 @@ export class GameScene extends Phaser.Scene {
         });
       } else {
         this.openSystem('tech_tree');
+      }
+    };
+    // 军事行动
+    this.leftSideBar.onMilitaryClick = () => {
+      if (this.currentGridPanel) {
+        this.currentGridPanel.playExitAnimation(() => {
+          this.currentGridPanel.destroy();
+          this.currentGridPanel = null;
+          this.openSystem('military');
+        });
+      } else {
+        this.openSystem('military');
       }
     };
   }
@@ -278,6 +293,9 @@ export class GameScene extends Phaser.Scene {
 
       case 'tech_tree':
         this.currentSystem = new TechTreeSystem(this, this.saveData);
+        break;
+      case 'military':
+        this.currentSystem = new MilitarySystem(this, this.saveData);
         break;
 
       default:
