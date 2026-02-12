@@ -1,5 +1,6 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { saveSystem } from '../system/saveSystem.js';
+import { ERA } from '../data/era.js';
 
 export class SaveSelectScene extends Phaser.Scene {
   constructor() {
@@ -86,7 +87,7 @@ export class SaveSelectScene extends Phaser.Scene {
     }).setOrigin(0);
 
     const infoText = this.add.text(-width / 2 + 20, -height / 2 + 80,
-      `${save.era} · 第${save.turn}回合`, {
+      `${ERA[save.era].name} · 第${save.turn}回合`, {
       fontSize: '16px',
       color: '#aaaaaa',
       padding: { top: 10 },

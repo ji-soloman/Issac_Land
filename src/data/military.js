@@ -1,0 +1,17 @@
+export const MILITARY = {
+  explore_terrain: {
+    name: '探索地形',
+    filter: function ({ saveGrids, mapGrids }) {
+      const mapKeys = Object.keys(mapGrids);
+      return mapKeys.some(key => {
+        const savedItem = saveGrids[key];
+        if (!savedItem) return true;
+        if (savedItem.locked === false) return true;
+        return false;
+      });
+    }
+  },
+  explore_resource: {
+    name: '探索资源',
+  },
+}

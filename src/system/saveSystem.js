@@ -19,7 +19,7 @@ const DEFAULT_SAVE_TEMPLATE = {
     magic: 0
   },
   process: {
-    era: '原始',
+    era: 'primitive',
     gov: '酋邦',
     turn: 0,
     move: {
@@ -179,7 +179,7 @@ class SaveSystem {
       race: save.race,
       subRace: save.subRace,
       tarot: save.tarot,
-      era: save.process?.era || '原始',
+      era: save.process?.era || 'primitive',
       gov: save.process?.gov || '酋邦',
       turn: save.process?.turn || 0,
       createdAt: save.meta?.createdAt,

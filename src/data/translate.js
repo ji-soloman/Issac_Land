@@ -19,5 +19,5 @@ export const translation = {
 
   // 左侧边栏
   techTreeBtn: '科技树',
-  militaryBtn: '斥候',
+  militaryBtn: '军事',
 }
