@@ -11,6 +11,7 @@ import { LeftSideBar } from '../scene/leftSideBar.js';
 import { TECH_TREE } from '../data/tech_tree.js';
 import { TechTreeSystem } from '../view/system/techTree.js';
 import { MilitarySystem } from '../view/system/military.js';
+import { ActionListSystem } from '../view/system/actionList.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
     // 左侧边栏
     this.load.image('tech_tree_btn', 'assets/ui_button/tech_tree.png');
     this.load.image('military_btn', 'assets/ui_button/military.png');
+    this.load.image('action_btn', 'assets/ui_button/action_list.png');
     this.load.image('common_btn', 'assets/ui/common_btn.png');
     this.load.image('common_btn_green', 'assets/ui/common_btn_green.png');
     this.load.image('common_btn_blue', 'assets/ui/common_btn_blue.png');
@@ -89,6 +91,18 @@ export class GameScene extends Phaser.Scene {
       // 立即保存
       saveSystem.save().then(() => {
         console.log('初始化数据已保存');
+      });
+    }
+    if (!this.saveData.actionList || Object.keys(this.saveData.actionList).length === 0) {
+      console.log('初始化行动列表...');
+      this.saveData.actionList = {
+        military: {},
+        civil: {},
+        others: {},
+      }
+      // 立即保存
+      saveSystem.save().then(() => {
+        console.log('初始化行动列表已保存');
       });
     }
   }
@@ -178,6 +192,18 @@ export class GameScene extends Phaser.Scene {
         });
       } else {
         this.openSystem('military');
+      }
+    };
+    // 行动列表
+    this.leftSideBar.onActionListClick = () => {
+      if (this.currentGridPanel) {
+        this.currentGridPanel.playExitAnimation(() => {
+          this.currentGridPanel.destroy();
+          this.currentGridPanel = null;
+          this.openSystem('action_list');
+        });
+      } else {
+        this.openSystem('action_list');
       }
     };
   }
@@ -296,6 +322,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'military':
         this.currentSystem = new MilitarySystem(this, this.saveData);
+        break;
+      case 'action_list':
+        this.currentSystem = new ActionListSystem(this, this.saveData);
         break;
 
       default:

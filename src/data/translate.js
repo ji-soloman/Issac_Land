@@ -20,4 +20,5 @@ export const translation = {
   // 左侧边栏
   techTreeBtn: '科技树',
   militaryBtn: '军事',
+  actionListBtn: '行动列表',
 }

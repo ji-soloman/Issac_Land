@@ -36,6 +36,12 @@ export class LeftSideBar {
         image: 'military_btn',
         textKey: 'militaryBtn',
         callback: () => { if (this.onMilitaryClick) this.onMilitaryClick(); }
+      },
+      {
+        key: 'action_list',
+        image: 'action_btn',
+        textKey: 'actionListBtn',
+        callback: () => { if (this.onMilitaryClick) this.onActionListClick(); }
       }
     ];
 
