@@ -2,6 +2,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { MAPS } from '../../data/map.js';
 import { RACES } from '../../data/race.js';
 import { TAROT } from '../../data/tarot.js';
+import { ERA } from '../../data/era.js';
 import { get } from '../../system/i18n.js';
 
 export class InfoSystem {
@@ -47,10 +48,10 @@ export class InfoSystem {
 
     const baseInfo = [
       { label: '文明', value: this.saveData.name },
-      { label: get.translation('era'), value: this.saveData.process.era },
-      { label: get.translation('capital'), value: this.saveData.capital },
+      { label: 'era', value: this.saveData.process.era },
+      { label: 'capital', value: this.saveData.capital },
       { label: '大陆', value: mapName },
-      { label: get.translation('race'), value: raceName },
+      { label: 'race', value: raceName },
       { label: '塔罗', value: tarotName },
     ];
 
@@ -73,7 +74,9 @@ export class InfoSystem {
       const isLeft = index % 2 === 0;
       const x = isLeft ? leftX : rightX;
 
-      const label = this.scene.add.text(x, currentY, `${info.label}:`, {
+      const infoLabel = get.translation(info.label);
+
+      const label = this.scene.add.text(x, currentY, `${infoLabel}:`, {
         fontSize: '22px',
         color: '#ffcc00',
         fontStyle: 'bold',
@@ -81,7 +84,12 @@ export class InfoSystem {
         shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 2, stroke: true, fill: true }
       }).setOrigin(0, 0.5);
 
-      const value = this.scene.add.text(x + 70, currentY, info.value, {
+      var infoValue = info.value;
+      if (info.label == 'era') {
+        infoValue = ERA[infoValue].name;
+      }
+
+      const value = this.scene.add.text(x + 70, currentY, infoValue, {
         fontSize: '22px',
         color: '#ffffff',
         padding: { top: 10 },
