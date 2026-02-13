@@ -12,6 +12,7 @@ import { TECH_TREE } from '../data/tech_tree.js';
 import { TechTreeSystem } from '../view/system/techTree.js';
 import { MilitarySystem } from '../view/system/military.js';
 import { ActionListSystem } from '../view/system/actionList.js';
+import { MILITARY_UNIT } from '../data/military_unit.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -43,6 +44,11 @@ export class GameScene extends Phaser.Scene {
     Object.entries(TECH_TREE).forEach(([techId, tech]) => {
       if (tech.icon) {
         this.load.image(`tech_icon_${techId}`, tech.icon);
+      }
+    });
+    Object.entries(MILITARY_UNIT).forEach(([key, value]) => {
+      if (value.image && value.image.length > 0) {
+        this.load.image(`soldier_${key}`, value.image);
       }
     });
   }
@@ -93,6 +99,8 @@ export class GameScene extends Phaser.Scene {
         console.log('初始化数据已保存');
       });
     }
+
+    //初始化行动
     if (!this.saveData.actionList || Object.keys(this.saveData.actionList).length === 0) {
       console.log('初始化行动列表...');
       this.saveData.actionList = {
@@ -103,6 +111,36 @@ export class GameScene extends Phaser.Scene {
       // 立即保存
       saveSystem.save().then(() => {
         console.log('初始化行动列表已保存');
+      });
+    }
+
+    //初始化军事
+    if (!this.saveData.military || Object.keys(this.saveData.military).length === 0) {
+      var scout = 'scout';
+      switch (this.saveData.race) {
+        case 'centaur':
+          scout = 'centaur_scout';
+          break;
+        case 'voidwalker':
+          scout = 'devil_scout';
+          break;
+      }
+      this.saveData.military = {
+        s1: {
+          name: scout,
+          stats: MILITARY_UNIT[scout].basic_stats,
+          equipments: MILITARY_UNIT[scout].equipments,
+          ability: MILITARY_UNIT[scout].special_ability,
+        },
+        s2: {
+          name: scout,
+          stats: MILITARY_UNIT[scout].basic_stats,
+          equipments: MILITARY_UNIT[scout].equipments,
+          ability: MILITARY_UNIT[scout].special_ability,
+        },
+      }
+      saveSystem.save().then(() => {
+        console.log('初始化军队列表已保存');
       });
     }
   }
