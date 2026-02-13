@@ -236,6 +236,18 @@ export class MilitarySystem {
       new MilitaryUnitViewer(this.scene, this.saveData, action.name);
       return;
     }
+    // 2. 地形侦查
+    if (actionId === 'explore_terrain') {
+      // 关闭当前菜单
+      // this.destroy(); 
+
+      // 打开筛选选择器
+      new SoldierSelector(this.scene, this.saveData, {
+        title: '选择探索单位',
+        requiredAbility: actionId,
+      });
+      return;
+    }
 
     // 其他逻辑...
   }
@@ -722,5 +734,237 @@ export class MilitaryUnitViewer {
   destroy() {
     if (this.mainContainer) this.mainContainer.destroy();
     if (this.tooltip) this.tooltip.destroy();
+  }
+}
+
+/**
+ * 士兵选择器
+ * 用于列出特定任务可用的士兵
+ */
+export class SoldierSelector {
+  constructor(scene, saveData, config) {
+    this.scene = scene;
+    this.saveData = saveData;
+
+    // 配置
+    this.config = {
+      title: config.title || '选择单位',
+      requiredAbility: config.requiredAbility || '', // 筛选必须具备的能力
+
+      // UI 参数
+      width: 600,
+      height: 500,
+      cardHeight: 80, // 列表项高度
+      cardSpacing: 10,
+      themeColor: 0xffd700
+    };
+
+    // 绑定上下文，防止事件丢失
+    this.onMouseWheel = this.onMouseWheel.bind(this);
+
+    this.create();
+  }
+
+  create() {
+    const { width, height } = this.scene.scale;
+    const boxW = this.config.width;
+    const boxH = this.config.height;
+
+    // --- 1. 创建全屏遮罩 ---
+    // 放在最底层 (depth 1199)，颜色黑色半透明
+    this.overlay = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7);
+    this.overlay.setDepth(1199);
+    // 关键：设置为可交互，这样点击事件会被它“吃掉”，不会传给游戏底层的地图
+    this.overlay.setInteractive();
+
+    // --- 2. 主容器 ---
+    this.mainContainer = this.scene.add.container(width / 2, height / 2).setDepth(1200);
+
+    // 背景
+    const bg = this.scene.add.rectangle(0, 0, boxW, boxH, 0x1a1a1a, 1);
+    const border = this.scene.add.rectangle(0, 0, boxW, boxH).setStrokeStyle(2, this.config.themeColor);
+
+    // 窗口背景也设为交互，防止穿透
+    bg.setInteractive();
+    this.mainContainer.add([bg, border]);
+
+    // --- 3. 标题 ---
+    const titleText = this.scene.add.text(0, -boxH / 2 + 30, this.config.title, {
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.mainContainer.add(titleText);
+
+    // --- 4. 关闭按钮 ---
+    // 增加一个透明的点击区域 circle，比文字大一点，更容易点中
+    const closeBtnContainer = this.scene.add.container(boxW / 2 - 25, -boxH / 2 + 25);
+
+    const closeHitArea = this.scene.add.circle(0, 0, 20, 0xff0000, 0); // 透明圆
+    closeHitArea.setInteractive({ useHandCursor: true });
+
+    const closeText = this.scene.add.text(0, 0, '×', {
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    closeBtnContainer.add([closeHitArea, closeText]);
+    this.mainContainer.add(closeBtnContainer);
+
+    // 事件处理
+    closeHitArea.on('pointerover', () => closeText.setColor('#ffaaaa'));
+    closeHitArea.on('pointerout', () => closeText.setColor('#ff4444'));
+    closeHitArea.on('pointerdown', () => {
+      this.destroy();
+    });
+
+    // --- 5. 创建列表 ---
+    this.createSoldierList(boxW, boxH);
+  }
+
+  createSoldierList(boxW, boxH) {
+    // 筛选符合条件的士兵
+    const validSoldiers = this.getAvailableSoldiers();
+
+    const listW = boxW - 40;
+    const listH = boxH - 80; // 减去标题高度
+    const startY = -boxH / 2 + 70; // 列表起始Y (容器内坐标)
+
+    // 1. 创建遮罩
+    const maskShape = this.scene.make.graphics();
+    // 遮罩使用的是世界坐标，需要计算
+    const absX = this.mainContainer.x - listW / 2;
+    const absY = this.mainContainer.y + startY;
+
+    maskShape.fillStyle(0xffffff);
+    maskShape.fillRect(absX, absY, listW, listH);
+    const mask = maskShape.createGeometryMask();
+
+    // 2. 列表容器
+    this.listContainer = this.scene.add.container(0, startY);
+    this.listContainer.setMask(mask);
+    this.mainContainer.add(this.listContainer);
+
+    // 3. 如果没有数据
+    if (validSoldiers.length === 0) {
+      const noDataText = this.scene.add.text(0, 50, '无可执行任务的单位', {
+        fontSize: '18px', color: '#999'
+      }).setOrigin(0.5);
+      this.listContainer.add(noDataText);
+      return;
+    }
+
+    // 4. 生成卡片
+    let currentY = 0;
+    validSoldiers.forEach((item, index) => {
+      const card = this.createSoldierRow(item.id, item.data, listW, currentY);
+      this.listContainer.add(card);
+      currentY += this.config.cardHeight + this.config.cardSpacing;
+    });
+
+    // 5. 滚动逻辑
+    this.listContentHeight = currentY;
+    this.listViewportHeight = listH;
+    this.currentScrollY = 0;
+    this.maxScroll = Math.max(0, this.listContentHeight - this.listViewportHeight);
+
+    // 注册滚轮事件
+    this.scene.input.on('wheel', this.onMouseWheel);
+  }
+
+  /**
+   * 滚轮事件处理
+   */
+  onMouseWheel(pointer, gameObjects, deltaX, deltaY, deltaZ) {
+    // 只有当最大滚动距离大于0时才滚动
+    if (this.maxScroll <= 0) return;
+
+    // 只有当鼠标在列表范围内才滚动 (可选优化，目前全屏滚动体验也好)
+    this.currentScrollY += deltaY * 0.5;
+    this.currentScrollY = Phaser.Math.Clamp(this.currentScrollY, 0, this.maxScroll);
+
+    // 更新容器位置
+    this.listContainer.y = (-this.config.height / 2 + 70) - this.currentScrollY;
+  }
+
+  getAvailableSoldiers() {
+    if (!this.saveData || !this.saveData.military) return [];
+
+    const result = [];
+    const required = this.config.requiredAbility;
+
+    for (const [id, soldier] of Object.entries(this.saveData.military)) {
+      if (soldier.currentStatus) continue;
+
+      let hasAbility = false;
+      if (soldier.ability) {
+        if (Array.isArray(soldier.ability)) {
+          hasAbility = soldier.ability.includes(required);
+        } else if (typeof soldier.ability === 'object') {
+          hasAbility = soldier.ability[required];
+        }
+      }
+      if (hasAbility) result.push({ id, data: soldier });
+    }
+    return result;
+  }
+
+  createSoldierRow(id, soldier, width, y) {
+    const rowHeight = this.config.cardHeight;
+    const container = this.scene.add.container(0, y + rowHeight / 2);
+
+    const bg = this.scene.add.rectangle(0, 0, width, rowHeight, 0x333333).setInteractive({ useHandCursor: true });
+    const border = this.scene.add.rectangle(0, 0, width, rowHeight).setStrokeStyle(1, 0x666666);
+
+    bg.on('pointerover', () => { bg.setFillStyle(0x444444); border.setStrokeStyle(2, 0xffff00); });
+    bg.on('pointerout', () => { bg.setFillStyle(0x333333); border.setStrokeStyle(1, 0x666666); });
+
+    bg.on('pointerdown', () => {
+      // ToDo: 执行任务
+
+      // 选择后关闭
+      this.destroy();
+    });
+
+    const nameText = this.scene.add.text(-width / 2 + 20, 0, MILITARY_UNIT[soldier.name].name, {
+      fontSize: '20px', color: '#fff', fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+
+    // 属性显示
+    let statsStr = "";
+    if (soldier.stats) {
+      const s = soldier.stats;
+      statsStr = `攻:${s.physical_attack || 0} 魔:${s.mana || 0} 体:${s.hp || 0}`;
+    }
+
+    const statsText = this.scene.add.text(0, 0, statsStr, {
+      fontSize: '14px', color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    const selectBtn = this.scene.add.text(width / 2 - 20, 0, '选择', {
+      fontSize: '16px', color: '#00ff00'
+    }).setOrigin(1, 0.5);
+
+    container.add([bg, border, nameText, statsText, selectBtn]);
+    return container;
+  }
+
+  /**
+   * 销毁组件，清理资源
+   */
+  destroy() {
+    // 1. 移除全局事件监听 (必须！)
+    this.scene.input.off('wheel', this.onMouseWheel);
+
+    // 2. 销毁遮罩
+    if (this.overlay) {
+      this.overlay.destroy();
+      this.overlay = null;
+    }
+
+    // 3. 销毁主容器
+    if (this.mainContainer) {
+      this.mainContainer.destroy();
+      this.mainContainer = null;
+    }
   }
 }
