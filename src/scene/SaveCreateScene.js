@@ -187,7 +187,7 @@ export class SaveCreateScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
 
-    const CARD_WIDTH = 150;
+    const CARD_WIDTH = height / 3 * 1.8;
     const races = Object.entries(RACES);
 
     let selectedRaceId = null;
@@ -244,14 +244,15 @@ export class SaveCreateScene extends Phaser.Scene {
         fontSize: '24px',
         color: '#ffffff',
         stroke: '#000000',
-        strokeThickness: 4
+        strokeThickness: 4,
+        padding: { top: 10 },
       }).setOrigin(0.5);
 
       // --- add ---
       card.add([img, highlight, hit, nameText]);
       container.add(card);
 
-      // ⚠️ 在容器添加后，更新 mask 位置的函数
+      // 更新 mask 位置的函数
       const updateMask = () => {
         const worldX = card.x + container.x;
         const worldY = card.y + container.y;

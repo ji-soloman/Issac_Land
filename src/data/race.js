@@ -248,7 +248,7 @@ export const RACES = {
   }, // Beastkin
   centaur: {
     name: '半人马',
-    image: 'assets/races/human.jpg',
+    image: 'assets/races/centaur.jpg',
     base: {
       food: 1
     },
@@ -368,7 +368,7 @@ export const RACES = {
   }, // Merfolk
   corvidian: {
     name: '鸦人',
-    image: 'assets/races/human.jpg',
+    image: 'assets/races/corvidian.jpg',
     base: {
       food: 1
     },
@@ -528,7 +528,7 @@ export const RACES = {
   }, // Undead
   primordial: {
     name: '元灵',
-    image: 'assets/races/human.jpg',
+    image: 'assets/races/primordial.jpg',
     base: {
       food: 1
     },
@@ -648,7 +648,7 @@ export const RACES = {
   }, // Ancient Revenant
   voidwalker: {
     name: '虚海渡人',
-    image: 'assets/races/human.jpg',
+    image: 'assets/races/voidwalker.jpg',
     base: {
       food: 1
     },
