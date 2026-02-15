@@ -2,6 +2,7 @@ export const MILITARY = {
   explore_terrain: {
     name: '探索地形',
     intro: '你的XX开始探索附近地形',
+    militaryRequired: true,
     filter: function ({ saveGrids, mapGrids }) {
       const mapKeys = Object.keys(mapGrids);
       return mapKeys.some(key => {
@@ -15,6 +16,7 @@ export const MILITARY = {
   explore_resource: {
     name: '探索资源',
     intro: '你的XX开始搜索附近资源',
+    militaryRequired: true,
   },
   soldier_check: {
     name: '查看兵力',
@@ -22,6 +24,7 @@ export const MILITARY = {
   invasion: {
     name: '派遣军队',
     filter: () => false,
+    militaryRequired: true,
   },
   perform_mission: {
     name: '执行任务',

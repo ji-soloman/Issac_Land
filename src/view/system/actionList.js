@@ -2,6 +2,9 @@
  * 行动列表系统
  * 显示三类行动：军事、民事、其他
  */
+import { MILITARY } from '../../data/military.js';
+import { MILITARY_UNIT } from '../../data/military_unit.js';
+
 export class ActionListSystem {
   constructor(scene, saveData) {
     this.scene = scene;
@@ -230,10 +233,10 @@ export class ActionListSystem {
     const itemSpacing = 10;
     let currentY = y;
 
-    // 创建滚动容器（简化版，这里先直接显示）
+    // 创建滚动容器
     const keys = Object.keys(data);
     const maxVisibleItems = Math.floor(height / (itemHeight + itemSpacing));
-    
+
     // 显示前几个项目
     keys.slice(0, maxVisibleItems).forEach((key, index) => {
       const actionData = data[key];
@@ -271,88 +274,64 @@ export class ActionListSystem {
    * 创建单个行动项
    */
   createActionItem(x, y, width, height, key, actionData, color) {
-    // 项目背景
-    const itemBg = this.scene.add.rectangle(
-      x,
-      y + height / 2,
-      width,
-      height,
-      0x3a3a3a,
-      0.8
-    );
+    let intro = MILITARY[key].intro;
+    const replacements = [];
+
+    // 构建替换内容
+    if (actionData.soldier) {
+      var detail = this.saveData.military[actionData.soldier];
+      const unitName = MILITARY_UNIT[detail.name]?.name || actionData.soldier;
+      replacements.push(unitName);
+    }
+
+    // 依次替换 "XX" 为带有特殊标记的字符串
+    // 标记格式为： {{内容}}
+    let markedIntro = intro;
+    replacements.forEach(val => {
+      markedIntro = markedIntro.replace("XX", `{{${val}}}`);
+    });
+
+    // 3. UI 背景绘制
+    const itemBg = this.scene.add.rectangle(x, y + height / 2, width, height, 0x3a3a3a, 0.8);
     itemBg.setStrokeStyle(1, color, 0.5);
     this.container.add(itemBg);
 
-    // 添加悬停效果
-    itemBg.setInteractive({ useHandCursor: true });
-    itemBg.on('pointerover', () => {
-      itemBg.setFillStyle(0x4a4a4a, 0.9);
-      itemBg.setStrokeStyle(2, color, 0.8);
-    });
-    itemBg.on('pointerout', () => {
-      itemBg.setFillStyle(0x3a3a3a, 0.8);
-      itemBg.setStrokeStyle(1, color, 0.5);
-    });
+    // 解析 markedIntro 并创建彩色文本组
+    this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, this.container);
 
-    // 键名（左侧）
-    const keyText = this.scene.add.text(
-      x - width / 2 + 15,
-      y + height / 2,
-      key,
-      {
+  }
+
+  /**
+   * 辅助方法：将带标记的字符串解析并渲染为多色文本
+   * @param {number} startX 起始X
+   * @param {number} centerY 中心Y
+   * @param {string} text 带 {{}} 标记的文本
+   * @param {Phaser.GameObjects.Container} container 放入的容器
+   */
+  renderColoredText(startX, centerY, text, container) {
+    // 正则匹配：拆分出普通文本和 {{标记文本}}
+    const parts = text.split(/({{.*?}})/g);
+    let currentX = startX;
+
+    parts.forEach(part => {
+      if (!part) return;
+
+      let isHighlight = part.startsWith('{{') && part.endsWith('}}');
+      let content = isHighlight ? part.slice(2, -2) : part;
+      let textColor = isHighlight ? '#ffd700' : '#ffffff'; // 高亮部分为黄色
+
+      const txt = this.scene.add.text(currentX, centerY, content, {
         fontSize: '16px',
         fontFamily: 'Arial, sans-serif',
-        color: '#ffffff',
-        fontStyle: 'bold'
-      }
-    );
-    keyText.setOrigin(0, 0.5);
-    this.container.add(keyText);
+        color: textColor,
+        fontStyle: isHighlight ? 'bold' : 'normal'
+      }).setOrigin(0, 0.5);
 
-    // 如果 actionData 是对象，显示一些基本信息
-    if (typeof actionData === 'object' && actionData !== null) {
-      // 显示对象的某些属性（可根据实际数据结构调整）
-      let infoText = '';
-      if (actionData.status) {
-        infoText += `状态: ${actionData.status}`;
-      }
-      if (actionData.progress !== undefined) {
-        infoText += ` | 进度: ${actionData.progress}%`;
-      }
-      if (actionData.type) {
-        infoText += ` | 类型: ${actionData.type}`;
-      }
-
-      if (infoText) {
-        const detailText = this.scene.add.text(
-          x + width / 2 - 15,
-          y + height / 2,
-          infoText,
-          {
-            fontSize: '14px',
-            fontFamily: 'Arial, sans-serif',
-            color: '#aaaaaa'
-          }
-        );
-        detailText.setOrigin(1, 0.5);
-        this.container.add(detailText);
-      }
-    } else {
-      // 如果是简单值，直接显示
-      const valueText = this.scene.add.text(
-        x + width / 2 - 15,
-        y + height / 2,
-        String(actionData),
-        {
-          fontSize: '14px',
-          fontFamily: 'Arial, sans-serif',
-          color: '#aaaaaa'
-        }
-      );
-      valueText.setOrigin(1, 0.5);
-      this.container.add(valueText);
-    }
+      container.add(txt);
+      currentX += txt.width; // 动态计算下一个片段的起始位置
+    });
   }
+
 
   /**
    * 进入动画

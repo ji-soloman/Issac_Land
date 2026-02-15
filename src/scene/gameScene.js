@@ -143,6 +143,18 @@ export class GameScene extends Phaser.Scene {
         console.log('初始化军队列表已保存');
       });
     }
+
+    //// 临时测试模板
+    if (this.saveData.actionList.military.explore_terrain) {
+      delete this.saveData.actionList.military.explore_terrain;
+      saveSystem.save();
+    }
+    if (this.saveData.military.s1.currentStatus) {
+      delete this.saveData.military.s1.currentStatus;
+      saveSystem.save();
+    }
+
+    /// 测试结束
   }
 
   createMap() {

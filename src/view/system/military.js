@@ -1,4 +1,5 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
+import { saveSystem } from '../../system/saveSystem.js';
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { MAPS } from '../../data/map.js';
@@ -173,34 +174,57 @@ export class MilitarySystem {
     const { cardWidth, cardHeight } = this.config;
     const cardContainer = this.scene.add.container(x, y);
 
-    const bgColor = isAvailable ? 0x4a4a4a : 0x2a2a2a;
+    // 判断是否正在执行中
+    const isExecuting = this.saveData.actionList?.military && this.saveData.actionList.military[actionId];
+
+    // 确定颜色逻辑
+    let bgColor = 0x2a2a2a;      // 默认不可用颜色
+    let borderColor = 0x666666;  // 默认边框颜色
+    let statusMsg = '不可用';
+    let statusColor = '#ff0000';
+    let canInteract = false;
+
+    if (isExecuting) {
+      // 执行中状态优先级最高
+      bgColor = 0x2a3a4a;        // 略带蓝色的背景
+      borderColor = 0x00ccff;    // 蓝色边框
+      statusMsg = '执行中';
+      statusColor = '#00ccff';
+      canInteract = false;       // 执行中不可再次点击
+    } else if (isAvailable) {
+      // 可用状态
+      bgColor = 0x4a4a4a;
+      borderColor = 0xffd700;
+      statusMsg = '可执行';
+      statusColor = '#00ff00';
+      canInteract = true;
+    }
+
     const bg = this.scene.add.rectangle(0, 0, cardWidth, cardHeight, bgColor, 0.9);
     cardContainer.add(bg);
 
-    const borderColor = isAvailable ? 0xffd700 : 0x666666;
     const border = this.scene.add.rectangle(0, 0, cardWidth, cardHeight).setStrokeStyle(3, borderColor, 1);
     cardContainer.add(border);
 
-    const nameColor = isAvailable ? '#ffffff' : '#666666';
+    const nameColor = (isAvailable || isExecuting) ? '#ffffff' : '#666666';
     const nameText = this.scene.add.text(0, -20, action.name, {
       fontSize: '24px',
       color: nameColor,
       fontStyle: 'bold',
       align: 'center',
-      padding: { top: 2 },
       wordWrap: { width: cardWidth - 20 }
     }).setOrigin(0.5);
     cardContainer.add(nameText);
 
-    const statusText = this.scene.add.text(0, 30, isAvailable ? '可执行' : '不可用', {
+    const statusText = this.scene.add.text(0, 30, statusMsg, {
       fontSize: '16px',
-      color: isAvailable ? '#00ff00' : '#ff0000',
+      color: statusColor,
       fontStyle: 'italic',
-      padding: { top: 2 },
     }).setOrigin(0.5);
     cardContainer.add(statusText);
 
-    if (isAvailable) {
+    // 交互处理
+    if (canInteract) {
       bg.setInteractive({ useHandCursor: true });
       bg.on('pointerover', () => {
         bg.setFillStyle(0x5a5a5a, 0.9);
@@ -216,40 +240,47 @@ export class MilitarySystem {
         this.onActionClick(actionId, action);
       });
     } else {
-      cardContainer.setAlpha(0.6);
+      // 不可交互时略微变暗
+      cardContainer.setAlpha(isExecuting ? 0.9 : 0.6);
     }
+
     this.scrollContainer.add(cardContainer);
   }
 
   onActionClick(actionId, action) {
     console.log('执行:', actionId);
 
-    // 如果是查看兵力
     if (actionId === 'soldier_check') {
-      // 1. 关闭当前界面
-      if (this.scene.closeCurrentSystem) {
-        this.scene.closeCurrentSystem();
-      } else {
-        this.destroy();
-      }
-      // 2. 打开新的兵力查看界面
+      if (this.scene.closeCurrentSystem) this.scene.closeCurrentSystem();
+      else this.destroy();
       new MilitaryUnitViewer(this.scene, this.saveData, action.name);
       return;
     }
-    // 2. 地形侦查
-    if (actionId === 'explore_terrain') {
-      // 关闭当前菜单
-      // this.destroy(); 
 
-      // 打开筛选选择器
+    // 地形侦查或其他需要选择士兵的任务
+    if (actionId === 'explore_terrain') {
       new SoldierSelector(this.scene, this.saveData, {
-        title: '选择探索单位',
+        actionId: actionId,
+        title: `选择${action.name}单位`,
         requiredAbility: actionId,
+        onSelect: (id, soldier) => {
+          // 更新数据
+          if (!this.saveData.actionList.military) this.saveData.actionList.military = {};
+
+          this.saveData.actionList.military[actionId] = {
+            soldier: id,
+          };
+          this.saveData.military[id].currentStatus = actionId;
+
+          // 存档
+          saveSystem.save();
+
+          // 立刻刷新当前军事行动界面
+          this.refreshUI();
+        }
       });
       return;
     }
-
-    // 其他逻辑...
   }
 
   createCloseButton() {
@@ -273,6 +304,33 @@ export class MilitarySystem {
       }
     });
     this.mainContainer.add(closeBtn);
+  }
+
+  /**
+   * 刷新界面：清理并重建滚动区域
+   */
+  refreshUI() {
+    // 销毁旧的滚动容器
+    if (this.scrollContainer) {
+      this.scrollContainer.destroy();
+      this.scrollContainer = null;
+    }
+
+    // 销毁旧的滚动条组件
+    if (this.scrollTrack) {
+      this.scrollTrack.destroy();
+      this.scrollTrack = null;
+    }
+    if (this.scrollThumb) {
+      this.scrollThumb.destroy();
+      this.scrollThumb = null;
+    }
+
+    // 重新创建内容（读取最新的saveData）
+    this.createScrollableContent();
+
+    // 保持之前的滚动位置，避免跳回顶部
+    this.updateScrollPosition();
   }
 
   destroy() {
@@ -749,7 +807,8 @@ export class SoldierSelector {
     // 配置
     this.config = {
       title: config.title || '选择单位',
-      requiredAbility: config.requiredAbility || '', // 筛选必须具备的能力
+      requiredAbility: config.requiredAbility || '',
+      onSelect: config.onSelect || null,
 
       // UI 参数
       width: 600,
@@ -797,7 +856,7 @@ export class SoldierSelector {
     this.mainContainer.add(titleText);
 
     // --- 4. 关闭按钮 ---
-    // 增加一个透明的点击区域 circle，比文字大一点，更容易点中
+    // 增加一个透明的点击区域 circle
     const closeBtnContainer = this.scene.add.container(boxW / 2 - 25, -boxH / 2 + 25);
 
     const closeHitArea = this.scene.add.circle(0, 0, 20, 0xff0000, 0); // 透明圆
@@ -827,7 +886,7 @@ export class SoldierSelector {
 
     const listW = boxW - 40;
     const listH = boxH - 80; // 减去标题高度
-    const startY = -boxH / 2 + 70; // 列表起始Y (容器内坐标)
+    const startY = -boxH / 2 + 70; // 列表起始Y
 
     // 1. 创建遮罩
     const maskShape = this.scene.make.graphics();
@@ -920,7 +979,9 @@ export class SoldierSelector {
 
     bg.on('pointerdown', () => {
       // ToDo: 执行任务
-
+      if (this.config.onSelect) {
+        this.config.onSelect(id, soldier);
+      }
       // 选择后关闭
       this.destroy();
     });
