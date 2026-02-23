@@ -1,9 +1,6 @@
-/**
- * 行动列表系统
- * 显示三类行动：军事、民事、其他
- */
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
+import { ERA } from '../../data/era.js';
 
 export class ActionListSystem {
   constructor(scene, saveData) {
@@ -39,7 +36,7 @@ export class ActionListSystem {
     this.bg.setStrokeStyle(2, 0x4a4a4a);
     this.container.add(this.bg);
 
-    // 标题区域
+    // --- 标题区域 ---
     const titleHeight = 60;
     const titleBg = this.scene.add.rectangle(
       centerX,
@@ -65,7 +62,27 @@ export class ActionListSystem {
     titleText.setOrigin(0.5);
     this.container.add(titleText);
 
-    // 关闭按钮
+    // --- 回合与时代信息---
+    const currentTurn = (this.saveData.process?.turn + 1) || 1;
+    const currentEra = ERA[this.saveData.process?.era].name || '未知时代';
+
+    const infoTextStr = `${currentEra} | 第 ${currentTurn} 回合`;
+    const infoText = this.scene.add.text(
+      panelX + 20,
+      panelY + titleHeight / 2,
+      infoTextStr,
+      {
+        fontSize: '18px',
+        fontFamily: 'Arial, sans-serif',
+        color: '#ffd700',
+        fontStyle: 'bold'
+      }
+    );
+    infoText.setOrigin(0, 0.5);
+    this.container.add(infoText);
+
+
+    // --- 关闭按钮 ---
     const closeBtn = this.scene.add.text(
       panelX + panelWidth - 30,
       panelY + titleHeight / 2,
@@ -88,9 +105,13 @@ export class ActionListSystem {
     });
     this.container.add(closeBtn);
 
-    // 内容区域起始位置
+    // --- 底部按钮区域高度预留 ---
+    const footerHeight = 80;
+
+    // --- 内容区域计算 ---
     const contentY = panelY + titleHeight + 10;
-    const contentHeight = panelHeight - titleHeight - 20;
+    // 总高度减去标题栏、底部按钮区和一些间距
+    const contentHeight = panelHeight - titleHeight - footerHeight - 20;
     const sectionHeight = contentHeight / 3;
     const sectionWidth = panelWidth - 40;
     const sectionX = centerX;
@@ -132,6 +153,81 @@ export class ActionListSystem {
       actionList.others,
       0x95a5a6
     );
+
+    // --- 底部下一回合按钮 ---
+    const btnY = panelY + panelHeight - footerHeight / 2;
+    this.createNextTurnBtn(centerX, btnY, 200, 50, actionList);
+  }
+
+  /**
+   * 创建下一回合按钮
+   */
+  createNextTurnBtn(x, y, width, height, actionList) {
+    // 检查是否有任何行动
+    const mCount = Object.keys(actionList.military || {}).length;
+    const cCount = Object.keys(actionList.civil || {}).length;
+    const oCount = Object.keys(actionList.others || {}).length;
+    const hasActions = (mCount + cCount + oCount) > 0;
+
+    // 按钮样式配置
+    const btnColor = hasActions ? 0x27ae60 : 0x555555; // 绿色 vs 灰色
+    const btnStroke = hasActions ? 0x2ecc71 : 0x777777;
+    const txtColor = hasActions ? '#ffffff' : '#aaaaaa';
+
+    // 按钮背景容器
+    const btnContainer = this.scene.add.container(x, y);
+    this.container.add(btnContainer);
+
+    const bg = this.scene.add.rectangle(0, 0, width, height, btnColor, 1);
+    bg.setStrokeStyle(2, btnStroke);
+    // 圆角矩形效果
+    btnContainer.add(bg);
+
+    const text = this.scene.add.text(0, 0, '下一回合', {
+      fontSize: '22px',
+      fontFamily: 'Arial, sans-serif',
+      color: txtColor,
+      fontStyle: 'bold'
+    });
+    text.setOrigin(0.5);
+    btnContainer.add(text);
+
+    // 交互逻辑
+    if (hasActions) {
+      bg.setInteractive({ useHandCursor: true });
+
+      bg.on('pointerover', () => {
+        bg.setFillStyle(0x2ecc71); // 悬停变亮
+        btnContainer.setScale(1.05);
+      });
+
+      bg.on('pointerout', () => {
+        bg.setFillStyle(0x27ae60); // 恢复
+        btnContainer.setScale(1);
+      });
+
+      bg.on('pointerdown', () => {
+        // 点击效果
+        btnContainer.setScale(0.95);
+        this.scene.tweens.add({
+          targets: btnContainer,
+          scale: 1,
+          duration: 100,
+          onComplete: () => {
+            this.onNextTurn();
+          }
+        });
+      });
+    }
+  }
+
+  /**
+   * 点击下一回合触发的逻辑
+   */
+  onNextTurn() {
+    this.playExitAnimation();
+    this.scene.events.emit('END_TURN');
+    //new TurnSystem(this.scene, this.saveData);
   }
 
   /**
@@ -274,13 +370,13 @@ export class ActionListSystem {
    * 创建单个行动项
    */
   createActionItem(x, y, width, height, key, actionData, color) {
-    let intro = MILITARY[key].intro;
+    let intro = MILITARY[key]?.intro || key;
     const replacements = [];
 
     // 构建替换内容
     if (actionData.soldier) {
       var detail = this.saveData.military[actionData.soldier];
-      const unitName = MILITARY_UNIT[detail.name]?.name || actionData.soldier;
+      const unitName = MILITARY_UNIT[detail?.name]?.name || detail?.name || actionData.soldier;
       replacements.push(unitName);
     }
 
@@ -298,15 +394,10 @@ export class ActionListSystem {
 
     // 解析 markedIntro 并创建彩色文本组
     this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, this.container);
-
   }
 
   /**
-   * 辅助方法：将带标记的字符串解析并渲染为多色文本
-   * @param {number} startX 起始X
-   * @param {number} centerY 中心Y
-   * @param {string} text 带 {{}} 标记的文本
-   * @param {Phaser.GameObjects.Container} container 放入的容器
+   * 将带标记的字符串解析并渲染为多色文本
    */
   renderColoredText(startX, centerY, text, container) {
     // 正则匹配：拆分出普通文本和 {{标记文本}}
@@ -360,7 +451,11 @@ export class ActionListSystem {
       duration: 200,
       ease: 'Back.easeIn',
       onComplete: () => {
-        this.scene.closeCurrentSystem();
+        if (this.scene.closeCurrentSystem) {
+          this.scene.closeCurrentSystem();
+        } else {
+          this.destroy();
+        }
       }
     });
   }

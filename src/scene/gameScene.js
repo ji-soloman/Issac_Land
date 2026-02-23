@@ -3,6 +3,8 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { MapView } from '../view/mapView.js';
 import { BottomBar } from '../scene/bottomBar.js';
 import { saveSystem } from '../system/saveSystem.js';
+import { TurnSystem } from '../system/turnSystem.js'
+
 import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
 import { GridPanel } from '../view/system/gridPanel.js';
@@ -67,6 +69,17 @@ export class GameScene extends Phaser.Scene {
     this.overlay = null;
     this.overlayWheelHandler = null;
     this.currentGridPanel = null;
+
+    this.turnSystem = new TurnSystem(this, this.saveData)
+
+    this.events.on('END_TURN', () => {
+      this.turnSystem.executeTurn()
+      //this.refreshAll()
+    });
+    this.events.on('TURN_FINALISED', (result) => {
+      console.log('结算完成：', result)
+    })
+
   }
 
   initWorld() {
