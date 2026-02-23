@@ -43,7 +43,7 @@ export class TurnSystem {
         // 2. 用于统计每种地形解锁的数量
         const stats = {};
 
-        // 3. 按顺序遍历 allGrids 的 Key (g1, g2, g3...)
+        // 3. 按顺序遍历 allGrids 的 Key
         const allKeys = Object.keys(allGrids);
 
         for (const key of allKeys) {
@@ -116,8 +116,8 @@ export class TurnSystem {
 
   /**
    * 通用分类处理器
-   * @param {string} categoryName - 分类名称 (用于日志)
-   * @param {Object} actionMap - 该分类下的动作对象 (例如 list.military)
+   * @param {string} categoryName - 分类名称
+   * @param {Object} actionMap - 该分类下的动作对象
    * @param {Function} handler - 处理回调函数
    */
   processCategory(categoryName, actionMap, handler) {
