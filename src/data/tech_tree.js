@@ -36,6 +36,7 @@ export const TECH_TREE = {
   },
   construction_2: {
     name: '制陶业',
+    info:'解锁奇观【金字塔】',
     info: '',
     cost: {},
     requires: ['construction_1'],
@@ -166,6 +167,7 @@ export const TECH_TREE = {
   },
   occultism_2: {
     name: '占卜',
+    info:'解锁奇迹【神谕所】',
     cost: {},
     requires: [],
     effect: [],

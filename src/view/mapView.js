@@ -1,4 +1,5 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
+import { WONDER } from '../data/wonder.js';
 
 export class MapView {
   constructor(scene, mapConfig, saveData) {
@@ -44,7 +45,9 @@ export class MapView {
 
     // 2. 加载地图背景
     this.mapBg = this.scene.add.image(0, 0, 'map_bg').setOrigin(0);
-    this.mapBg.setDisplaySize(this.MAP_WIDTH, this.MAP_HEIGHT);
+    // this.mapBg.setDisplaySize(this.MAP_WIDTH, this.MAP_HEIGHT);
+    this.mapBg.setPipeline('TextureTintPipeline');
+    this.mapBg.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.container.add(this.mapBg);
 
     // 3. 创建格子容器
@@ -80,91 +83,111 @@ export class MapView {
   }
 
   createHexagon(gridId, gridData) {
-    const { coord, type, region = null, locked = false } = gridData || {};
-
+    const { coord, region = null, locked = false, wonder } = gridData || {};
     const x = coord[0] * this.MAP_WIDTH;
     const y = coord[1] * this.MAP_HEIGHT;
 
+    // 创建一个独立的单元容器，用来承载当前格子的所有组件
+    const cellContainer = this.scene.add.container(x, y);
+    this.gridsContainer.add(cellContainer);
+
+    // 绘制基础六边形
     const graphics = this.scene.add.graphics();
     const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
 
-    // 判断格子状态
     const isMain = region === 'main';
-    const isUnlocked = locked; // 鉴定为将错就错，locked为true才是解锁了hhh
+    const isUnlocked = locked;
+    let fillColor = isMain ? 0xff0000 : (isUnlocked ? 0x90EE90 : 0x808080);
+    let fillAlpha = isMain ? 0.8 : (isUnlocked ? 0.6 : 0.5);
+    let strokeColor = (isMain || isUnlocked) ? 0xffff00 : 0x606060;
+    let strokeWidth = (isMain || isUnlocked) ? 3 : 2;
 
-    // 配置颜色和样式
-    let fillColor, fillAlpha, strokeColor, strokeAlpha, strokeWidth, interactive;
+    const drawBase = (isHover = false) => {
+      graphics.clear();
+      graphics.fillStyle(fillColor, isHover ? 0.9 : fillAlpha);
+      graphics.fillPoints(hexPoints, true);
+      graphics.lineStyle(isHover ? 4 : strokeWidth, isHover ? 0xffffff : strokeColor, 1);
+      graphics.strokePoints(hexPoints, true);
 
-    if (isMain) {
-      // 主城格子：红色
-      fillColor = 0xff0000;
-      fillAlpha = 0.8;
-      strokeColor = 0xffff00;
-      strokeAlpha = 0.8;
-      strokeWidth = 3;
-      interactive = true;
-    } else if (isUnlocked) {
-      // 已解锁格子：根据地形类型
-      fillColor = 0x90EE90;
-      fillAlpha = 0.6;
-      strokeColor = 0xffff00;
-      strokeAlpha = 0.8;
-      strokeWidth = 3;
-      interactive = true;
-    } else {
-      // 未解锁格子：灰色、无交互
-      fillColor = 0x808080;
-      fillAlpha = 0.5;
-      strokeColor = 0x606060;
-      strokeAlpha = 0.5;
-      strokeWidth = 2;
-      interactive = false;
+      // 如果处于高光状态且有奇观，绘制一个包含图片范围的组合框
+      if (isHover && wonderImage) {
+        const bounds = wonderImage.getBounds();
+        // 转换全局坐标为容器本地坐标
+        const localX = bounds.x - cellContainer.x;
+        const localY = bounds.y - cellContainer.y;
+        graphics.lineStyle(2, 0xffffff, 0.8);
+        graphics.strokeRect(localX, localY, bounds.width, bounds.height);
+      }
+    };
+
+    cellContainer.add(graphics);
+
+    // 处理奇观图片
+    let wonderImage = null;
+    if (wonder && WONDER[wonder] && WONDER[wonder].image) {
+      const imageKey = 'wonder_' + wonder;
+      wonderImage = this.scene.add.image(0, 0, imageKey); // 相对容器 0,0
+
+      const targetDisplayWidth = this.HEX_RADIUS * 2;
+      let scaleFactor = Math.min(1, targetDisplayWidth / wonderImage.width);
+      wonderImage.setScale(scaleFactor);
+      wonderImage.setOrigin(0.5, 1.0);
+
+      // 调整位置使其站立在六边形底部
+      const verticalOffset = (this.HEX_APOTHEM * this.TILT_FACTOR) * 1.2;
+      wonderImage.y = verticalOffset;
+
+      cellContainer.add(wonderImage);
+      wonderImage.setInteractive({
+        pixelPerfect: true,
+        alphaTolerance: 1,
+        useHandCursor: true
+      });;
     }
 
-    // 绘制填充和边框
-    graphics.fillStyle(fillColor, fillAlpha);
-    graphics.fillPoints(hexPoints, true);
-    graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
-    graphics.strokePoints(hexPoints, true);
+    drawBase(false);
 
-    // 设置交互
-    if (interactive) {
+    if (isMain || isUnlocked) {
       const hitArea = new Phaser.Geom.Polygon(hexPoints);
       graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
 
-      // 悬停高亮
-      graphics.on('pointerover', () => {
-        graphics.clear();
-        graphics.fillStyle(fillColor, 0.9);
-        graphics.fillPoints(hexPoints, true);
-        graphics.lineStyle(4, 0xffffff, 1);
-        graphics.strokePoints(hexPoints, true);
+      // 如果有图片，让图片也能触发 graphics 的 hover
+      if (wonderImage) {
+        wonderImage.setInteractive();
+      }
+
+      const onOver = () => {
+        drawBase(true);
+        if (wonderImage) {
+          //wonderImage.setTint(0xffffff);
+          wonderImage.setAlpha(0.85);
+        }
         this.scene.input.setDefaultCursor('pointer');
-      });
+      };
 
-      // 恢复原样
-      graphics.on('pointerout', () => {
-        graphics.clear();
-        graphics.fillStyle(fillColor, fillAlpha);
-        graphics.fillPoints(hexPoints, true);
-        graphics.lineStyle(strokeWidth, strokeColor, strokeAlpha);
-        graphics.strokePoints(hexPoints, true);
+      const onOut = () => {
+        drawBase(false);
+        if (wonderImage) {
+          //wonderImage.clearTint();
+          wonderImage.setAlpha(1.0);
+        }
         this.scene.input.setDefaultCursor('default');
-      });
+      };
 
-      // 点击事件
-      graphics.on('pointerdown', () => {
+      const onClick = () => {
         if (!this.isDragging && this.onGridClick) {
           this.onGridClick(gridId);
         }
+      };
+
+      // 绑定事件
+      [graphics, wonderImage].forEach(obj => {
+        if (!obj) return;
+        obj.on('pointerover', onOver);
+        obj.on('pointerout', onOut);
+        obj.on('pointerdown', onClick);
       });
     }
-
-    // 设置位置
-    graphics.x = x;
-    graphics.y = y;
-
-    this.gridsContainer.add(graphics);
     return graphics;
   }
 

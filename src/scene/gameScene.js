@@ -15,6 +15,7 @@ import { TechTreeSystem } from '../view/system/techTree.js';
 import { MilitarySystem } from '../view/system/military.js';
 import { ActionListSystem } from '../view/system/actionList.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
+import { WONDER } from '../data/wonder.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -51,6 +52,11 @@ export class GameScene extends Phaser.Scene {
     Object.entries(MILITARY_UNIT).forEach(([key, value]) => {
       if (value.image && value.image.length > 0) {
         this.load.image(`soldier_${key}`, value.image);
+      }
+    });
+    Object.entries(WONDER).forEach(([key, value]) => {
+      if (value.image) {
+        this.load.image(`wonder_${key}`, value.image);
       }
     });
   }
