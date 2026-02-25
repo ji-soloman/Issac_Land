@@ -286,6 +286,18 @@ export class GameScene extends Phaser.Scene {
 
     this.events.on('build_wonder', (info) => {
       console.log('在', info.gridId, '区域创建', info.wonderKey);
+      this.saveData.map.grids[info.gridId].wonder = info.wonderKey;
+      saveSystem.save().then(() => {
+        console.log('奇迹创建成功！');
+        this.saveData = saveSystem.currentSaveData;
+        this.mapView.refreshMap(this.saveData.map);
+        if (this.currentGridPanel) {
+          this.currentGridPanel.playExitAnimation(() => {
+            this.currentGridPanel.destroy();
+            this.currentGridPanel = null;
+          });
+        }
+      });
     });
   }
 

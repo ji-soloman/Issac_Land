@@ -291,6 +291,21 @@ export class MapView {
     this.interactionEnabled = true;
   }
 
+  /**
+   * 刷新地图和格子信息，保持当前视角和缩放不变
+   * @param {Object} [newSaveData] - 可选，如果有新的存档数据（仅Map部分）可以传入并更新
+   */
+  refreshMap(newData) {
+    if (newData) {
+      this.saveData = newData;
+    }
+    if (this.gridsContainer) {
+      this.gridsContainer.removeAll(true);
+    }
+    this.gridObjects = {};
+    this.drawGrids();
+  }
+
   // 禁用地图交互
   disableInteraction() {
     this.interactionEnabled = false;
