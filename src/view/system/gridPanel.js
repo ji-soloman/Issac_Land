@@ -188,6 +188,48 @@ export class GridPanel {
       this.close();
     });
 
+    // ====== 创建奇迹按钮 ======
+    const miracleBtnWidth = 160;
+    const miracleBtnHeight = 45;
+    // 将按钮放在右下角稍微靠中的位置
+    const miracleBtnX = rightX - bottomWidth / 2;
+    const miracleBtnY = panelHeight - 60;
+
+    // 按钮背景
+    const miracleBg = this.scene.add.rectangle(miracleBtnX, miracleBtnY, miracleBtnWidth, miracleBtnHeight, 0xffa500, 1);
+    miracleBg.setInteractive({ useHandCursor: true });
+    miracleBg.setStrokeStyle(2, 0xffffff);
+
+    // 按钮文字
+    const miracleText = this.scene.add.text(miracleBtnX, miracleBtnY, '创建奇迹', {
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 4 },
+      shadow: { offsetX: 1, offsetY: 1, color: '#000', fill: true }
+    }).setOrigin(0.5);
+
+    this.container.add([miracleBg, miracleText]);
+
+    // 按钮交互动画
+    miracleBg.on('pointerover', () => miracleBg.setFillStyle(0xff8c00, 1)); // 悬浮变深
+    miracleBg.on('pointerout', () => miracleBg.setFillStyle(0xffa500, 1));  // 恢复
+    miracleBg.on('pointerdown', () => {
+      if (this.isAnimating) return;
+
+      // 添加一个点击回弹的小动画
+      this.scene.tweens.add({
+        targets: [miracleBg, miracleText],
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.scene.events.emit('create_wonder_btn', this.gridId);
+        }
+      });
+    });
+
     // ====== 进入动画 ======
     this.playEnterAnimation(bottomWidth);
   }

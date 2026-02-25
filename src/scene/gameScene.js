@@ -3,11 +3,13 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { MapView } from '../view/mapView.js';
 import { BottomBar } from '../scene/bottomBar.js';
 import { saveSystem } from '../system/saveSystem.js';
-import { TurnSystem } from '../system/turnSystem.js'
+import { TurnSystem } from '../system/turnSystem.js';
 
 import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
 import { GridPanel } from '../view/system/gridPanel.js';
+import { CreateWonder } from '../view/system/createWonder.js';
+
 import { terrain } from '../data/terrain.js';
 import { LeftSideBar } from '../scene/leftSideBar.js';
 import { TECH_TREE } from '../data/tech_tree.js';
@@ -275,6 +277,16 @@ export class GameScene extends Phaser.Scene {
         this.openSystem('action_list');
       }
     };
+
+    this.events.on('create_wonder_btn', (gridId) => {
+      console.log('准备在以下地块创建奇迹:', gridId);
+      const data = this.saveData;
+      this.currentWonderPanel = new CreateWonder(this, gridId, data);
+    });
+
+    this.events.on('build_wonder', (info) => {
+      console.log('在', info.gridId, '区域创建', info.wonderKey);
+    });
   }
 
   createOverlay() {
