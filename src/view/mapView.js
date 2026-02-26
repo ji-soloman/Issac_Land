@@ -40,6 +40,9 @@ export class MapView {
   }
 
   create() {
+    if (this.scene && this.scene.input) {
+      this.scene.input.setDefaultCursor('default');
+    }
     // 1. 创建地图容器
     this.container = this.scene.add.container(0, 0);
 
@@ -265,15 +268,24 @@ export class MapView {
 
   centerMap() {
     const { width, height } = this.scene.scale;
-    this.container.x = (width - this.MAP_WIDTH * this.currentZoom) / 2;
-    this.container.y = (height - this.MAP_HEIGHT * this.currentZoom) / 2;
+
+    // 使用背景图的实际宽度和高度来居中，而不是写死的 MAP_WIDTH
+    const bgWidth = this.mapBg.width || this.MAP_WIDTH;
+    const bgHeight = this.mapBg.height || this.MAP_HEIGHT;
+
+    this.container.x = (width - bgWidth * this.currentZoom) / 2;
+    this.container.y = (height - bgHeight * this.currentZoom) / 2;
     this.container.setScale(this.currentZoom);
   }
 
   constrainMapPosition() {
     const { width, height } = this.scene.scale;
-    const mapW = this.MAP_WIDTH * this.currentZoom;
-    const mapH = this.MAP_HEIGHT * this.currentZoom;
+
+    const bgWidth = this.mapBg.width || this.MAP_WIDTH;
+    const bgHeight = this.mapBg.height || this.MAP_HEIGHT;
+
+    const mapW = bgWidth * this.currentZoom;
+    const mapH = bgHeight * this.currentZoom;
 
     const minX = width - mapW;
     const maxX = 0;
