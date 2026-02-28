@@ -2,6 +2,8 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 
 import { MapView } from '../view/mapView.js';
 import { BottomBar } from '../scene/bottomBar.js';
+import { TopInfoBar } from '../scene/topInfoBar.js';
+
 import { saveSystem } from '../system/saveSystem.js';
 import { TurnSystem } from '../system/turnSystem.js';
 
@@ -34,6 +36,11 @@ export class GameScene extends Phaser.Scene {
     Object.entries(terrain).forEach(([key, terrain]) => {
       this.load.image(`terrain_${key}`, terrain.image);
     });
+
+    for (var i of ['culture', 'wealth', 'food', 'mine', 'magic', 'population']) {
+      this.load.image(`icon_${i}`, 'assets/ui_icon/' + i + '.png');
+    }
+
 
     // 左侧边栏
     this.load.image('tech_tree_btn', 'assets/ui_button/tech_tree.png');
@@ -70,6 +77,7 @@ export class GameScene extends Phaser.Scene {
     this.createMap();
     this.createBottomBar();
     this.createLeftSideBar();
+    this.createTopInfoBar();
     this.bindEvents();
 
     this.currentSystem = null;
@@ -81,11 +89,17 @@ export class GameScene extends Phaser.Scene {
     this.turnSystem = new TurnSystem(this, this.saveData)
 
     this.events.on('END_TURN', () => {
-      this.turnSystem.executeTurn()
+      this.turnSystem.executeTurn();
+      if (this.topInfoBar) {
+        this.topInfoBar.refresh();
+      }
       //this.refreshAll()
     });
     this.events.on('TURN_FINALISED', (result) => {
-      console.log('结算完成：', result)
+      console.log('结算完成：', result);
+      if (this.topInfoBar) {
+        this.topInfoBar.refresh();
+      }
     })
 
   }
@@ -190,6 +204,10 @@ export class GameScene extends Phaser.Scene {
 
   createLeftSideBar() {
     this.leftSideBar = new LeftSideBar(this);
+  }
+
+  createTopInfoBar() {
+    this.topInfoBar = new TopInfoBar(this);
   }
 
   bindEvents() {

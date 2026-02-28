@@ -2,11 +2,14 @@ export const translation = {
   building: '建筑',
   product: '物产',
   terrain: '地形',
+
   culture: '文化',
   food: '食物',
   magic: '魔石',
   mine: '矿石',
-  wealth: '货币',
+  wealth: '财富',
+  population: '人口',
+
   era: '时代',
   gov: '政体',
   capital: '首都',
