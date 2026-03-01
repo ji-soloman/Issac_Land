@@ -164,16 +164,23 @@ export class CreateRegion {
       const r = Math.floor(index / cols);
       const c = index % cols;
 
-      // 根据 canBuild 判断是否可建造
+      // 根据 canBuild 以及 config.special 判断是否可建造
       let isBuildable = false;
       if (typeof config.canBuild === 'function') {
         try {
-          var data = {
+          var buildData = {
             tech: this.data.tech_tree.unlocked,
             grid: this.data.map.grids[this.gridId],
             race: this.data.race,
+          };
+
+          isBuildable = !!config.canBuild(buildData);
+
+          // 额外判断 config.special
+          if (isBuildable && typeof config.special === 'function') {
+            isBuildable = !!config.special({ race: this.data.race });
           }
-          isBuildable = !!config.canBuild(data);
+
         } catch (e) {
           isBuildable = false;
         }
@@ -187,20 +194,20 @@ export class CreateRegion {
       this.preventEventPenetration(itemBg, 'left');
 
       // 图标：这个再说了 后面可能删掉
-      let img;
-      const textureKey = `region_${key}`;
-      if (this.scene.textures.exists(textureKey)) {
-        img = this.scene.add.image(0, -30, textureKey);
-        img.setScale(Math.min(120 / img.width, 80 / img.height));
-      } else {
-        // 占位圆形图标
-        img = this.scene.add.circle(0, -30, 36, isBuildable ? 0x445544 : 0x333333);
-      }
+      // let img;
+      // const textureKey = `region_${key}`;
+      // if (this.scene.textures.exists(textureKey)) {
+      //   img = this.scene.add.image(0, -30, textureKey);
+      //   img.setScale(Math.min(120 / img.width, 80 / img.height));
+      // } else {
+      //   // 占位圆形图标
+      //   img = this.scene.add.circle(0, -30, 36, isBuildable ? 0x445544 : 0x333333);
+      // }
 
-      if (!isBuildable) {
-        if (img.setAlpha) img.setAlpha(0.4);
-        if (img.setTint) img.setTint(0x888888);
-      }
+      // if (!isBuildable) {
+      //   if (img.setAlpha) img.setAlpha(0.4);
+      //   if (img.setTint) img.setTint(0x888888);
+      // }
 
       const nameText = this.scene.add.text(0, 25, config.name, {
         fontSize: '20px',
@@ -218,7 +225,7 @@ export class CreateRegion {
       //   padding: { top: 2 },
       // }).setOrigin(0.5);
 
-      itemContainer.add([itemBg, img, nameText/*, roundText*/]);
+      itemContainer.add([itemBg/*, img*/, nameText/*, roundText*/]);
       this.scrollContainer.add(itemContainer);
 
       itemBg.on('pointerdown', () => this.selectRegion(key));
@@ -257,14 +264,26 @@ export class CreateRegion {
     // 区域名称
     const nameText = this.scene.add.text(centerX, currentY, config.name, {
       fontSize: '30px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
+      wordWrap: { width: textWrapWidth, useAdvancedWrap: true }
     }).setOrigin(0.5, 0);
     this.detailContent.add(nameText);
     currentY += nameText.height + 16;
+
+    // 如果有special_info，作为小字放在区域名下方
+    if (config.special_info) {
+      const specialInfoText = this.scene.add.text(centerX, currentY, config.special_info, {
+        fontSize: '14px', color: '#cccccc', align: 'center', lineSpacing: 4,
+        wordWrap: { width: textWrapWidth, useAdvancedWrap: true }, padding: { top: 2 },
+      }).setOrigin(0.5, 0);
+      this.detailContent.add(specialInfoText);
+      currentY += specialInfoText.height + 16;
+    }
 
     // 建造轮数
     if (config.round != null) {
       const timeText = this.scene.add.text(centerX, currentY, `建造时间: ${config.round} 轮`, {
         fontSize: '20px', color: '#ffffff', padding: { top: 4 },
+        wordWrap: { width: textWrapWidth, useAdvancedWrap: true }
       }).setOrigin(0.5, 0);
       this.detailContent.add(timeText);
       currentY += timeText.height + 16;
@@ -274,7 +293,7 @@ export class CreateRegion {
     const terrainStr = config.terrainInfo || '任意';
     const terrainText = this.scene.add.text(centerX, currentY, `适用地形:\n${terrainStr}`, {
       fontSize: '18px', color: '#aaddff', align: 'center', lineSpacing: 8,
-      wordWrap: { width: textWrapWidth }, padding: { top: 4 },
+      wordWrap: { width: textWrapWidth, useAdvancedWrap: true }, padding: { top: 4 },
     }).setOrigin(0.5, 0);
     this.detailContent.add(terrainText);
     currentY += terrainText.height + 16;
@@ -283,7 +302,7 @@ export class CreateRegion {
     const effectStr = config.effect_info || '暂无';
     const effectText = this.scene.add.text(centerX, currentY, `建筑效果:\n${effectStr}`, {
       fontSize: '18px', color: '#aaffaa', align: 'center', lineSpacing: 8,
-      wordWrap: { width: textWrapWidth }, padding: { top: 4 },
+      wordWrap: { width: textWrapWidth, useAdvancedWrap: true }, padding: { top: 4 },
     }).setOrigin(0.5, 0);
     this.detailContent.add(effectText);
     currentY += effectText.height + 16;
@@ -292,7 +311,7 @@ export class CreateRegion {
     const requireStr = config.requireInfo || '无';
     const reqText = this.scene.add.text(centerX, currentY, `解锁条件:\n${requireStr}`, {
       fontSize: '18px', color: '#bbbbbb', align: 'center', lineSpacing: 8,
-      wordWrap: { width: textWrapWidth }, padding: { top: 4 },
+      wordWrap: { width: textWrapWidth, useAdvancedWrap: true }, padding: { top: 4 },
     }).setOrigin(0.5, 0);
     this.detailContent.add(reqText);
     currentY += reqText.height + 30;
