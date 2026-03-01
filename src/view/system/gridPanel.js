@@ -188,6 +188,43 @@ export class GridPanel {
       this.close();
     });
 
+    // ====== 创建区域按钮 ======
+    const regionBtnWidth = 160;
+    const regionBtnHeight = 45;
+    const regionBtnX = rightX - bottomWidth / 2;
+    const regionBtnY = panelHeight - 120;
+
+    const regionBg = this.scene.add.rectangle(regionBtnX, regionBtnY, regionBtnWidth, regionBtnHeight, 0x4caf50, 1);
+    regionBg.setInteractive({ useHandCursor: true });
+    regionBg.setStrokeStyle(2, 0xffffff);
+
+    const regionText = this.scene.add.text(regionBtnX, regionBtnY, '创建区域', {
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 4 },
+      shadow: { offsetX: 1, offsetY: 1, color: '#000', fill: true }
+    }).setOrigin(0.5);
+
+    this.container.add([regionBg, regionText]);
+
+    regionBg.on('pointerover', () => regionBg.setFillStyle(0x388e3c, 1));
+    regionBg.on('pointerout', () => regionBg.setFillStyle(0x4caf50, 1));
+    regionBg.on('pointerdown', () => {
+      if (this.isAnimating) return;
+
+      this.scene.tweens.add({
+        targets: [regionBg, regionText],
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.scene.events.emit('create_region_btn', this.gridId);
+        }
+      });
+    });
+
     // ====== 创建奇迹按钮 ======
     const miracleBtnWidth = 160;
     const miracleBtnHeight = 45;

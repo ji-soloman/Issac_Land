@@ -11,6 +11,7 @@ import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
 import { GridPanel } from '../view/system/gridPanel.js';
 import { CreateWonder } from '../view/system/createWonder.js';
+import { CreateRegion } from '../view/system/createRegion.js';
 
 import { terrain } from '../data/terrain.js';
 import { LeftSideBar } from '../scene/leftSideBar.js';
@@ -313,6 +314,12 @@ export class GameScene extends Phaser.Scene {
         this.openSystem('action_list');
       }
     };
+
+    this.events.on('create_region_btn', (gridId) => {
+      console.log('准备在以下地块创建地形:', gridId);
+      const data = this.saveData;
+      this.currentRegionPanel = new CreateRegion(this, gridId, data);
+    });
 
     this.events.on('create_wonder_btn', (gridId) => {
       console.log('准备在以下地块创建奇迹:', gridId);
