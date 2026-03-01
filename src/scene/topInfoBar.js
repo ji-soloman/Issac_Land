@@ -1,5 +1,6 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { get } from '../system/i18n.js';
+import { ERA } from '../data/era.js';
 
 export class TopInfoBar {
   constructor(scene) {
@@ -48,19 +49,21 @@ export class TopInfoBar {
     const startX = 25;   // 第一个图标的中心点 X 坐标
     const spacing = 110; // 每个资源板块占用的总宽度
 
-    const totalWidth = this.resources.length * spacing;
+    // 获取屏幕宽度
+    const screenWidth = this.scene.scale.width;
 
     // 半透明黑色背景条
     const bg = this.scene.add.rectangle(
       0,
       startY,
-      totalWidth,
+      screenWidth,
       40,
       0x000000,
       0.5
     ).setOrigin(0, 0.5);
     this.container.add(bg);
 
+    // ================== 左侧资源 ==================
     this.resources.forEach((res, index) => {
       const currentX = startX + (index * spacing);
 
@@ -91,6 +94,36 @@ export class TopInfoBar {
       this.container.add(text);
       this.resourceTexts[res] = text;
     });
+
+    // ================== 右侧 ==================
+
+    // 时代文本
+    this.eraText = this.scene.add.text(0, startY, '', {
+      fontSize: '18px',
+      color: '#ffd700',
+      fontFamily: 'Arial',
+      fontStyle: 'bold'
+    }).setOrigin(1, 0.5);
+
+    // 轮次数值
+    this.turnValueText = this.scene.add.text(0, startY, '1', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontFamily: 'Arial',
+      fontStyle: 'bold',
+      fixedWidth: 45,
+      align: 'center'
+    }).setOrigin(0.5, 0.5);
+
+    // 回合标签文本
+    this.turnLabelText = this.scene.add.text(0, startY, '回合', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontFamily: 'Arial',
+      fontStyle: 'bold'
+    }).setOrigin(1, 0.5);
+
+    this.container.add([this.eraText, this.turnValueText, this.turnLabelText]);
   }
 
   formatDisplayValue(val) {
@@ -104,7 +137,15 @@ export class TopInfoBar {
     return this.scene.saveData.resource[key] || 0;
   }
 
+  getProcessData() {
+    if (!this.scene.saveData || !this.scene.saveData.process) {
+      return { era: 'primitive', turn: 1 };
+    }
+    return this.scene.saveData.process;
+  }
+
   refresh() {
+    // 刷新左侧资源数值
     this.resources.forEach(res => {
       if (this.resourceTexts[res]) {
         const actualValue = this.getResourceValue(res);
@@ -115,6 +156,30 @@ export class TopInfoBar {
         }
       }
     });
+
+    // 刷新右侧时代和回合
+    const processData = this.getProcessData();
+    const currentEraStr = ERA[processData.era].name;
+    const currentTurn = processData.turn || 1;
+
+    // 设置文字
+    this.eraText.setText(currentEraStr);
+    this.turnValueText.setText(currentTurn.toString());
+
+    const screenWidth = this.scene.scale.width;
+
+    // 时代文本贴住右侧留白
+    this.eraText.setX(screenWidth - 20);
+
+    // 时代文本的左边缘坐标
+    const eraLeftEdge = this.eraText.x - this.eraText.width;
+
+    // 回合
+    const turnValueCenter = eraLeftEdge - 15 - (45 / 2);
+    this.turnValueText.setX(turnValueCenter);
+
+    const turnLabelRightEdge = turnValueCenter - (45 / 2) - 5;
+    this.turnLabelText.setX(turnLabelRightEdge);
   }
 
   updateTooltipContent(resKey, actualValue) {

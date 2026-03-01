@@ -11,7 +11,11 @@ export const GameConfig = {
   resolution: window.devicePixelRatio,
   scale: {
     mode: Phaser.Scale.RESIZE,
-    autoCenter: Phaser.Scale.CENTER_BOTH
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    autoRound: true
+  },
+  render: {
+    pixelArt: false
   },
   scene: [
     BootScene,
