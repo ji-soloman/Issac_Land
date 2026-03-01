@@ -90,13 +90,39 @@ export class GameScene extends Phaser.Scene {
 
     this.events.on('END_TURN', () => {
       this.turnSystem.executeTurn();
-      if (this.topInfoBar) {
-        this.topInfoBar.refresh();
-      }
       //this.refreshAll()
     });
     this.events.on('TURN_FINALISED', (result) => {
       console.log('结算完成：', result);
+      var data = this.saveData;
+      for (const [actionType, params] of Object.entries(result)) {
+        switch (actionType) {
+          case 'military':
+            for (const [actionMilitary, param] of Object.entries(params)) {
+              switch (actionMilitary) {
+                case 'explore_terrain':
+                  if (data.military[param.soldier]) {
+                    delete data.military[param.soldier].currentStatus;
+                  }
+                  for (const [gridId, terrain] of Object.entries(param.result)) {
+                    data.map.grids[gridId] = {
+                      terrain: terrain,
+                      locked: true,
+                    }
+                  }
+              }
+            }
+            break;
+        }
+      }
+      data.actionList = {
+        civil: {},
+        military: {},
+        others: {},
+      }
+      data.process.turn++;
+      saveSystem.save();
+      this.mapView.refreshMap(data.map);
       if (this.topInfoBar) {
         this.topInfoBar.refresh();
       }
@@ -180,14 +206,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     //// 临时测试模板
-    if (this.saveData.actionList.military.explore_terrain) {
-      delete this.saveData.actionList.military.explore_terrain;
-      saveSystem.save();
-    }
-    if (this.saveData.military.s1.currentStatus) {
-      delete this.saveData.military.s1.currentStatus;
-      saveSystem.save();
-    }
 
     /// 测试结束
   }

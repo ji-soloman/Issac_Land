@@ -12,15 +12,18 @@ export class TurnSystem {
   constructor(scene, saveData) {
     this.scene = scene;
     this.saveData = saveData;
-
-    // 实例化后立即执行回合结算，或者你可以手动调用
-    this.executeTurn();
   }
 
   executeTurn() {
     const list = this.saveData.actionList;
 
     console.log(`--- 开始结算第 ${this.saveData.process.turn} 回合 ---`);
+
+    let result = {
+      military: {},
+      civil: {},
+      others: {},
+    };
 
     // 1. 处理Military
     this.processCategory('military', list.military, (actionType, params) => {
@@ -32,69 +35,68 @@ export class TurnSystem {
       if (actionType === 'explore_terrain') {
         const soldierId = params.soldier;
         console.log('正在结算', soldierId, '的行为', actionType);
-        // 假设这是在一个方法内
+
         const currentGrids = this.saveData.map.grids;
         const allGrids = MAPS[this.saveData.map_type].grids;
 
-        // 1. 确定本次要解锁的数量 (随机 2~4 个)
-        const numToUnlock = Phaser.Math.Between(2, 4);
-        let unlockedCount = 0;
+        // 确定本次要解锁的数量 (随机 1~3 个)
+        const numToUnlock = Phaser.Math.Between(1, 3);
 
-        // 2. 用于统计每种地形解锁的数量
-        const stats = {};
-
-        // 3. 按顺序遍历 allGrids 的 Key
+        // 获取所有的 Key
         const allKeys = Object.keys(allGrids);
 
-        for (const key of allKeys) {
-          // 如果已经解锁够了，跳出循环
-          if (unlockedCount >= numToUnlock) break;
-
+        // 筛选出所有符合条件（即尚未解锁）的格点 Key
+        const eligibleKeys = allKeys.filter(key => {
           const currentData = currentGrids[key];
-
           /**
            * 判断条件：
            * 1. current 中不存在该格子 (undefined)
-           * 2. 或者该格子存在但 locked 为 true
+           * 2. 或者该格子存在但 locked 不为 true
            */
-          if (!currentData || currentData.locked !== true) {
+          return !currentData || currentData.locked !== true;
+        });
 
-            // --- 执行解锁逻辑 ---
-            const config = allGrids[key];
+        // 打乱
+        Phaser.Utils.Array.Shuffle(eligibleKeys);
 
-            // 确保对象存在
-            if (!currentGrids[key]) currentGrids[key] = {};
+        // 截取出我们本次实际要解锁的格子（处理剩余格子不足 numToUnlock 的情况）
+        const keysToProcess = eligibleKeys.slice(0, numToUnlock);
 
-            // 解锁状态设为 true
-            currentGrids[key].locked = true;
+        // 用于记录返回结果，格式为: { gridKey1: terrain, gridKey2: terrain }
+        const exploreResult = {};
 
-            // --- 处理地形赋值 ---
-            let selectedTerrain = '';
-            const terrainSource = config.type;
+        // 遍历选出的随机格点执行解锁逻辑
+        for (const key of keysToProcess) {
+          const config = allGrids[key];
 
-            if (typeof terrainSource === 'string') {
-              selectedTerrain = terrainSource;
-            } else if (Array.isArray(terrainSource)) {
-              // 从列表中随机抽取一个
-              selectedTerrain = Phaser.Utils.Array.GetRandom(terrainSource);
-            }
+          // 确保对象存在
+          if (!currentGrids[key]) currentGrids[key] = {};
 
-            currentGrids[key].terrain = selectedTerrain;
+          // 解锁状态设为 true
+          currentGrids[key].locked = true;
 
-            // --- 统计数据 ---
-            if (selectedTerrain) {
-              stats[selectedTerrain] = (stats[selectedTerrain] || 0) + 1;
-            }
+          // --- 处理地形赋值 ---
+          let selectedTerrain = '';
+          const terrainSource = config.type;
 
-            unlockedCount++;
+          if (typeof terrainSource === 'string') {
+            selectedTerrain = terrainSource;
+          } else if (Array.isArray(terrainSource)) {
+            // 从列表中随机抽取一个
+            selectedTerrain = Phaser.Utils.Array.GetRandom(terrainSource);
           }
+
+          currentGrids[key].terrain = selectedTerrain;
+
+          // --- 记录到结果集 ---
+          exploreResult[key] = selectedTerrain;
         }
 
-        // 4. 将结果返回或打印
-        console.log(`本次共解锁了 ${unlockedCount} 个格子`, stats);
-
-        // 如果这是在 TurnSystem 里，你可以把 stats 返回给结果列表
-        // return stats;
+        // 赋值给 result 对象
+        result.military.explore_terrain = {
+          soldier: soldierId,
+          result: exploreResult,
+        };
       }
     });
 
@@ -111,7 +113,7 @@ export class TurnSystem {
     });
 
     // 4. 回合结束后的数据更新
-    this.finalizeTurn();
+    this.finalizeTurn(result);
   }
 
   /**
@@ -135,24 +137,5 @@ export class TurnSystem {
 
   finalizeTurn(results) {
     this.scene.events.emit('TURN_FINALISED', results)
-
-    // 1. 更新回合数 (兼容 process.turn 结构)
-    // if (!this.saveData.process) {
-    //   this.saveData.process = { turn: 1, era: '原始时代' };
-    // }
-    // this.saveData.process.turn++;
-
-    // // 2. 重置行动列表 (保持结构，清空内容)
-    // // 注意：不能赋值为 []，因为上一层 ActionListSystem 依赖对象结构
-    // this.saveData.actionList = {
-    //   civil: {},
-    //   military: {},
-    //   others: {}
-    // };
-
-    // console.log(`--- 回合结束，进入第 ${this.saveData.process.turn} 回合 ---`);
-
-    // 3. (可选) 通知场景刷新 UI
-    // this.scene.events.emit('TURN_CHANGED', this.saveData.process.turn);
   }
 }
