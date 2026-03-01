@@ -4,6 +4,8 @@ export const MILITARY_TRANSLATE = {
   ranged: '远程类',
   boat: '船只',
   cavalry: '骑兵类',
+  infantry: '步兵类',
+  beast: '野兽类',
 
   type: '兵种',
   equipments: '装备',
@@ -14,10 +16,10 @@ export const MILITARY_TRANSLATE = {
   armor: '护甲',
   mana: '魔力',
   military_order: '行动顺位',
-  special_ability:'特殊能力',
-  population_cost:'人口消耗',
-  training_turn:'训练时间',
+  special_ability: '特殊能力',
+  population_cost: '人口消耗',
+  training_turn: '训练时间',
 
-  current_stats:'当前属性',
-  current_ability:'当前技能',
+  current_stats: '当前属性',
+  current_ability: '当前技能',
 }

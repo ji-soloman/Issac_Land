@@ -3,12 +3,22 @@ export const REGION = {
     name: '主城区',
     canBuild() {
       return false;
-    }
+    },
+    category: {
+      main: true,
+    },
   },
   living: {
     name: '住宅区',
     terrainInfo: '丘陵，平原，沙漠，森林（矮人可山脉）',
     effect_info: '住房+6，加工品槽位+1，奇观槽位+1',
+    effect: {
+      normal: {
+        housing: 6,
+        wonder_slot: 1,
+        processedItem_slot: 1,
+      }
+    },
     canBuild({ grid, race }) {
       const baseTerrains = ['hills', 'land', 'forest', 'desert'];
       if (race === 'dwarf') {
@@ -16,43 +26,93 @@ export const REGION = {
       }
       return baseTerrains.includes(grid.terrain);
     },
+    category: {
+      living: true,
+    },
     round: 3,
   },
   farm: {
     name: '农田区',
     terrainInfo: '平原，森林',
     effect_info: '每轮食物+5；农作物槽位+1',
+    effect: {
+      normal: {
+        crop_slot: 1,
+      },
+      turn: {
+        food: 5,
+      }
+    },
     canBuild({ grid }) {
       return ['land', 'forest'].includes(grid.terrain);
+    },
+    category: {
+      farm: true,
     },
     round: 2,
   },
   mine: {
-    name: '矿场区',
+    name: '矿场',
     terrainInfo: '丘陵，山脉',
-    canBuild({ grid }) {
-      return ['hill', 'mountain'].includes(grid.terrain);
+    effect_info: '每回合矿石+2，魔石+1',
+    requireInfo: '解锁科技【石器】',
+    effect: {
+      turn: {
+        mine: 2,
+        magic: 1,
+      }
     },
+    canBuild({ grid, tech }) {
+      return ['hill', 'mountain'].includes(grid.terrain) && tech.construction_3;
+    },
+    category: {
+      mine: true,
+    },
+    round: 3,
   },
   harbor: {
-    name: '港口特区',
+    name: '港口',
     terrainInfo: '海岸 浅海 河流',
     effect_info: '住房+2，商路+1，船只+2，水产槽位+1',
     requireInfo: '解锁科技【造船术】',
+    effect: {
+      normal: {
+        housing: 2,
+        trade_route: 1,
+        boat: 2,
+        aquatic_slot: 1,
+      }
+    },
     canBuild({ grid, tech }) {
       return ['coastal', 'neritic'].includes(grid.terrain);
+    },
+    category: {
+      harbor: true,
     },
     round: 3,
   },
   pasture: {
-    name: '牧场区',
+    name: '牧场',
     terrainInfo: '山脉，丘陵',
     effect_info: '每轮食物+4，骑兵人口+1，野兽人口+1；畜牧槽位+1',
     requireInfo: '解锁科技【驯化】',
+    effect: {
+      normal: {
+        cavalry: 1,
+        beast: 1,
+        livestock_slot: 1,
+      },
+      turn: {
+        food: 4,
+      }
+    },
     canBuild({ grid, tech }) {
       const terrainOK = ['land', 'hills'].includes(grid.terrain);
       const techOK = tech?.unlocked?.farming_2 === true;
       return terrainOK && techOK;
+    },
+    category: {
+      pasture: true,
     },
     round: 2,
   },
@@ -60,8 +120,16 @@ export const REGION = {
     name: '军事区',
     effect_info: '军事改革+1（最大+3），步兵人口+2，住房+2，畜牧槽位+1',
     requireInfo: '解锁科技【军事化】',
+    effect: {
+      infantry: 2,
+      housing: 2,
+      livestock: 1,
+    },
     canBuild: function ({ tech }) {
       return tech?.unlocked?.leadership_2;
+    },
+    category: {
+      military: true,
     },
     round: 5,
   },
@@ -69,27 +137,162 @@ export const REGION = {
     name: '学院特区',
     effect_info: '每轮文化+3；加工品槽位+1；开启学派',
     requireInfo: '解锁科技【著作】',
+    effect: {
+      normal: {
+        processedItem_slot: 1,
+      },
+      turn: {
+        culture: 3,
+      }
+    },
     canBuild({ tech }) {
       return false;
+    },
+    category: {
+      academy: true,
     },
     round: 2,
   },
   holy: {
     name: '圣地特区',
-    effect_info: '提前进入【奴隶时代】；每轮住房+2，文化+3；奇观槽位+1',
+    effect_info: '提前进入【奴隶时代】；每轮文化+3；住房+2，奇观槽位+1',
     requireInfo: '解锁科技【原始祈祷】',
+    effect: {
+      normal: {
+        housing: 2,
+        wonder_slot: 1,
+      },
+      turn: {
+        culture: 3,
+      }
+    },
     canBuild({ tech }) {
       return tech.religion_2;
+    },
+    category: {
+      holy: true,
     },
     round: 5,
   },
   trade: {
     name: '贸易区',
+    category: {
+      trade: true,
+    },
+    round: 3,
   },
   entertainment: {
-    name: '娱乐特区',
+    name: '娱乐区',
+    category: {
+      entertainment: true,
+    },
+    round: 3,
   },
   industry: {
-    name: '特殊工业区',
+    name: '工业区',
+    category: {
+      industry: true,
+    },
+    round: 4,
+  },
+  primitive_tribe: {
+    name: '原始部落',
+    terrainInfo: '平原，森林',
+    effect_info: '每轮食物+3，矿石+2，文化+2；住房+2',
+    special_info: '人类专属的农田特区',
+    effect: {
+      normal: {
+        housing: 2,
+      },
+      turn: {
+        food: 3,
+        mine: 2,
+        culture: 2,
+      },
+    },
+    canBuild({ grid }) {
+      return ['land', 'forest'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'human';
+    },
+    category: {
+      farm: true,
+    },
+    round: 5,
+  },
+  pillage_altar: {
+    name: '掠夺祭坛',
+    terrainInfo: '平原，森林，山脉',
+    effect_info: '军事改革+1（最大+3）；每轮食物+2；野兽人口+2，畜牧槽位+1',
+    special_info: '兽人专属的军事特区',
+    effect: {
+      normal: {
+        beast: 2,
+        livestock_slot: 1,
+      },
+      turn: {
+        food: 3,
+      }
+    },
+    canBuild({ grid }) {
+      return ['land', 'forest', 'mountain'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'orc';
+    },
+    category: {
+      military: true,
+    },
+    round: 5,
+  },
+  star_grove: {
+    name: '星语林地',
+    terrainInfo: '丘陵，森林',
+    effect_info: '每轮食物+1，文化+2，若在森林文化额外+1；住房+2',
+    special_info: '精灵专属的学院特区',
+    effect: {
+      turn: {
+        food: 1,
+        culture({ grid }) {
+          return 2 + grid.terrain == 'forest' ? 1 : 0;
+        }
+      }
+    },
+    canBuild({ grid }) {
+      return ['hills', 'forest'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'elf';
+    },
+    category: {
+      academy: true,
+    },
+    round: 5,
+  },
+  cliff_hold: {
+    name: '山壁营地',
+    terrainInfo: '山脉，丘陵',
+    effect_info: '每轮矿石+2，魔石+1，文化+1，若在山脉矿石额外+1',
+    special_info: '矮人专属的矿场特区',
+    effect: {
+      turn: {
+        mine({ grid }) {
+          return 2 + grid.terrain == 'mountain' ? 1 : 0;
+        },
+        magic: 1,
+        culture: 1,
+      }
+    },
+    canBuild({ grid }) {
+      return ['hills', 'mountain'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'elf';
+    },
+    category: {
+      mine: true,
+    },
+    round: 5,
   },
 }

@@ -24,4 +24,12 @@ export const translation = {
   techTreeBtn: '科技树',
   militaryBtn: '军事',
   actionListBtn: '行动列表',
+
+  livestock_slot: '畜牧槽位',
+  aquatic_slot: '水产槽位',
+  wonder_slot: '奇观槽位',
+  processedItem_slot: '加工品槽位',
+  crop_slot: '农作物槽位',
+
+  trade_route: '商路',
 }
