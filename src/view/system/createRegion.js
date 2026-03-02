@@ -21,6 +21,22 @@ export class CreateRegion {
     this.detailScrollY = 0;
     this.maxDetailScrollY = 0;
 
+    // 颜色配置映射
+    this.colorMap = {
+      living: 0xF2D8A7,
+      farm: 0x6DBE45,
+      mine: 0x7A7A7A,
+      harbor: 0x2E86C1,
+      pasture: 0xA3B83A,
+      military: 0xB03A2E,
+      academy: 0x4B6CB7,
+      holy: 0xE8C547,
+      trade: 0xE67E22,
+      entertainment: 0xC65DFF,
+      industry: 0xA04000,
+      special: 0x7D3C98
+    };
+
     this.create();
   }
 
@@ -74,7 +90,11 @@ export class CreateRegion {
 
     // 滚动区域参数
     this.listAreaY = 150;
-    this.listAreaHeight = height - 300;
+    this.bottomAreaHeight = 140;
+
+    // 滚动区域只到按钮上方
+    this.listAreaHeight =
+      height - this.listAreaY - this.bottomAreaHeight;
     const scrollBarX = this.leftWidth - 20;
 
     // 左侧滚动容器与遮罩
@@ -186,9 +206,13 @@ export class CreateRegion {
         }
       }
 
-      const itemContainer = this.scene.add.container(startX + c * colSpacing, 80 + r * rowSpacing);
-      const itemBg = this.scene.add.rectangle(0, 0, 190, 160, isBuildable ? 0x222222 : 0x111111, 1)
-        .setStrokeStyle(2, 0x555555)
+      // 颜色逻辑
+      const baseColor = this.colorMap[config.color] !== undefined ? this.colorMap[config.color] : (isBuildable ? 0x222222 : 0x111111);
+      const strokeColor = config.color === 'special' ? 0xE8C547 : 0x555555;
+
+      const itemContainer = this.scene.add.container(startX + c * colSpacing, 90 + r * rowSpacing);
+      const itemBg = this.scene.add.rectangle(0, 0, 190, 160, baseColor, 1)
+        .setStrokeStyle(2, strokeColor)
         .setInteractive({ useHandCursor: true });
 
       this.preventEventPenetration(itemBg, 'left');
@@ -209,32 +233,50 @@ export class CreateRegion {
       //   if (img.setTint) img.setTint(0x888888);
       // }
 
-      const nameText = this.scene.add.text(0, 25, config.name, {
+      const nameText = this.scene.add.text(0, 5, config.name, {
         fontSize: '20px',
-        color: isBuildable ? '#ffffff' : '#888888',
+        // color: isBuildable ? '#ffffff' : '#888888',
+        color: '#ffffff',
         padding: { top: 4 },
       }).setOrigin(0.5);
 
-      // 建造轮数提示
-      // const roundLabel = config.round != null
-      //   ? `${config.round} 轮`
-      //   : '';
-      // const roundText = this.scene.add.text(0, 52, roundLabel, {
-      //   fontSize: '14px',
-      //   color: '#aaaaaa',
-      //   padding: { top: 2 },
-      // }).setOrigin(0.5);
+      itemContainer.add([itemBg/*, img*/, nameText]);
 
-      itemContainer.add([itemBg/*, img*/, nameText/*, roundText*/]);
+      if (config.special_info) {
+        const specialText = this.scene.add.text(0, 42, config.special_info, {
+          fontSize: '14px',
+          color: '#aaaaaa',
+          padding: { top: 2 },
+        }).setOrigin(0.5);
+        itemContainer.add([specialText]);
+      }
       this.scrollContainer.add(itemContainer);
 
+      if (!isBuildable) {
+        const lockOverlay = this.scene.add.rectangle(
+          0, 0, 190, 160,
+          0x000000, 0.45
+        );
+        itemContainer.add([lockOverlay]);
+      }
+
+      const statusDot = this.scene.add.circle(
+        -80, -65,
+        6,
+        isBuildable ? 0x00ff88 : 0xff4444
+      );
+
+      itemContainer.add(statusDot);
+
       itemBg.on('pointerdown', () => this.selectRegion(key));
-      this.regionItems[key] = { bg: itemBg, isBuildable };
+      this.regionItems[key] = { bg: itemBg, isBuildable, config };
       index++;
     }
 
     const totalRows = Math.ceil(index / cols);
-    const contentHeight = 80 + totalRows * rowSpacing + 50;
+    const itemHeight = 160;
+    const contentHeight =
+      120 + (totalRows - 1) * rowSpacing + itemHeight / 2;
     this.maxScrollY = Math.max(0, contentHeight - listAreaHeight);
   }
 
@@ -279,9 +321,9 @@ export class CreateRegion {
       currentY += specialInfoText.height + 16;
     }
 
-    // 建造轮数
+    // 建造回合数
     if (config.round != null) {
-      const timeText = this.scene.add.text(centerX, currentY, `建造时间: ${config.round} 轮`, {
+      const timeText = this.scene.add.text(centerX, currentY, `建造时间: ${config.round} 回合`, {
         fontSize: '20px', color: '#ffffff', padding: { top: 4 },
         wordWrap: { width: textWrapWidth, useAdvancedWrap: true }
       }).setOrigin(0.5, 0);
@@ -401,19 +443,24 @@ export class CreateRegion {
     for (const [k, item] of Object.entries(this.regionItems)) {
       const isSel = k === this.selectedRegionKey;
       const isViewed = k === this.viewedRegionKey;
+      const cfg = item.config;
+
+      // 计算该项原始的基础颜色和描边颜色
+      const originalBaseColor = this.colorMap[cfg.color] !== undefined ? this.colorMap[cfg.color] : (item.isBuildable ? 0x222222 : 0x111111);
+      const originalStrokeColor = cfg.color === 'special' ? 0xE8C547 : 0x555555;
 
       if (isSel) {
         // 可建造且被选中：绿色描边
         item.bg.setStrokeStyle(4, 0x00ff00);
-        item.bg.setFillStyle(0x333333);
+        item.bg.setFillStyle(originalBaseColor);
       } else if (isViewed && !item.isBuildable) {
         // 查看不可建造的区域：红色描边
         item.bg.setStrokeStyle(3, 0xaa0000);
-        item.bg.setFillStyle(0x222222);
+        item.bg.setFillStyle(originalBaseColor);
       } else {
-        // 默认状态
-        item.bg.setStrokeStyle(2, 0x555555);
-        item.bg.setFillStyle(item.isBuildable ? 0x222222 : 0x111111);
+        // 默认状态：恢复到配置颜色和描边
+        item.bg.setStrokeStyle(2, originalStrokeColor);
+        item.bg.setFillStyle(originalBaseColor);
       }
     }
 
@@ -422,7 +469,10 @@ export class CreateRegion {
   }
 
   createConfirmButton(width, height) {
-    this.confirmBtnGroup = this.scene.add.container(width / 2, height - 80);
+    this.confirmBtnGroup = this.scene.add.container(
+      width / 2,
+      this.listAreaY + this.listAreaHeight + this.bottomAreaHeight / 2
+    );
     this.confirmBtnBg = this.scene.add.rectangle(0, 0, 260, 60, 0x444444, 1)
       .setStrokeStyle(2, 0x666666)
       .setInteractive({ useHandCursor: false });
