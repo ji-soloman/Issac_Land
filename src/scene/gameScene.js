@@ -321,6 +321,14 @@ export class GameScene extends Phaser.Scene {
       this.currentRegionPanel = new CreateRegion(this, gridId, data);
     });
 
+    this.events.on('build_region', (result) => {
+      console.log('建造特区信息：', result);
+      // 以下内容后续打包进actionSystem.js
+      if (!this.saveData.actionList) this.saveData.actionList = {};
+      this.saveData.actionList.civil['build_region_' + result.gridId + '_' + result.regionKey] = result;
+      saveSystem.save();
+    })
+
     this.events.on('create_wonder_btn', (gridId) => {
       console.log('准备在以下地块创建奇迹:', gridId);
       const data = this.saveData;

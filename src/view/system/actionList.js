@@ -1,6 +1,9 @@
+import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
+
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { ERA } from '../../data/era.js';
+import { REGION } from '../../data/region.js';
 
 export class ActionListSystem {
   constructor(scene, saveData) {
@@ -123,7 +126,7 @@ export class ActionListSystem {
       others: {}
     };
 
-    // 创建三个区域
+    // 创建三个区域，新增 type 参数以区分逻辑
     this.createSection(
       sectionX,
       contentY,
@@ -131,7 +134,8 @@ export class ActionListSystem {
       sectionHeight,
       '军事行动',
       actionList.military,
-      0xe74c3c
+      0xe74c3c,
+      'military'
     );
 
     this.createSection(
@@ -141,7 +145,8 @@ export class ActionListSystem {
       sectionHeight,
       '民事行动',
       actionList.civil,
-      0x3498db
+      0x3498db,
+      'civil'
     );
 
     this.createSection(
@@ -151,7 +156,8 @@ export class ActionListSystem {
       sectionHeight,
       '其他行动',
       actionList.others,
-      0x95a5a6
+      0x95a5a6,
+      'others'
     );
 
     // --- 底部下一回合按钮 ---
@@ -233,7 +239,7 @@ export class ActionListSystem {
   /**
    * 创建单个分类区域
    */
-  createSection(x, y, width, height, title, data, color) {
+  createSection(x, y, width, height, title, data, color, type) {
     // 区域背景
     const sectionBg = this.scene.add.rectangle(
       x,
@@ -301,7 +307,8 @@ export class ActionListSystem {
         contentWidth,
         contentHeight,
         data,
-        color
+        color,
+        type
       );
     } else {
       // 无数据提示
@@ -324,52 +331,107 @@ export class ActionListSystem {
   /**
    * 创建行动列表
    */
-  createActionList(x, y, width, height, data, color) {
+  createActionList(x, y, width, height, data, color, type) {
     const itemHeight = 50;
     const itemSpacing = 10;
+    const keys = Object.keys(data);
+
+    // 计算项目实际所需的总高度
+    const totalHeight = keys.length * (itemHeight + itemSpacing) - itemSpacing;
+
+    // 用于捕获滚轮事件的不可见点击区
+    const hitArea = this.scene.add.rectangle(x, y + height / 2, width, height, 0x000000, 0);
+    hitArea.setInteractive();
+    this.container.add(hitArea);
+
+    // 创建内容存放的内部容器
+    const listContainer = this.scene.add.container(0, 0);
+    this.container.add(listContainer);
+    listContainer.y = 0;
+    const baseListY = listContainer.y;
+
+    // 创建遮罩区域
+    const maskGraphics = this.scene.add.graphics();
+    maskGraphics.fillStyle(0xffffff);
+    maskGraphics.fillRect(x - width / 2, y, width, height);
+
+    const mask = maskGraphics.createGeometryMask();
+    maskGraphics.setVisible(false);
+
+    this.container.add(maskGraphics);
+    listContainer.setMask(mask);
+
+    // 判断是否需要滚动条，如果需要则将列表宽度稍作收缩
+    const needsScroll = totalHeight > height;
+    const contentWidth = needsScroll ? width - 15 : width;
     let currentY = y;
 
-    // 创建滚动容器
-    const keys = Object.keys(data);
-    const maxVisibleItems = Math.floor(height / (itemHeight + itemSpacing));
-
-    // 显示前几个项目
-    keys.slice(0, maxVisibleItems).forEach((key, index) => {
+    // 渲染所有的项目，并将其添加到内部滚动容器中
+    keys.forEach((key) => {
       const actionData = data[key];
-      this.createActionItem(
-        x,
-        currentY,
-        width,
-        itemHeight,
-        key,
-        actionData,
-        color
-      );
+      // 计算每个元素的绘制 x 坐标，给滚动条让出空间
+      const drawX = x - (needsScroll ? 7.5 : 0);
+
+      if (type === 'military') {
+        this.createMilitaryActionItem(listContainer, drawX, currentY, contentWidth, itemHeight, key, actionData, color);
+      } else if (type === 'civil') {
+        this.createCivilActionItem(listContainer, drawX, currentY, contentWidth, itemHeight, key, actionData, color);
+      } else if (type === 'others') {
+        this.createOtherActionItem(listContainer, drawX, currentY, contentWidth, itemHeight, key, actionData, color);
+      }
       currentY += itemHeight + itemSpacing;
     });
 
-    // 如果有更多项目，显示提示
-    if (keys.length > maxVisibleItems) {
-      const moreText = this.scene.add.text(
-        x,
-        currentY + 10,
-        `... 还有 ${keys.length - maxVisibleItems} 项`,
-        {
-          fontSize: '14px',
-          fontFamily: 'Arial, sans-serif',
-          color: '#888888',
-          fontStyle: 'italic'
-        }
-      );
-      moreText.setOrigin(0.5, 0);
-      this.container.add(moreText);
+    // 增加滚动条与滚动逻辑
+    if (needsScroll) {
+      const scrollbarWidth = 6;
+      const trackX = x + width / 2 - scrollbarWidth / 2;
+      const trackY = y + height / 2;
+
+      // 滚动条轨道
+      const track = this.scene.add.rectangle(trackX, trackY, scrollbarWidth, height, 0x1a1a1a, 0.8);
+      track.setStrokeStyle(1, 0x4a4a4a);
+      this.container.add(track);
+
+      // 滚动条滑块
+      const thumbHeight = Math.max(20, (height / totalHeight) * height);
+      const minThumbY = y + thumbHeight / 2;
+      const maxThumbY = y + height - thumbHeight / 2;
+
+      const thumb = this.scene.add.rectangle(trackX, minThumbY, scrollbarWidth - 2, thumbHeight, color, 1);
+      thumb.setInteractive({ draggable: true, useHandCursor: true });
+      this.container.add(thumb);
+
+      const maxScrollY = totalHeight - height;
+      const maxThumbMove = maxThumbY - minThumbY;
+
+      // 更新列表Y轴的闭包函数
+      const updateScroll = () => {
+        const scrollPercent = (thumb.y - minThumbY) / maxThumbMove;
+        listContainer.y = baseListY - scrollPercent * maxScrollY;
+      };
+
+      // 绑定滚轮交互
+      hitArea.on('wheel', (pointer, deltaX, deltaY, deltaZ) => {
+        let newThumbY = thumb.y + deltaY * 0.5; // 控制滚轮灵敏度
+        thumb.y = Phaser.Math.Clamp(newThumbY, minThumbY, maxThumbY);
+        updateScroll();
+      });
+
+      // 绑定拖拽交互
+      this.scene.input.setDraggable(thumb);
+      thumb.on('drag', (pointer, dragX, dragY) => {
+        const localY = pointer.y;
+        thumb.y = Phaser.Math.Clamp(localY, minThumbY, maxThumbY);
+        updateScroll();
+      });
     }
   }
 
   /**
-   * 创建单个行动项
+   * 创建单个军事行动项
    */
-  createActionItem(x, y, width, height, key, actionData, color) {
+  createMilitaryActionItem(parentContainer, x, y, width, height, key, actionData, color) {
     let intro = MILITARY[key]?.intro || key;
     const replacements = [];
 
@@ -390,10 +452,44 @@ export class ActionListSystem {
     // 3. UI 背景绘制
     const itemBg = this.scene.add.rectangle(x, y + height / 2, width, height, 0x3a3a3a, 0.8);
     itemBg.setStrokeStyle(1, color, 0.5);
-    this.container.add(itemBg);
+    parentContainer.add(itemBg);
 
     // 解析 markedIntro 并创建彩色文本组
-    this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, this.container);
+    this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, parentContainer);
+  }
+
+  /**
+   * 创建单个民事行动项
+   */
+  createCivilActionItem(parentContainer, x, y, width, height, key, actionData, color) {
+    let markedIntro = key;
+
+    if (markedIntro.startsWith('build_region')) {
+      markedIntro = '在' + this.getGridName(actionData.gridId) + '建造特区【' + REGION[actionData.regionKey].name + '】';
+    }
+
+    // UI 背景绘制
+    const itemBg = this.scene.add.rectangle(x, y + height / 2, width, height, 0x3a3a3a, 0.8);
+    itemBg.setStrokeStyle(1, color, 0.5);
+    parentContainer.add(itemBg);
+
+    // 解析 markedIntro 并创建彩色文本组
+    this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, parentContainer);
+  }
+
+  /**
+   * 创建单个其他行动项
+   */
+  createOtherActionItem(parentContainer, x, y, width, height, key, actionData, color) {
+    let markedIntro = key;
+
+    // UI 背景绘制
+    const itemBg = this.scene.add.rectangle(x, y + height / 2, width, height, 0x3a3a3a, 0.8);
+    itemBg.setStrokeStyle(1, color, 0.5);
+    parentContainer.add(itemBg);
+
+    // 解析 markedIntro 并创建彩色文本组
+    this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, parentContainer);
   }
 
   /**
@@ -423,6 +519,16 @@ export class ActionListSystem {
     });
   }
 
+  getGridName(gridId) {
+    if (gridId === 'g1') {
+      return '主城';
+    }
+
+    const num = parseInt(gridId.replace('g', ''));
+    const areaNum = num - 1;
+
+    return `${areaNum}区`;
+  }
 
   /**
    * 进入动画
