@@ -20,6 +20,7 @@ import { TechTreeSystem } from '../view/system/techTree.js';
 import { MilitarySystem } from '../view/system/military.js';
 import { ActionListSystem } from '../view/system/actionList.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
+import { REGION } from '../data/region.js';
 import { WONDER } from '../data/wonder.js';
 
 export class GameScene extends Phaser.Scene {
@@ -94,8 +95,21 @@ export class GameScene extends Phaser.Scene {
       //this.refreshAll()
     });
     this.events.on('TURN_FINALISED', (result) => {
-      console.log('结算完成：', result);
+      console.log('开始回合结算：', result);
       var data = this.saveData;
+      // 先处理跨回合倒计时
+      // 地块
+      for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
+        if (gridsInfo.createRegion) {
+          gridsInfo.createRegion.num--;
+          if (gridsInfo.createRegion.num <= 0) {
+            data.map.grids[gridsId].region = gridsInfo.targetRegion;
+            delete gridsInfo.createRegion;
+          }
+        }
+      }
+
+      // 然后结算当前回合事件
       for (const [actionType, params] of Object.entries(result)) {
         switch (actionType) {
           case 'military':
@@ -114,15 +128,29 @@ export class GameScene extends Phaser.Scene {
               }
             }
             break;
+          case 'civil':
+            for (const [actionCivil, param] of Object.entries(params)) {
+              if (actionCivil.startsWith('build_region')) {
+                data.map.grids[param.gridId].createRegion = {
+                  targetRegion: param.regionKey,
+                  num: REGION[param.regionKey].round,
+                }
+              }
+            }
+            break;
         }
       }
+      // 结算完成后清空事件
       data.actionList = {
         civil: {},
         military: {},
         others: {},
       }
+      // 回合增加
       data.process.turn++;
+      // 保存数据
       saveSystem.save();
+      // 刷新地图
       this.mapView.refreshMap(data.map);
       if (this.topInfoBar) {
         this.topInfoBar.refresh();
@@ -325,7 +353,7 @@ export class GameScene extends Phaser.Scene {
       console.log('建造特区信息：', result);
       // 以下内容后续打包进actionSystem.js
       if (!this.saveData.actionList) this.saveData.actionList = {};
-      this.saveData.actionList.civil['build_region_' + result.gridId + '_' + result.regionKey] = result;
+      this.saveData.actionList.civil['build_region_' + result.gridId] = result;
       saveSystem.save();
     })
 
