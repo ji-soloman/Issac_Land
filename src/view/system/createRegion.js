@@ -206,6 +206,13 @@ export class CreateRegion {
         }
       }
 
+      let isBuilded = false;
+      let gridInfo = this.data.map.grids[this.gridId];
+      if (gridInfo.region == key || (gridInfo.createRegion && gridInfo.createRegion.targetRegion == key)) {
+        isBuildable = false;
+        isBuilded = true;
+      }
+
       // 颜色逻辑
       const baseColor = this.colorMap[config.color] !== undefined ? this.colorMap[config.color] : (isBuildable ? 0x222222 : 0x111111);
       const strokeColor = config.color === 'special' ? 0xE8C547 : 0x555555;
@@ -269,7 +276,7 @@ export class CreateRegion {
       itemContainer.add(statusDot);
 
       itemBg.on('pointerdown', () => this.selectRegion(key));
-      this.regionItems[key] = { bg: itemBg, isBuildable, config };
+      this.regionItems[key] = { bg: itemBg, isBuildable, isBuilded, config };
       index++;
     }
 
@@ -498,7 +505,13 @@ export class CreateRegion {
       // 正在查看不可建造的区域
       this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
       this.confirmBtnBg.input.cursor = 'default';
-      this.confirmBtnText.setText('条件不足').setColor('#aa0000');
+
+      // 判断是否已经建造过
+      if (this.regionItems[this.viewedRegionKey].isBuilded) {
+        this.confirmBtnText.setText('不可重复建造').setColor('#aa0000');
+      } else {
+        this.confirmBtnText.setText('条件不足').setColor('#aa0000');
+      }
     } else {
       // 默认未选中状态
       this.confirmBtnBg.setFillStyle(0x444444, 1).setStrokeStyle(2, 0x666666);

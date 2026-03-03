@@ -95,7 +95,7 @@ export class GridPanel {
 
     const fields = [
       { key: 'terrain', value: this.gridData.terrain },
-      { key: 'region', value: this.gridData.region },
+      { key: 'region', value: this.gridData },
       { key: 'building', value: this.gridData.buildings || [] },
       { key: 'product', value: this.gridData.products || [] }
     ];
@@ -129,8 +129,12 @@ export class GridPanel {
       }
       else if (field.key === 'region') {
         // 特区
-        if (field.value && REGION[field.value]) {
-          valueStr = REGION[field.value].name;
+        const gridInfo = field.value;
+        if (gridInfo.region) {
+          valueStr = REGION[gridInfo.region].name;
+        }
+        else if (gridInfo.createRegion) {
+          valueStr = REGION[gridInfo.createRegion.targetRegion].name + "（剩余" + gridInfo.createRegion.num + '回合）';
         } else {
           valueStr = get.translation('none');
         }
