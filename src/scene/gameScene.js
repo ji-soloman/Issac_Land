@@ -12,6 +12,7 @@ import { InfoSystem } from '../view/system/infoView.js';
 import { GridPanel } from '../view/system/gridPanel.js';
 import { CreateWonder } from '../view/system/createWonder.js';
 import { CreateRegion } from '../view/system/createRegion.js';
+import { CreateBuilding } from '../view/system/createBuilding.js';
 
 import { terrain } from '../data/terrain.js';
 import { LeftSideBar } from '../scene/leftSideBar.js';
@@ -355,7 +356,13 @@ export class GameScene extends Phaser.Scene {
       if (!this.saveData.actionList) this.saveData.actionList = {};
       this.saveData.actionList.civil['build_region_' + result.gridId] = result;
       saveSystem.save();
-    })
+    });
+
+    this.events.on('create_building_btn', (gridId) => {
+      console.log('准备在以下地块创建建筑:', gridId);
+      const data = this.saveData;
+      this.currentBuildingPanel = new CreateBuilding(this, gridId, data);
+    });
 
     this.events.on('create_wonder_btn', (gridId) => {
       console.log('准备在以下地块创建奇迹:', gridId);

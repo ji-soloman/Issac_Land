@@ -192,18 +192,27 @@ export class GridPanel {
       this.close();
     });
 
-    // ====== 创建区域按钮 ======
-    const regionBtnWidth = 160;
-    const regionBtnHeight = 45;
-    const regionBtnX = rightX - bottomWidth / 2;
-    const regionBtnY = panelHeight - 120;
+    // ====== 按钮布局配置 ======
+    const btnWidth = 140;
+    const btnHeight = 45;
+    const btnGap = 10; // 两按钮之间的间距
+    const centerX = rightX - bottomWidth / 2;
 
-    const regionBg = this.scene.add.rectangle(regionBtnX, regionBtnY, regionBtnWidth, regionBtnHeight, 0x4caf50, 1);
+    // 两排的Y坐标
+    const row1Y = panelHeight - 120; // 第一排
+    const row2Y = panelHeight - 65;  // 第二排
+
+    // 两列的X坐标（以中心为基准，向左右各偏移）
+    const col1X = centerX - btnWidth / 2 - btnGap / 2;
+    const col2X = centerX + btnWidth / 2 + btnGap / 2;
+
+    // ====== 创建地区按钮（第一排左） ======
+    const regionBg = this.scene.add.rectangle(col1X, row1Y, btnWidth, btnHeight, 0x4caf50, 1);
     regionBg.setInteractive({ useHandCursor: true });
     regionBg.setStrokeStyle(2, 0xffffff);
 
-    const regionText = this.scene.add.text(regionBtnX, regionBtnY, '创建区域', {
-      fontSize: '20px',
+    const regionText = this.scene.add.text(col1X, row1Y, '创建地区', {
+      fontSize: '18px',
       color: '#ffffff',
       fontStyle: 'bold',
       padding: { top: 4 },
@@ -216,7 +225,6 @@ export class GridPanel {
     regionBg.on('pointerout', () => regionBg.setFillStyle(0x4caf50, 1));
     regionBg.on('pointerdown', () => {
       if (this.isAnimating) return;
-
       this.scene.tweens.add({
         targets: [regionBg, regionText],
         scaleX: 0.95,
@@ -229,21 +237,75 @@ export class GridPanel {
       });
     });
 
-    // ====== 创建奇迹按钮 ======
-    const miracleBtnWidth = 160;
-    const miracleBtnHeight = 45;
-    // 将按钮放在右下角稍微靠中的位置
-    const miracleBtnX = rightX - bottomWidth / 2;
-    const miracleBtnY = panelHeight - 60;
+    // ====== 升级地区按钮（第一排右） ======
+    const upgradeBg = this.scene.add.rectangle(col2X, row1Y, btnWidth, btnHeight, 0x2196f3, 1);
+    upgradeBg.setInteractive({ useHandCursor: true });
+    upgradeBg.setStrokeStyle(2, 0xffffff);
 
-    // 按钮背景
-    const miracleBg = this.scene.add.rectangle(miracleBtnX, miracleBtnY, miracleBtnWidth, miracleBtnHeight, 0xffa500, 1);
+    const upgradeText = this.scene.add.text(col2X, row1Y, '升级地区', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 4 },
+      shadow: { offsetX: 1, offsetY: 1, color: '#000', fill: true }
+    }).setOrigin(0.5);
+
+    this.container.add([upgradeBg, upgradeText]);
+
+    upgradeBg.on('pointerover', () => upgradeBg.setFillStyle(0x1565c0, 1));
+    upgradeBg.on('pointerout', () => upgradeBg.setFillStyle(0x2196f3, 1));
+    upgradeBg.on('pointerdown', () => {
+      if (this.isAnimating) return;
+      this.scene.tweens.add({
+        targets: [upgradeBg, upgradeText],
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.scene.events.emit('upgrade_region_btn', this.gridId);
+        }
+      });
+    });
+
+    // ====== 创建建筑按钮（第二排左） ======
+    const buildingBg = this.scene.add.rectangle(col1X, row2Y, btnWidth, btnHeight, 0x9c27b0, 1);
+    buildingBg.setInteractive({ useHandCursor: true });
+    buildingBg.setStrokeStyle(2, 0xffffff);
+
+    const buildingText = this.scene.add.text(col1X, row2Y, '创建建筑', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 4 },
+      shadow: { offsetX: 1, offsetY: 1, color: '#000', fill: true }
+    }).setOrigin(0.5);
+
+    this.container.add([buildingBg, buildingText]);
+
+    buildingBg.on('pointerover', () => buildingBg.setFillStyle(0x6a1b9a, 1));
+    buildingBg.on('pointerout', () => buildingBg.setFillStyle(0x9c27b0, 1));
+    buildingBg.on('pointerdown', () => {
+      if (this.isAnimating) return;
+      this.scene.tweens.add({
+        targets: [buildingBg, buildingText],
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 50,
+        yoyo: true,
+        onComplete: () => {
+          this.scene.events.emit('create_building_btn', this.gridId);
+        }
+      });
+    });
+
+    // ====== 创建奇迹按钮（第二排右） ======
+    const miracleBg = this.scene.add.rectangle(col2X, row2Y, btnWidth, btnHeight, 0xffa500, 1);
     miracleBg.setInteractive({ useHandCursor: true });
     miracleBg.setStrokeStyle(2, 0xffffff);
 
-    // 按钮文字
-    const miracleText = this.scene.add.text(miracleBtnX, miracleBtnY, '创建奇迹', {
-      fontSize: '20px',
+    const miracleText = this.scene.add.text(col2X, row2Y, '创建奇迹', {
+      fontSize: '18px',
       color: '#ffffff',
       fontStyle: 'bold',
       padding: { top: 4 },
@@ -252,13 +314,10 @@ export class GridPanel {
 
     this.container.add([miracleBg, miracleText]);
 
-    // 按钮交互动画
-    miracleBg.on('pointerover', () => miracleBg.setFillStyle(0xff8c00, 1)); // 悬浮变深
-    miracleBg.on('pointerout', () => miracleBg.setFillStyle(0xffa500, 1));  // 恢复
+    miracleBg.on('pointerover', () => miracleBg.setFillStyle(0xff8c00, 1));
+    miracleBg.on('pointerout', () => miracleBg.setFillStyle(0xffa500, 1));
     miracleBg.on('pointerdown', () => {
       if (this.isAnimating) return;
-
-      // 添加一个点击回弹的小动画
       this.scene.tweens.add({
         targets: [miracleBg, miracleText],
         scaleX: 0.95,
