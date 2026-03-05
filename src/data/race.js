@@ -166,86 +166,86 @@ export const RACES = {
       }
     }
   }, // Dwarf
-  goblin: {
-    name: '地精',
-    image: 'assets/races/human.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  // goblin: {
+  //   name: '地精',
+  //   image: 'assets/races/human.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Goblin
-  beastkin: {
-    name: '兽耳人',
-    image: 'assets/races/human.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  //     }
+  //   }
+  // }, // Goblin
+  // beastkin: {
+  //   name: '兽耳人',
+  //   image: 'assets/races/human.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Beastkin
+  //     }
+  //   }
+  // }, // Beastkin
   centaur: {
     name: '半人马',
     image: 'assets/races/centaur.jpg',
@@ -286,46 +286,46 @@ export const RACES = {
       }
     }
   }, // Centaur
-  lizardfolk: {
-    name: '蜥蜴人',
-    image: 'assets/races/human.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  // lizardfolk: {
+  //   name: '蜥蜴人',
+  //   image: 'assets/races/human.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Lizardfolk
+  //     }
+  //   }
+  // }, // Lizardfolk
   merfolk: {
     name: '人鱼',
     image: 'assets/races/human.jpg',
@@ -366,126 +366,126 @@ export const RACES = {
       }
     }
   }, // Merfolk
-  corvidian: {
-    name: '鸦人',
-    image: 'assets/races/corvidian.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  // corvidian: {
+  //   name: '鸦人',
+  //   image: 'assets/races/corvidian.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Corvidian
-  insectoid: {
-    name: '虫人',
-    image: 'assets/races/human.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  //     }
+  //   }
+  // }, // Corvidian
+  // insectoid: {
+  //   name: '虫人',
+  //   image: 'assets/races/human.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Insectoid
-  plantfolk: {
-    name: '植物',
-    image: 'assets/races/human.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  //     }
+  //   }
+  // }, // Insectoid
+  // plantfolk: {
+  //   name: '植物',
+  //   image: 'assets/races/human.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Plantfolk
+  //     }
+  //   }
+  // }, // Plantfolk
   undead: {
     name: '亡灵',
     image: 'assets/races/human.jpg',
@@ -566,46 +566,46 @@ export const RACES = {
       }
     }
   }, // Primordial
-  giant: {
-    name: '巨人',
-    image: 'assets/races/human.jpg',
-    base: {
-      food: 1
-    },
-    region: 'military',
-    subraces: {
-      a: {
-        name: '邪刃种',
-        region: 'holy',
-        des: '',
+  // giant: {
+  //   name: '巨人',
+  //   image: 'assets/races/human.jpg',
+  //   base: {
+  //     food: 1
+  //   },
+  //   region: 'military',
+  //   subraces: {
+  //     a: {
+  //       name: '邪刃种',
+  //       region: 'holy',
+  //       des: '',
 
-      },
-      b: {
-        name: '霜狼种',
-        region: 'pasture',
-        des: '',
+  //     },
+  //     b: {
+  //       name: '霜狼种',
+  //       region: 'pasture',
+  //       des: '',
 
-      },
-      c: {
-        name: '黑手种',
-        region: 'mine',
-        des: '',
+  //     },
+  //     c: {
+  //       name: '黑手种',
+  //       region: 'mine',
+  //       des: '',
 
-      },
-      d: {
-        name: '战歌种',
-        region: 'entertainment',
-        des: '',
+  //     },
+  //     d: {
+  //       name: '战歌种',
+  //       region: 'entertainment',
+  //       des: '',
 
-      },
-      e: {
-        name: '暗眼种',
-        region: 'farm',
-        des: '',
+  //     },
+  //     e: {
+  //       name: '暗眼种',
+  //       region: 'farm',
+  //       des: '',
 
-      }
-    }
-  }, // Giant
+  //     }
+  //   }
+  // }, // Giant
   ancient: {
     name: '复苏古人',
     image: 'assets/races/human.jpg',

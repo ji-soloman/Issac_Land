@@ -48,10 +48,39 @@ export const REGION = {
     canBuild({ grid }) {
       return ['land', 'forest'].includes(grid.terrain);
     },
+    special({ race }) {
+      return race != 'ancient';
+    },
     category: {
       farm: true,
     },
     round: 2,
+    color: 'farm',
+  },
+  spirit_field: {
+    name: '灵田',
+    terrainInfo: '平原，森林，海岸',
+    effect_info: '每回合食物+3，魔石+1；农作物槽位+1',
+    special_info: '复苏古人的专属农田',
+    effect: {
+      normal: {
+        crop_slot: 1,
+      },
+      turn: {
+        food: 3,
+        magic: 1,
+      }
+    },
+    canBuild({ grid }) {
+      return ['land', 'forest', 'coastal'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'ancient';
+    },
+    category: {
+      farm: true,
+    },
+    round: 3,
     color: 'farm',
   },
   mine: {
@@ -67,6 +96,57 @@ export const REGION = {
     },
     canBuild({ grid, tech }) {
       return ['hill', 'mountain'].includes(grid.terrain) && tech.construction_3;
+    },
+    special({ race }) {
+      return race != 'ancient' && race != 'voidwalker';
+    },
+    category: {
+      mine: true,
+    },
+    round: 3,
+    color: 'mine',
+  },
+  spirit_vein: {
+    name: '灵脉',
+    terrainInfo: '丘陵，山脉',
+    effect_info: '每回合矿石+2，魔石+2',
+    requireInfo: '解锁科技【石器】',
+    special_info: '复苏古人的专属矿场',
+    effect: {
+      turn: {
+        mine: 2,
+        magic: 2,
+      }
+    },
+    canBuild({ grid, tech }) {
+      return ['hill', 'mountain'].includes(grid.terrain) && tech.construction_3;
+    },
+    special({ race }) {
+      return race == 'ancient';
+    },
+    category: {
+      mine: true,
+    },
+    round: 3,
+    color: 'mine',
+  },
+  corpse_foundry: {
+    name: '养尸地',
+    terrainInfo: '丘陵，山脉',
+    effect_info: '每回合矿石+3，魔石+1',
+    requireInfo: '解锁科技【石器】',
+    special_info: '虚海渡人的专属矿场',
+    effect: {
+      turn: {
+        mine: 2,
+        magic: 1,
+      }
+    },
+    canBuild({ grid, tech }) {
+      return ['hill', 'mountain'].includes(grid.terrain) && tech.construction_3;
+    },
+    special({ race }) {
+      return race == 'voidwalker';
     },
     category: {
       mine: true,
@@ -120,6 +200,36 @@ export const REGION = {
       pasture: true,
     },
     round: 2,
+    color: 'pasture',
+  },
+  blood_pool: {
+    name: '血池',
+    terrainInfo: '山脉，丘陵',
+    effect_info: '每回合食物+3，野兽人口+5；畜牧槽位+2',
+    requireInfo: '解锁科技【驯化】',
+    special_info: '虚海渡人的专属牧场',
+    effect: {
+      normal: {
+        cavalry: 1,
+        beast: 5,
+        livestock_slot: 1,
+      },
+      turn: {
+        food: 3,
+      }
+    },
+    canBuild({ grid, tech }) {
+      const terrainOK = ['land', 'hills'].includes(grid.terrain);
+      const techOK = tech?.unlocked?.farming_2 === true;
+      return terrainOK && techOK;
+    },
+    special({ race }) {
+      return race == 'voidwalker';
+    },
+    category: {
+      pasture: true,
+    },
+    round: 3,
     color: 'pasture',
   },
   military: {
@@ -318,6 +428,144 @@ export const REGION = {
     },
     category: {
       mine: true,
+    },
+    round: 5,
+    color: 'special',
+  },
+  tide_barbor: {
+    name: '潮汐圣湾',
+    terrainInfo: '海岸，浅海',
+    effect_info: '每回合矿石+2，魔石+1，文化+1；住房+2，水产槽位+2',
+    special_info: '人鱼专属的海港',
+    effect: {
+      normal: {
+        housing: 2,
+        aquatic_slot: 2,
+      },
+      turn: {
+        mine: 2,
+        magic: 1,
+        culture: 1,
+      }
+    },
+    canBuild({ grid }) {
+      return ['coastal', 'neritic'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'merfolk';
+    },
+    category: {
+      harbor: true,
+    },
+    round: 5,
+    color: 'special',
+  },
+  necropolis_academy: {
+    name: '亡灵塔',
+    terrainInfo: '任意非水体',
+    effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1',
+    special_info: '亡灵专属的学院',
+    effect: {
+      normal: {
+        housing: 2,
+        general_slot: 1,
+      },
+      turn: {
+        food: 2,
+        culture: 1,
+      }
+    },
+    canBuild({ grid }) {
+      return !['coastal', 'neritic'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'undead';
+    },
+    category: {
+      academy: true,
+    },
+    round: 5,
+    color: 'special',
+  },
+  elemental_nexus: {
+    name: '元素晶核',
+    terrainInfo: '任意',
+    effect_info: '每回合食物+2，文化+2；住房+1，通用槽位+1',
+    special_info: '元灵专属的圣地特区',
+    effect: {
+      normal: {
+        housing: 1,
+        general_slot: 1,
+      },
+      turn: {
+        food: 2,
+        culture: 2,
+      }
+    },
+    canBuild({ grid }) {
+      return true;
+    },
+    special({ race }) {
+      return race == 'primordial';
+    },
+    category: {
+      holy: true,
+    },
+    round: 5,
+    color: 'special',
+  },
+  dao_academy: {
+    name: '悟道台',
+    terrainInfo: '任意非水体',
+    effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1，科技槽位+1',
+    special_info: '复苏古人专属的学院',
+    effect: {
+      normal: {
+        housing: 2,
+        general_slot: 1,
+        technology_slot: 1,
+      },
+      turn: {
+        food: 2,
+        culture: 1,
+      }
+    },
+    canBuild({ grid }) {
+      return !['coastal', 'neritic'].includes(grid.terrain);
+    },
+    special({ race }) {
+      return race == 'ancient';
+    },
+    category: {
+      academy: true,
+    },
+    round: 5,
+    color: 'special',
+  },
+  aorpse_ascension_altar: {
+    name: '尸解飞升坛',
+    terrainInfo: '任意地上地形',
+    effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1，科技槽位+1',
+    special_info: '虚海渡人专属的学院',
+    effect: {
+      normal: {
+        housing: 2,
+        general_slot: 1,
+        technology_slot: 1,
+      },
+      turn: {
+        food: 2,
+        culture: 1,
+      }
+    },
+    canBuild({ grid }) {
+      return true;
+    },
+    special({ race }) {
+      return race == 'voidwalker';
+    },
+    category: {
+      harbor: true,
     },
     round: 5,
     color: 'special',

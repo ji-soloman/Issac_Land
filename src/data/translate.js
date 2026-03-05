@@ -32,6 +32,9 @@ export const translation = {
   crop_slot: '农作物槽位',
   magicalItem_slot:'奇物槽位',
   mineItem_slot:'矿物槽位',
+  general_slot:'通用槽位',
+
+  technology_slot:'科技槽位',
 
   trade_route: '商路',
 }
