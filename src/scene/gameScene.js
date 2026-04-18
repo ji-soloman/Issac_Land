@@ -279,6 +279,12 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
+    // 测试：自动补充矿石
+    if (!this.saveData.resource.mine || this.saveData.resource.mine < 3) {
+      this.saveData.resource.mine = 3;
+      saveSystem.save();
+    }
+
     //// 临时测试模板
 
     /// 测试结束

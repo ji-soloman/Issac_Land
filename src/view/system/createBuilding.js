@@ -2,12 +2,14 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 
 import { get } from '../../system/i18n.js';
 import { BUILDING } from '../../data/building.js';
+import { REGION } from '../../data/region.js';
 
 export class CreateBuilding {
   constructor(scene, gridId, data) {
     this.scene = scene;
     this.gridId = gridId;
     this.data = data;
+    this.currentData = data.map.grids[gridId];
 
     this.selectedBuildingKey = null;
     this.viewedBuildingKey = null;
@@ -140,6 +142,31 @@ export class CreateBuilding {
     this.scene.tweens.add({ targets: this.container, alpha: 1, duration: 250 });
   }
 
+  checkRegion(data, config) {
+    if (!data.region) return false;
+    if (!config.require_region) return true;
+    var cat = REGION[data.region].category;
+    return config.require_region(cat);
+  }
+
+  checkTech(tech, config) {
+    if (!config.require_tech) return true;
+    return config.require_tech(tech);
+  }
+
+  checkRace(race, config) {
+    if (!config.require_race) return true;
+    return config.require_race(race);
+  }
+
+  checkAffordable(resource, config) {
+    if (!config.cost) return true;
+
+    return Object.entries(config.cost).every(([key, value]) => {
+      return (resource[key] || 0) >= value;
+    });
+  }
+
   renderBuildingList(areaWidth, listAreaHeight) {
     const itemWidth = areaWidth * 0.85;
     const itemHeight = 60;
@@ -148,15 +175,20 @@ export class CreateBuilding {
 
     let index = 0;
     for (const [key, config] of Object.entries(BUILDING)) {
-      let isBuildable = true;
+      let isBuildable = true, isAffordable = true;
+      const regionCheck = this.checkRegion(this.currentData, config);
+      const techCheck = this.checkTech(this.data.tech_tree.unlocked, config);
+      const raceCheck = this.checkRace(this.data.race, config);
 
       try {
-        if (config.require_region && !config.require_region(this.data.region_category || {})) isBuildable = false;
-        if (config.require_tech && !config.require_tech(this.data.tech_tree.unlocked)) isBuildable = false;
-        if (config.require_race && !config.require_race(this.data.race)) isBuildable = false;
+        if (!regionCheck) isBuildable = false;
+        if (!techCheck) isBuildable = false;
+        if (!raceCheck) isBuildable = false;
       } catch (e) {
         isBuildable = false;
       }
+
+      if (!this.checkAffordable(this.data.resource, config)) isAffordable = false;
 
       const itemContainer = this.scene.add.container(startX, 40 + index * rowSpacing);
       const itemBg = this.scene.add.rectangle(0, 0, itemWidth, itemHeight, isBuildable ? 0x222222 : 0x111111, 1)
@@ -173,13 +205,13 @@ export class CreateBuilding {
 
       itemContainer.add([itemBg, nameText]);
 
-      if (!isBuildable) {
+      if (!isBuildable || !isAffordable) {
         const lockOverlay = this.scene.add.rectangle(0, 0, itemWidth, itemHeight, 0x000000, 0.45);
         itemContainer.add([lockOverlay]);
       }
 
       itemBg.on('pointerdown', () => this.selectBuilding(key));
-      this.buildingItems[key] = { bg: itemBg, isBuildable, config };
+      this.buildingItems[key] = { bg: itemBg, isBuildable, isAffordable, config };
       this.scrollContainer.add(itemContainer);
       index++;
     }
@@ -329,7 +361,7 @@ export class CreateBuilding {
     const itemData = this.buildingItems[key];
     this.viewedBuildingKey = key;
 
-    if (itemData.isBuildable) {
+    if (itemData.isBuildable && itemData.isAffordable) {
       this.selectedBuildingKey = (this.selectedBuildingKey === key) ? null : key;
     } else {
       this.selectedBuildingKey = null;
@@ -341,7 +373,7 @@ export class CreateBuilding {
 
       if (isSel) {
         item.bg.setStrokeStyle(4, 0x00ff00);
-      } else if (isViewed && !item.isBuildable) {
+      } else if (isViewed && (!item.isBuildable || !item.isAffordable)) {
         item.bg.setStrokeStyle(3, 0xaa0000);
       } else {
         item.bg.setStrokeStyle(2, 0x555555);
@@ -382,6 +414,10 @@ export class CreateBuilding {
       this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
       this.confirmBtnBg.input.cursor = 'default';
       this.confirmBtnText.setText('条件不足').setColor('#aa0000');
+    } else if (this.viewedBuildingKey && !this.buildingItems[this.viewedBuildingKey].isAffordable) {
+      this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
+      this.confirmBtnBg.input.cursor = 'default';
+      this.confirmBtnText.setText('资源不足').setColor('#aa0000');
     } else {
       this.confirmBtnBg.setFillStyle(0x444444, 1).setStrokeStyle(2, 0x666666);
       this.confirmBtnBg.input.cursor = 'default';
