@@ -66,6 +66,7 @@ export class GridPanel {
     const mask = shape.createGeometryMask();
     terrainBg.setMask(mask);
     bg.setMask(mask);
+    bg.setInteractive();
 
     // ====== 标题 ======
     const titleX = rightX - topWidth / 2;
