@@ -148,9 +148,9 @@ export class GameScene extends Phaser.Scene {
       for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
         // 【建造区域】
         if (gridsInfo.createRegion) {
-          gridsInfo.createRegion.num--;
+          gridsInfo.createRegion.num = (gridsInfo.createRegion.num || 0) - 1;
           if (gridsInfo.createRegion.num <= 0) {
-            data.map.grids[gridsId].region = gridsInfo.targetRegion;
+            data.map.grids[gridsId].region = gridsInfo.createRegion.targetRegion;
             delete gridsInfo.createRegion;
           }
         }
