@@ -193,7 +193,7 @@ export const REGION = {
     },
     canBuild({ grid, tech }) {
       const terrainOK = ['land', 'hills'].includes(grid.terrain);
-      const techOK = tech?.unlocked?.farming_2 === true;
+      const techOK = tech.farming_2 === true;
       return terrainOK && techOK;
     },
     category: {
@@ -220,7 +220,7 @@ export const REGION = {
     },
     canBuild({ grid, tech }) {
       const terrainOK = ['land', 'hills'].includes(grid.terrain);
-      const techOK = tech?.unlocked?.farming_2 === true;
+      const techOK = tech.farming_2 === true;
       return terrainOK && techOK;
     },
     special({ race }) {
@@ -243,7 +243,7 @@ export const REGION = {
       livestock: 1,
     },
     canBuild: function ({ tech }) {
-      return tech?.unlocked?.leadership_2;
+      return tech.leadership_2;
     },
     category: {
       military: true,
@@ -523,7 +523,7 @@ export const REGION = {
       normal: {
         housing: 2,
         general_slot: 1,
-        technology_slot: 1,
+        tech_research_slot: 1,
       },
       turn: {
         food: 2,

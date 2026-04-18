@@ -76,7 +76,7 @@ export class TechTreeSystem {
           leadership_1: true,
         },
         researching: {},
-        tech_slot: 1,
+        tech_research_slot: 1,
       }
       saveSystem.save().then(() => {
         console.log('初始化科技树成功');
