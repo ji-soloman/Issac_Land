@@ -1,5 +1,6 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { TECH_TREE } from '../../data/tech_tree.js';
+import { ERA } from '../../data/era.js';
 import { get } from '../../system/i18n.js';
 import { saveSystem } from '../../system/saveSystem.js';
 
@@ -75,6 +76,7 @@ export class TechTreeSystem {
           leadership_1: true,
         },
         researching: {},
+        tech_slot: 1,
       }
       saveSystem.save().then(() => {
         console.log('初始化科技树成功');
@@ -224,7 +226,8 @@ export class TechTreeSystem {
     }).setOrigin(0.5, 0.5);
     c.add(label);
 
-    if (!this.canResearch(tech)) c.setAlpha(0.45);
+    const isUnlocked = this.saveData.tech_tree?.unlocked?.[id];
+    if (!isUnlocked) c.setAlpha(0.45);
 
     this.contentContainer.add(c);
   }
@@ -306,7 +309,37 @@ export class TechTreeSystem {
 
   canResearch(tech) {
     if (!tech.requires?.length) return true;
-    return tech.requires.every(id => this.saveData.techs?.[id]);
+    return tech.requires.every(id => this.saveData.tech_tree?.unlocked?.[id]);
+  }
+
+  // ================= 资源判定辅助 =================
+  getTechTotalCost(tech) {
+    const totalCost = { ...(tech.cost || {}) };
+
+    const techEra = tech.era;
+    const eraOrder = (ERA && ERA[techEra] && ERA[techEra].order) ? ERA[techEra].order : 1;
+
+    const fixedCulture = eraOrder * 5;
+
+    // 👉 单独存一下固定文化，后面显示要用
+    totalCost.culture = (totalCost.culture || 0) + fixedCulture;
+
+    return totalCost;
+  }
+
+  getTechDsiplayCost(tech) {
+    const totalCost = { ...(tech.cost || {}) };
+    return totalCost;
+  }
+
+  checkCanAfford(totalCost) {
+    const currentRes = this.saveData.resource || {};
+    for (const key in totalCost) {
+      if ((currentRes[key] || 0) < totalCost[key]) {
+        return false; // 只要有一个资源不够，就返回 false
+      }
+    }
+    return true;
   }
 
   createScrollBar() {
@@ -401,14 +434,13 @@ export class TechTreeSystem {
 
     this.container.add(btn);
   }
-  showTechInfo(tech, targetImage) {
-    // 1. 清理旧弹窗
+
+  showTechInfo(id, tech, targetImage) {
     if (this.infoPopup) {
       this.infoPopup.destroy();
       this.infoPopup = null;
     }
 
-    // 2. 创建主容器
     this.infoPopup = this.scene.add.container(0, 0).setDepth(2000);
 
     const { width: screenW, height: screenH } = this.scene.scale;
@@ -420,7 +452,6 @@ export class TechTreeSystem {
     });
     this.infoPopup.add(blocker);
 
-    // 4. 构建内容组件
     const popupWidth = 280;
     const padding = 16;
     const content = this.scene.add.container(0, 0);
@@ -428,13 +459,10 @@ export class TechTreeSystem {
     let currentY = padding;
     const textW = popupWidth - padding * 2;
 
-    // === 修正Padding ===
-    // top: 5 保证顶部不被切掉，bottom: 0 保持底部紧凑
     const textPad = { top: 5, bottom: 0, left: 0, right: 0 };
-    // 在计算下一行位置时，减去这个高度
     const padHeightCorrection = textPad.top + textPad.bottom;
 
-    // --- 标题 ---
+    // ===== 标题 =====
     const title = this.scene.add.text(popupWidth / 2, currentY, tech.name, {
       fontSize: '20px',
       color: '#ffffff',
@@ -444,10 +472,9 @@ export class TechTreeSystem {
     }).setOrigin(0.5, 0);
 
     content.add(title);
-    // 计算高度时减去 padHeightCorrection
     currentY += (title.height - padHeightCorrection) + 12;
 
-    // --- 功能描述 ---
+    // ===== 功能 =====
     const infoLabel = this.scene.add.text(padding, currentY, "功能：", {
       fontSize: '14px', color: '#88aaff', fontStyle: 'bold', padding: textPad
     });
@@ -457,48 +484,63 @@ export class TechTreeSystem {
       wordWrap: { width: textW - infoLabel.width },
       padding: textPad
     });
+
     content.add([infoLabel, infoVal]);
-    // 同样减去修正值
     currentY += (Math.max(infoLabel.height, infoVal.height) - padHeightCorrection) + 10;
 
-    // --- Cost ---
-    if (tech.cost && Object.keys(tech.cost).length > 0) {
-      const costLabel = this.scene.add.text(padding, currentY, "解锁要求：", {
-        fontSize: '14px', color: '#88aaff', fontStyle: 'bold', padding: textPad
-      });
+    // ===== 消耗 =====
+    const totalCost = this.getTechTotalCost(tech);
+    const isAffordable = this.checkCanAfford(totalCost);
+    const currentRes = this.saveData.resource || {};
+    const displayCost = this.getTechDsiplayCost(tech);
 
-      let costStrings = Object.entries(tech.cost).map(([key, val]) => {
-        const resourceName = get.translation(key) || key;
-        return `${resourceName}: ${val}`;
-      });
+    if (Object.keys(displayCost).length > 0) {
 
-      const costVal = this.scene.add.text(padding + costLabel.width, currentY, costStrings.join('  '), {
+      const costLabel = this.scene.add.text(padding, currentY, "额外消耗：", {
         fontSize: '14px',
-        color: '#ffcc66',
-        wordWrap: { width: textW - costLabel.width },
+        color: '#88aaff',
+        fontStyle: 'bold',
         padding: textPad
       });
-      content.add([costLabel, costVal]);
-      currentY += (Math.max(costLabel.height, costVal.height) - padHeightCorrection) + 10;
+
+      let costStrings = Object.entries(displayCost)
+        .map(([key, val]) => {
+          const resourceName = get.translation(key) || key;
+          return `${resourceName}: ${val}`;
+        })
+        .filter(Boolean);
+
+      if (costStrings.length > 0) {
+        const costColor = isAffordable ? '#ffcc66' : '#ff8888';
+
+        const costVal = this.scene.add.text(
+          padding + costLabel.width,
+          currentY,
+          costStrings.join('  '),
+          {
+            fontSize: '14px',
+            color: costColor,
+            wordWrap: { width: textW - costLabel.width },
+            padding: textPad
+          }
+        );
+
+        content.add([costLabel, costVal]);
+        currentY += (Math.max(costLabel.height, costVal.height) - padHeightCorrection) + 10;
+      }
     }
 
-    // --- 前置条件 ---
+    // ===== 前置条件 =====
     const reqLabel = this.scene.add.text(padding, currentY, "前置条件：", {
       fontSize: '14px', color: '#88aaff', fontStyle: 'bold', padding: textPad
     });
     content.add(reqLabel);
 
-    // 计算流式布局起始点
-    // 注意：因为 label 加了 top padding，它的视觉位置下移了，所以后续文字的 Y 也要匹配这个“视觉Y”
-    // 这里我们不需要额外加 padding.top，因为 currentY 已经是包含 padding 偏移的基准了
     let currentLineX = padding + reqLabel.width;
     let currentLineY = currentY;
-
-    // 行高设定：字体大小(14) + 一点间隙，不再依赖 height 属性，避免 padding 干扰
     const lineHeight = 20;
 
     if (!tech.requires || tech.requires.length === 0) {
-      // 这里的 Y 不需要修正，因为我们在流式布局里手动控制 Y
       const noneText = this.scene.add.text(currentLineX, currentLineY, "暂无", {
         fontSize: '14px', color: '#dddddd', padding: textPad
       });
@@ -513,11 +555,9 @@ export class TechTreeSystem {
         const reqText = this.scene.add.text(currentLineX, currentLineY, reqName, {
           fontSize: '14px',
           color: reqColor,
-          padding: textPad // <--- 加上 Padding
+          padding: textPad
         });
 
-        // 换行判断：这里用 width (包含了padding) 判断是安全的
-        // 但是我们需要减去 padding 对宽度的轻微影响来做精确判断吗？通常不需要，留点余量更好
         if (currentLineX + reqText.width > popupWidth - padding) {
           currentLineX = padding;
           currentLineY += lineHeight;
@@ -525,8 +565,6 @@ export class TechTreeSystem {
         }
 
         content.add(reqText);
-        // 这里累加 X 时，text.width 包含了左右 padding (默认0) 和文字宽度
-        // 如果你觉得字之间间距太大，可以手动减一点，例如: reqText.width - 2
         currentLineX += reqText.width;
 
         if (index < tech.requires.length - 1) {
@@ -543,7 +581,79 @@ export class TechTreeSystem {
       currentY = currentLineY + lineHeight + 10;
     }
 
-    // 5. 绘制背景板
+    // ===== 按钮区域 =====
+    const isUnlocked = this.saveData.tech_tree?.unlocked?.[id];
+    const canUnlock = this.canResearch(tech);
+
+    if (!isUnlocked && canUnlock) {
+      currentY += 10;
+
+      const btnWidth = 120;
+      const btnHeight = 36;
+      const btnX = popupWidth / 2;
+      const btnY = currentY + btnHeight / 2;
+      const researchingTurns = this.saveData.tech_tree?.researching?.[id];
+
+      const btnGroup = this.scene.add.container(btnX, btnY);
+      const btnBg = this.scene.add.graphics();
+
+      if (researchingTurns !== undefined) {
+        btnBg.fillStyle(0x555555, 1);
+        btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
+
+        const turnText = this.scene.add.text(0, 0, `剩余 ${researchingTurns} 回合`, {
+          fontSize: '14px', color: '#aaaaaa', fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        btnGroup.add([btnBg, turnText]);
+      } else {
+        if (isAffordable) {
+          btnBg.fillStyle(0x4488ff, 1);
+          btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
+
+          const btnText = this.scene.add.text(0, 0, "解 锁", {
+            fontSize: '16px', color: '#ffffff', fontStyle: 'bold'
+          }).setOrigin(0.5);
+
+          const hitArea = this.scene.add.rectangle(0, 0, btnWidth, btnHeight, 0x000000, 0)
+            .setInteractive({ useHandCursor: true });
+
+          hitArea.on('pointerover', () => {
+            btnBg.clear();
+            btnBg.fillStyle(0x66aaff, 1);
+            btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
+          });
+          hitArea.on('pointerout', () => {
+            btnBg.clear();
+            btnBg.fillStyle(0x4488ff, 1);
+            btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
+          });
+          hitArea.on('pointerdown', () => {
+            this.startResearch(id, tech, targetImage);
+          });
+
+          btnGroup.add([btnBg, hitArea, btnText]);
+        } else {
+          btnBg.fillStyle(0x2a2a2a, 1);
+          btnBg.lineStyle(2, 0x444444, 1);
+          btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
+          btnBg.strokeRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
+
+          const btnText = this.scene.add.text(0, 0, "资源不足", {
+            fontSize: '14px', color: '#666666', fontStyle: 'bold'
+          }).setOrigin(0.5);
+
+          btnGroup.add([btnBg, btnText]);
+        }
+      }
+
+      content.add(btnGroup);
+      currentY += btnHeight + 16;
+    } else {
+      currentY += 6;
+    }
+
+    // ===== 背景 =====
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x1a1a1a, 0.95);
     bg.lineStyle(2, 0x444444, 1);
@@ -555,7 +665,7 @@ export class TechTreeSystem {
     visualGroup.add(content);
     this.infoPopup.add(visualGroup);
 
-    // 7. 定位逻辑
+    // ===== 定位 =====
     const matrix = targetImage.getWorldTransformMatrix();
     const worldX = matrix.tx;
     const worldY = matrix.ty;
@@ -566,14 +676,16 @@ export class TechTreeSystem {
     if (targetX + popupWidth > screenW - 20) {
       targetX = worldX - this.NODE_WIDTH / 2 - popupWidth - 10;
     }
+
     targetY = Phaser.Math.Clamp(targetY, 20, screenH - currentY - 20);
     targetX = Phaser.Math.Clamp(targetX, 20, screenW - popupWidth - 20);
 
     visualGroup.setPosition(targetX, targetY);
 
-    // 8. 动画
+    // ===== 动画 =====
     visualGroup.setScale(0.9);
     visualGroup.setAlpha(0);
+
     this.scene.tweens.add({
       targets: visualGroup,
       scale: 1,
@@ -583,10 +695,48 @@ export class TechTreeSystem {
     });
   }
 
+
+
   onTechClick(id, tech, containerNode) {
     console.log('查看科技详情:', id);
     // 传入当前节点对象，用于计算位置
-    this.showTechInfo(tech, containerNode);
+    this.showTechInfo(id, tech, containerNode);
+  }
+
+  startResearch(id, tech, targetImage) {
+    const totalCost = this.getTechTotalCost(tech);
+
+    // 再次做一下安全校验，防止异常调用
+    if (!this.checkCanAfford(totalCost)) return;
+
+    // 1. 扣除资源逻辑
+    if (!this.saveData.resource) this.saveData.resource = {};
+    for (const [key, val] of Object.entries(totalCost)) {
+      this.saveData.resource[key] = (this.saveData.resource[key] || 0) - val;
+    }
+
+    // 研发所需的回合数（默认为 1）
+    const techEra = ERA[tech.era].order;
+    const turnsNeeded = techEra || 1;
+
+    // 2. 写入研发数据
+    if (!this.saveData.tech_tree.researching) {
+      this.saveData.tech_tree.researching = {};
+    }
+    this.saveData.tech_tree.researching[id] = turnsNeeded;
+    this.saveData.actionList.civil['research_tech_' + tech.name] = {
+      name: tech.name,
+      round: turnsNeeded,
+    }
+
+    // 3. 保存并刷新界面
+    saveSystem.save().then(() => {
+      // 利用 targetImage 重新打开一次窗口以刷新按钮状态和上方资源显示
+      this.showTechInfo(id, tech, targetImage);
+
+      // 建议：如果你的场景里有顶部资源栏的 UI 组件，可以在这里抛出一个事件通知它刷新
+      // this.scene.events.emit('resource_changed');
+    });
   }
 
   destroy() {

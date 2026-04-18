@@ -92,30 +92,30 @@ export class GameScene extends Phaser.Scene {
     this.turnSystem = new TurnSystem(this, this.saveData)
 
     this.events.on('END_TURN', () => {
-      this.turnSystem.executeTurn();
+      this.turnSystem.executeTurn(); // 感觉没必要拆成两个，后面看情况全都丢到turnSystem里面
       //this.refreshAll()
     });
     this.events.on('TURN_FINALISED', (result) => {
       console.log('开始回合结算：', result);
       var data = this.saveData;
-      // 先处理跨回合倒计时
-      // 地块
-      for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
-        if (gridsInfo.createRegion) {
-          gridsInfo.createRegion.num--;
-          if (gridsInfo.createRegion.num <= 0) {
-            data.map.grids[gridsId].region = gridsInfo.targetRegion;
-            delete gridsInfo.createRegion;
-          }
-        }
-      }
 
-      // 然后结算当前回合事件
+      // ToDo:
+      // 1.先结算上回合的资源收益
+      // 1.1：[上回合的回合资源收入]：resource里增加的资源
+      // 1.2：[其他资源]：当前回合因为各种原因增减的资源（政策buff，科技buff，兵力维护费，等，不包括人头税）。
+      // *注：地块里的资源扣除不在这里扣，地块结算在后面[4.下回合资源]那里。
+      // *注2：人头税属于每个城池各自的收入，所以也放后面的地块里。逻辑上也说得通，第一回合的回合资源收入是0，但是人口是1，所以这个会进这个回合结束后的回合收入，然后在第二回合结算的时候增加
+      // *注3：当前资源+上回合的回合收入+其他资源=最终资源，这回合的回合资源收入留给下回合结算
+
+      // *注4：【这里结算完后要把回合资源收入清空！！！】
+
+      //2.结算当前回合行动事件
       for (const [actionType, params] of Object.entries(result)) {
         switch (actionType) {
           case 'military':
             for (const [actionMilitary, param] of Object.entries(params)) {
               switch (actionMilitary) {
+                // 【探索地块】：确认地形
                 case 'explore_terrain':
                   if (data.military[param.soldier]) {
                     delete data.military[param.soldier].currentStatus;
@@ -131,27 +131,69 @@ export class GameScene extends Phaser.Scene {
             break;
           case 'civil':
             for (const [actionCivil, param] of Object.entries(params)) {
+              // 【建造区域】
               if (actionCivil.startsWith('build_region')) {
                 data.map.grids[param.gridId].createRegion = {
                   targetRegion: param.regionKey,
                   num: REGION[param.regionKey].round,
                 }
               }
+              // 【科技】直接在科技系统里单独挂载事件
             }
             break;
         }
       }
-      // 结算完成后清空事件
+
+      // 3.结算每个【地块相关】的倒计时
+      for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
+        // 【建造区域】
+        if (gridsInfo.createRegion) {
+          gridsInfo.createRegion.num--;
+          if (gridsInfo.createRegion.num <= 0) {
+            data.map.grids[gridsId].region = gridsInfo.targetRegion;
+            delete gridsInfo.createRegion;
+          }
+        }
+      }
+
+      // ToDo:
+      // 4.计算目前收益给下回合加
+      // *注：每个地块依次结算，增加和减少，然后全部挂进回合收入里，然后给下回合去结算（包括人头税）
+
+      // *注：↓【BUFF类】的倒计时放在最后，避免太早有buff影响当前回合资源计算（比如：消耗文化换取额外行动的政策，这回合解锁的话应该下回合才开始扣资源，因为这回合拿不到额外的行动）
+
+      // 5.【科技结算】
+      const techFinished = [];
+
+      for (const [techId, turns] of Object.entries(data.tech_tree.researching)) {
+        const newTurns = turns - 1;
+
+        if (newTurns <= 0) {
+          techFinished.push(techId);
+        } else {
+          data.tech_tree.researching[techId] = newTurns;
+        }
+      }
+      // 结束研究的统一最后删
+      techFinished.forEach(techId => {
+        delete data.tech_tree.researching[techId];
+        data.tech_tree.unlocked[techId] = true;
+      });
+
+      // ToDo:
+      // 6.政策结算（暂时没做这个系统，以后再说，但是结算顺序是这个）
+
+      // 7.结算完成后清空当前回合事件
       data.actionList = {
         civil: {},
         military: {},
         others: {},
       }
-      // 回合增加
+      // 8.回合增加
       data.process.turn++;
-      // 保存数据
+      // 9.保存数据
       saveSystem.save();
-      // 刷新地图
+      // 10.刷新地图
       this.mapView.refreshMap(data.map);
       if (this.topInfoBar) {
         this.topInfoBar.refresh();
@@ -190,6 +232,8 @@ export class GameScene extends Phaser.Scene {
         console.log('初始化数据已保存');
       });
     }
+
+    var saveData = this.saveData;
 
     //初始化行动
     if (!this.saveData.actionList || Object.keys(this.saveData.actionList).length === 0) {

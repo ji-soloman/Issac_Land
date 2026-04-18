@@ -66,7 +66,7 @@ export class ActionListSystem {
     this.container.add(titleText);
 
     // --- 回合与时代信息---
-    const currentTurn = (this.saveData.process?.turn + 1) || 1;
+    const currentTurn = (this.saveData.process?.turn) || 1;
     const currentEra = ERA[this.saveData.process?.era].name || '未知时代';
 
     const infoTextStr = `${currentEra} | 第 ${currentTurn} 回合`;
@@ -143,7 +143,7 @@ export class ActionListSystem {
       contentY + sectionHeight,
       sectionWidth,
       sectionHeight,
-      '民事行动',
+      '民生行动',
       actionList.civil,
       0x3498db,
       'civil'
@@ -466,6 +466,9 @@ export class ActionListSystem {
 
     if (markedIntro.startsWith('build_region')) {
       markedIntro = '在' + this.getGridName(actionData.gridId) + '建造特区【' + REGION[actionData.regionKey].name + '】';
+    }
+    else if (markedIntro.startsWith('research_tech_')) {
+      markedIntro = '启发了科技【' + actionData.name + '】';
     }
 
     // UI 背景绘制
