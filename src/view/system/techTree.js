@@ -86,93 +86,85 @@ export class TechTreeSystem {
 
   calculateTechPositions() {
     this.techPositions = {};
-    const used = {};
 
-    const occupy = (c, r, id) => {
-      if (!used[c]) used[c] = {};
-      used[c][r] = id;
-    };
+    // 第一步：收集所有需要显示的科技的原始位置
+    const rawPositions = {};
 
+    // 1. 初始科技强制为第0列，行数由 initialRows 决定
     Object.entries(this.initialRows).forEach(([id, row]) => {
-      this.techPositions[id] = {
-        col: 0,
-        row,
-        x: 140,
-        y:
-          this.TOP_PADDING +
-          (row - 1) * this.ROW_SPACING +
-          this.NODE_HEIGHT / 2
-      };
-      occupy(0, row, id);
+      rawPositions[id] = { col: 0, row: row };
     });
 
-    const sorted = this.topologicalSort();
+    // 2. 根据 tech.location 读取其他科技位置
+    // 规则：如果没有 tech.location 或者格式不对，则直接跳过不显示
+    Object.entries(TECH_TREE).forEach(([id, tech]) => {
+      if (this.initialRows[id]) return; // 初始科技已处理，跳过
+      if (!tech.location || !Array.isArray(tech.location) || tech.location.length < 2) return;
 
-    sorted.forEach(id => {
-      if (this.techPositions[id]) return;
+      rawPositions[id] = { col: tech.location[0], row: tech.location[1] };
+    });
 
-      const tech = TECH_TREE[id];
-      if (!tech) return;
+    // 第二步：处理列数空缺，后续列统一向左补齐
+    const uniqueCols = new Set();
+    Object.values(rawPositions).forEach(pos => uniqueCols.add(pos.col));
 
-      let col = 0;
-      if (tech.requires?.length) {
-        col =
-          Math.max(
-            ...tech.requires.map(r => this.techPositions[r]?.col ?? 0)
-          ) + 1;
-      }
+    // 将所有存在的列提取并从小到大排序，形成原始列到实际连续列的映射
+    const sortedCols = Array.from(uniqueCols).sort((a, b) => a - b);
+    const colMap = {};
+    sortedCols.forEach((rawCol, denseColIndex) => {
+      colMap[rawCol] = denseColIndex;
+    });
 
-      let prefer = tech.requires?.length
-        ? this.techPositions[tech.requires[0]]?.row ?? 3
-        : 3;
+    // 第三步：计算最终的 x 和 y 坐标并存入 techPositions
+    let maxCol = 0;
+    Object.entries(rawPositions).forEach(([id, pos]) => {
+      const actualCol = colMap[pos.col];
+      const actualRow = pos.row;
 
-      if (!used[col]) used[col] = {};
-      const row = this.findAvailableRow(used[col], prefer);
-
-      occupy(col, row, id);
+      maxCol = Math.max(maxCol, actualCol);
 
       this.techPositions[id] = {
-        col,
-        row,
-        x: col * this.COL_SPACING + 140,
+        col: actualCol,
+        row: actualRow,
+        x: actualCol * this.COL_SPACING + 140,
         y:
           this.TOP_PADDING +
-          (row - 1) * this.ROW_SPACING +
+          (actualRow - 1) * this.ROW_SPACING +
           this.NODE_HEIGHT / 2
       };
     });
 
-    const maxCol = Math.max(...Object.values(this.techPositions).map(p => p.col));
+    // 更新最大可滚动宽度
     this.maxScrollX = Math.max(
       0,
       (maxCol + 1) * this.COL_SPACING - this.scene.scale.width + 200
     );
   }
 
-  topologicalSort() {
-    const v = new Set();
-    const res = [];
+  // topologicalSort() {
+  //   const v = new Set();
+  //   const res = [];
 
-    const dfs = id => {
-      if (v.has(id)) return;
-      v.add(id);
-      TECH_TREE[id]?.requires?.forEach(dfs);
-      res.push(id);
-    };
+  //   const dfs = id => {
+  //     if (v.has(id)) return;
+  //     v.add(id);
+  //     TECH_TREE[id]?.requires?.forEach(dfs);
+  //     res.push(id);
+  //   };
 
-    Object.keys(TECH_TREE).forEach(dfs);
-    return res;
-  }
+  //   Object.keys(TECH_TREE).forEach(dfs);
+  //   return res;
+  // }
 
-  findAvailableRow(map, pref) {
-    if (!map[pref]) return pref;
+  // findAvailableRow(map, pref) {
+  //   if (!map[pref]) return pref;
 
-    for (let d = 1; d <= this.MAX_ROWS; d++) {
-      if (pref - d >= 1 && !map[pref - d]) return pref - d;
-      if (pref + d <= this.MAX_ROWS && !map[pref + d]) return pref + d;
-    }
-    return pref;
-  }
+  //   for (let d = 1; d <= this.MAX_ROWS; d++) {
+  //     if (pref - d >= 1 && !map[pref - d]) return pref - d;
+  //     if (pref + d <= this.MAX_ROWS && !map[pref + d]) return pref + d;
+  //   }
+  //   return pref;
+  // }
   // ================= 节点 =================
 
   drawTechNodes() {
@@ -234,14 +226,85 @@ export class TechTreeSystem {
 
   // ================= 连线 =================
 
+  // ================= 连线 =================
+
+  // 辅助方法：获取科技的唯一主要连线
+  getPrimaryRequirement(id, tech) {
+    if (!tech.requires || tech.requires.length === 0) return null;
+    if (tech.requires.length === 1) return tech.requires[0];
+
+    const b = this.techPositions[id];
+    if (!b) return tech.requires[0];
+
+    let bestReq = null;
+    let bestScore = -1;
+    let minDistance = Infinity;
+
+    for (const req of tech.requires) {
+      const a = this.techPositions[req];
+      if (!a) continue;
+
+      const colDiff = Math.abs(b.col - a.col);
+      const rowDiff = Math.abs(b.row - a.row);
+      const dist = Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
+
+      let score = 0;
+      // 优先保留列数距离为1且行数相同的
+      if (colDiff === 1 && rowDiff === 0) {
+        score = 3;
+      }
+      // 其次保留列数距离为1但行数不同的
+      else if (colDiff === 1 && rowDiff !== 0) {
+        score = 2;
+      }
+      // 否则基础分最低，靠后续的物理距离判断
+      else {
+        score = 1;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestReq = req;
+        minDistance = dist;
+      } else if (score === bestScore) {
+        // 同等优先级下，保留长度最短的
+        if (dist < minDistance) {
+          minDistance = dist;
+          bestReq = req;
+        }
+      }
+    }
+
+    return bestReq;
+  }
+
   drawConnections() {
-    const graphics = this.scene.add.graphics();
+    // 避免重复创建 graphics 对象，将其保存为实例属性以便清理和重绘
+    if (!this.connectionsGraphics) {
+      this.connectionsGraphics = this.scene.add.graphics();
+      this.contentContainer.add(this.connectionsGraphics);
+      // 将连线层沉到底部，防止遮挡节点
+      this.contentContainer.moveTo(this.connectionsGraphics, 0);
+    }
+    const graphics = this.connectionsGraphics;
+    graphics.clear(); // 每次调用时清空之前的线
+
+    // 内部函数：判断当前科技需要画哪些前置连线
+    const getActiveRequires = (id, tech) => {
+      if (!tech.requires) return [];
+      // 如果是当前点击查看的科技，显示所有前置连线
+      if (this.activeTechId === id) return tech.requires;
+      // 否则只显示计算出的一条最优连线
+      const primary = this.getPrimaryRequirement(id, tech);
+      return primary ? [primary] : [];
+    };
 
     // 1. 先画普通实线
     graphics.lineStyle(2, 0xffffff, 0.8); // 实线稍微亮一点
 
     Object.entries(TECH_TREE).forEach(([id, tech]) => {
-      tech.requires?.forEach(req => {
+      const reqs = getActiveRequires(id, tech);
+      reqs.forEach(req => {
         const a = this.techPositions[req];
         const b = this.techPositions[id];
         if (!a || !b) return;
@@ -260,7 +323,8 @@ export class TechTreeSystem {
     graphics.lineStyle(2, 0xffffff, 0.5); // 虚线透明度 50%
 
     Object.entries(TECH_TREE).forEach(([id, tech]) => {
-      tech.requires?.forEach(req => {
+      const reqs = getActiveRequires(id, tech);
+      reqs.forEach(req => {
         const a = this.techPositions[req];
         const b = this.techPositions[id];
         if (!a || !b) return;
@@ -276,9 +340,6 @@ export class TechTreeSystem {
         }
       });
     });
-
-    this.contentContainer.add(graphics);
-    this.contentContainer.moveTo(graphics, 0);
   }
 
   // 辅助方法：绘制虚线
@@ -441,14 +502,25 @@ export class TechTreeSystem {
       this.infoPopup = null;
     }
 
+    // ========== 新增逻辑：记录当前激活的科技并重绘连线 ==========
+    this.activeTechId = id;
+    this.drawConnections();
+    // =========================================================
+
     this.infoPopup = this.scene.add.container(0, 0).setDepth(2000);
 
     const { width: screenW, height: screenH } = this.scene.scale;
     const blocker = this.scene.add.rectangle(screenW / 2, screenH / 2, screenW, screenH, 0x000000, 0.01)
       .setInteractive();
+
     blocker.on('pointerdown', () => {
       this.infoPopup.destroy();
       this.infoPopup = null;
+
+      // ========== 新增逻辑：浮窗关闭时取消激活状态并恢复连线 ==========
+      this.activeTechId = null;
+      this.drawConnections();
+      // ==============================================================
     });
     this.infoPopup.add(blocker);
 

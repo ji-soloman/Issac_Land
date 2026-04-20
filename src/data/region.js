@@ -264,7 +264,7 @@ export const REGION = {
       }
     },
     canBuild({ tech }) {
-      return false;
+      return tech.literature_1;
     },
     category: {
       academy: true,
@@ -273,8 +273,8 @@ export const REGION = {
     color: 'academy',
   },
   holy: {
-    name: '圣地特区',
-    effect_info: '提前进入【奴隶时代】；每回合文化+3；住房+2，奇观槽位+1',
+    name: '圣地',
+    effect_info: '进入【奴隶时代】；每回合文化+3；住房+2，奇观槽位+1',
     requireInfo: '解锁科技【原始祈祷】',
     special_info: '时代进步的象征',
     effect: {
@@ -436,7 +436,7 @@ export const REGION = {
     name: '潮汐圣湾',
     terrainInfo: '海岸，浅海',
     effect_info: '每回合矿石+2，魔石+1，文化+1；住房+2，水产槽位+2',
-    special_info: '人鱼专属的海港',
+    special_info: '人鱼的专属海港',
     effect: {
       normal: {
         housing: 2,
@@ -490,8 +490,8 @@ export const REGION = {
   elemental_nexus: {
     name: '元素晶核',
     terrainInfo: '任意',
-    effect_info: '每回合食物+2，文化+2；住房+1，通用槽位+1',
-    special_info: '元灵专属的圣地特区',
+    effect_info: '进入【奴隶时代】；每回合食物+2，文化+2；住房+1，通用槽位+1',
+    special_info: '元灵的专属圣地',
     effect: {
       normal: {
         housing: 1,
@@ -511,7 +511,7 @@ export const REGION = {
     category: {
       holy: true,
     },
-    round: 5,
+    round: 6,
     color: 'special',
   },
   dao_academy: {

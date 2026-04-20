@@ -10,7 +10,8 @@ export const TECH_TREE = {
   farming_2: {
     name: '驯化',
     info: '解锁区域【牧场特区】',
-    cost: { food: 120, mine: 30 },
+    location: [1, 1],
+    // cost: { food: 120, mine: 30 },
     requires: ['farming_1'],
     era: 'primitive',
     color: 'green',
@@ -18,6 +19,7 @@ export const TECH_TREE = {
   },
   construction_1: {
     name: '开采',
+    info: '采集物产',
     cost: {},
     requires: [],
     effect: [],
@@ -36,8 +38,8 @@ export const TECH_TREE = {
   },
   construction_2: {
     name: '制陶业',
-    info:'解锁奇观【金字塔】',
-    info: '',
+    info: '解锁奇观【金字塔】',
+    location: [1, 3],
     cost: {},
     requires: ['construction_1'],
     effect: [],
@@ -48,6 +50,7 @@ export const TECH_TREE = {
   leadership_2: {
     name: '军事化',
     info: '解锁区域【军事特区】',
+    location: [1, 5],
     cost: {},
     requires: [],
     effect: [],
@@ -59,6 +62,7 @@ export const TECH_TREE = {
   religion_1: {
     name: '信仰',
     info: '小幅度增加探索时的运气',
+    location: [1, 4],
     cost: {},
     requires: [],
     effect: [],
@@ -69,6 +73,8 @@ export const TECH_TREE = {
   },
   religion_2: {
     name: '原始祈祷',
+    info: '解锁区域【圣地】',
+    location: [3, 4],
     cost: {},
     requires: [],
     effect: [],
@@ -79,6 +85,7 @@ export const TECH_TREE = {
   },
   fishing_1: {
     name: '捕鱼',
+    location: [1, 2],
     cost: {},
     requires: [],
     effect: [],
@@ -89,6 +96,7 @@ export const TECH_TREE = {
   },
   riding_1: {
     name: '骑术',
+    location: [2, 1],
     cost: {},
     requires: [],
     effect: [],
@@ -99,6 +107,8 @@ export const TECH_TREE = {
   },
   construction_3: {
     name: '石器',
+    info: '解锁区域【矿场】',
+    location: [3, 3],
     cost: {},
     requires: [],
     effect: [],
@@ -109,6 +119,8 @@ export const TECH_TREE = {
   },
   fishing_2: {
     name: '灌溉',
+    info: '解锁建筑【灌溉渠】、【引水渠】',
+    location: [4, 2],
     cost: {},
     requires: [],
     effect: [],
@@ -119,6 +131,7 @@ export const TECH_TREE = {
   },
   farming_3: {
     name: '养殖',
+    location: [2, 2],
     cost: {},
     requires: [],
     effect: [],
@@ -130,6 +143,7 @@ export const TECH_TREE = {
   farming_4: {
     name: '肥料',
     info: '解锁建筑【厕所】',
+    location: [3, 2],
     cost: {},
     requires: [],
     effect: [],
@@ -139,6 +153,7 @@ export const TECH_TREE = {
   },
   sports_1: {
     name: '竞技精神',
+    location: [2, 5],
     cost: {},
     requires: [],
     effect: [],
@@ -148,6 +163,7 @@ export const TECH_TREE = {
   },
   country_1: {
     name: '早期帝国',
+    location: [4, 5],
     cost: {},
     requires: [],
     effect: [],
@@ -158,6 +174,7 @@ export const TECH_TREE = {
   },
   occultism_1: {
     name: '神秘主义',
+    location: [4, 4],
     cost: {},
     requires: [],
     effect: [],
@@ -167,7 +184,8 @@ export const TECH_TREE = {
   },
   occultism_2: {
     name: '占卜',
-    info:'解锁奇迹【神谕所】',
+    info: '解锁奇迹【神谕所】',
+    location: [5, 4],
     cost: {},
     requires: [],
     effect: [],
@@ -177,6 +195,7 @@ export const TECH_TREE = {
   },
   construction_5: {
     name: '工具',
+    location: [4, 3],
     cost: {},
     requires: [],
     effect: [],
@@ -186,6 +205,7 @@ export const TECH_TREE = {
   },
   construction_4: {
     name: '伐木',
+    location: [5, 3],
     cost: {},
     requires: [],
     effect: [],
@@ -195,11 +215,23 @@ export const TECH_TREE = {
   },
   sports_2: {
     name: '投掷',
+    location: [5, 1],
     cost: {},
     requires: [],
     effect: [],
     requires: ['construction_5', 'sports_1', 'farming_1'],
     era: 'primitive',
     color: 'green',
+  },
+  literature_1: {
+    name: '著作',
+    info: '解锁区域【学院特区】',
+    location: [7, 4],
+    cost: {},
+    requires: [],
+    effect: [],
+    requires: ['occultism_2'],
+    era: 'primitive',
+    color: 'blue',
   },
 };

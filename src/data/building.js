@@ -418,7 +418,7 @@ export const BUILDING = {
       return category.academy;
     },
     require_tech(tech) {
-      return true;
+      return tech.leadership_2;
     },
     cost: {
       mine: 5,
@@ -428,7 +428,7 @@ export const BUILDING = {
   },
   toilet: {
     name: '厕所',
-    effect_info: '食物+3 住房+2',
+    effect_info: '食物+3；住房+2',
     tech_info: '肥料',
     region_info: '住宅区',
     require_region(category) {
@@ -440,43 +440,64 @@ export const BUILDING = {
     cost: {
       mine: 3,
     },
-    effect: {},
+    effect: {
+      normal: {
+        housing: 2,
+      },
+      turn: {
+        food: 3,
+      }
+    },
     round: 2,
   },
 
   irrigation_canal: {
     name: '灌溉渠',
-    effect_info: '食物+3 住房+4',
+    effect_info: '食物+3；住房+4',
     tech_info: '灌溉',
     region_info: '农田',
     require_region(category) {
       return category.farm;
     },
     require_tech(tech) {
-      return true;
+      return tech.fishing_2;
     },
     cost: {
       mine: 5,
     },
-    effect: {},
+    effect: {
+      normal: {
+        housing: 4,
+      },
+      turn: {
+        food: 3,
+      }
+    },
     round: 3,
   },
 
   aqueduct: {
     name: '引水渠',
-    effect_info: '住房+6 食物+2',
+    effect_info: '住房+6；每回合食物+2',
     tech_info: '灌溉',
     region_info: '住宅区 主城区',
     require_region(category) {
       return category.living || category.main;
     },
     require_tech(tech) {
-      return true;
+      return tech.fishing_2;
     },
     cost: {
       mine: 5,
     },
-    effect: {},
+    effect: {
+      normal: {
+        housing: 6,
+      },
+      turn: {
+        food: 2,
+      }
+    },
     round: 3,
   },
 
