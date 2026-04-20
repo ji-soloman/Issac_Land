@@ -55,6 +55,8 @@ export class GameScene extends Phaser.Scene {
 
     // 加载科技图标
     this.load.image('tech_icon_default', 'assets/tech_tree/icon/default.png');
+    // 沙漏图标
+    this.load.image('hourglass_icon', 'assets/ui_icon/hourglass.png');
 
     Object.entries(TECH_TREE).forEach(([techId, tech]) => {
       if (tech.icon) {
