@@ -41,7 +41,12 @@ export class TopInfoBar {
       fontSize: '14px', color: '#aaaaaa', fontFamily: 'Arial'
     }).setOrigin(0, 0);
 
-    this.tooltip.add([this.tooltipBg, this.tooltipIcon, this.tooltipTitle, this.tooltipValue]);
+    // 新增：回合收入
+    this.tooltipIncome = this.scene.add.text(60, 24, '回合收入：0', {
+      fontSize: '14px', color: '#aaaaaa', fontFamily: 'Arial'
+    }).setOrigin(0, 0);
+
+    this.tooltip.add([this.tooltipBg, this.tooltipIcon, this.tooltipTitle, this.tooltipValue, this.tooltipIncome]);
   }
 
   initUI() {
@@ -190,15 +195,39 @@ export class TopInfoBar {
     this.tooltipTitle.setText(get.translation(resKey));
     this.tooltipValue.setText(`当前数量：${actualValue}`);
 
+    let maxTextWidth = Math.max(this.tooltipTitle.width, this.tooltipValue.width);
+    let bgHeight = 60;
+
+    // 判断是否为人口，人口不显示回合收入
+    if (resKey === 'population') {
+      this.tooltipIncome.setVisible(false);
+      this.tooltipTitle.setY(-18);
+      this.tooltipValue.setY(4);
+      bgHeight = 60;
+    } else {
+      const incomeValue = this.getResourceValue(resKey + '_income');
+      this.tooltipIncome.setText(`回合收入：${incomeValue}`);
+      this.tooltipIncome.setVisible(true);
+
+      // 调整Y轴布局，让三行字整体居中显示
+      this.tooltipTitle.setY(-26);
+      this.tooltipValue.setY(-4);
+      this.tooltipIncome.setY(16);
+      bgHeight = 68; // 加大背景高度以容纳新的一行
+
+      maxTextWidth = Math.max(maxTextWidth, this.tooltipIncome.width);
+    }
+
     // 动态计算悬浮窗宽度
-    const maxTextWidth = Math.max(this.tooltipTitle.width, this.tooltipValue.width);
     const calculatedWidth = 60 + maxTextWidth + 20;
     const finalWidth = Math.max(180, calculatedWidth);
 
-    // 让边框跟随新长度
+    // 让边框跟随新长度和高度
     this.tooltipBg.width = finalWidth;
+    this.tooltipBg.height = bgHeight;
     if (this.tooltipBg.geom) {
       this.tooltipBg.geom.width = finalWidth;
+      this.tooltipBg.geom.height = bgHeight;
       this.tooltipBg.updateData();
     }
   }

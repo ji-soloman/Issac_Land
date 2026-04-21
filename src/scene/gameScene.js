@@ -105,6 +105,11 @@ export class GameScene extends Phaser.Scene {
       // ToDo:
       // 1.先结算上回合的资源收益
       // 1.1：[上回合的回合资源收入]：resource里增加的资源
+      for (const i of ['culture', 'food', 'magic', 'mine', 'wealth']) {
+        const base = data.resource[i] ?? 0;
+        const income = data.resource[i + '_income'] ?? 0;
+        data.resource[i] = base + income;
+      }
       // 1.2：[其他资源]：当前回合因为各种原因增减的资源（政策buff，科技buff，兵力维护费，等，不包括人头税）。
       // *注：地块里的资源扣除不在这里扣，地块结算在后面[4.下回合资源]那里。
       // *注2：人头税属于每个城池各自的收入，所以也放后面的地块里。逻辑上也说得通，第一回合的回合资源收入是0，但是人口是1，所以这个会进这个回合结束后的回合收入，然后在第二回合结算的时候增加
@@ -162,6 +167,26 @@ export class GameScene extends Phaser.Scene {
       // ToDo:
       // 4.计算目前收益给下回合加
       // *注：每个地块依次结算，增加和减少，然后全部挂进回合收入里，然后给下回合去结算（包括人头税）
+      const keys = ['culture', 'food', 'magic', 'mine', 'wealth'];
+      const total = {};
+      for (const k of keys) total[k] = 0;
+      const grids = data.map.grids;
+      for (const key in grids) {
+        const g = grids[key];
+        const region = g.region;
+        if (!region) continue;
+        const effect = REGION?.[region]?.effect?.turn;
+        if (!effect) continue;
+        for (const res in effect) {
+          if (total[res] !== undefined) {
+            total[res] += effect[res];
+          }
+        }
+      }
+      if (!data.resource) data.resource = {};
+      for (const k of keys) {
+        data.resource[k + '_income'] = total[k];
+      }
 
       // *注：↓【BUFF类】的倒计时放在最后，避免太早有buff影响当前回合资源计算（比如：消耗文化换取额外行动的政策，这回合解锁的话应该下回合才开始扣资源，因为这回合拿不到额外的行动）
 
