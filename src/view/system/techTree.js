@@ -674,7 +674,7 @@ export class TechTreeSystem {
         btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
 
         const turnText = this.scene.add.text(0, 0, `剩余 ${researchingTurns} 回合`, {
-          fontSize: '14px', color: '#aaaaaa', fontStyle: 'bold'
+          fontSize: '14px', color: '#aaaaaa', fontStyle: 'bold', padding: textPad
         }).setOrigin(0.5);
 
         btnGroup.add([btnBg, turnText]);
@@ -684,7 +684,7 @@ export class TechTreeSystem {
           btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
 
           const btnText = this.scene.add.text(0, 0, "解 锁", {
-            fontSize: '16px', color: '#ffffff', fontStyle: 'bold'
+            fontSize: '16px', color: '#ffffff', fontStyle: 'bold', padding: textPad
           }).setOrigin(0.5);
 
           const hitArea = this.scene.add.rectangle(0, 0, btnWidth, btnHeight, 0x000000, 0)
@@ -712,7 +712,7 @@ export class TechTreeSystem {
           btnBg.strokeRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
 
           const btnText = this.scene.add.text(0, 0, "资源不足", {
-            fontSize: '14px', color: '#666666', fontStyle: 'bold'
+            fontSize: '14px', color: '#666666', fontStyle: 'bold', padding: textPad
           }).setOrigin(0.5);
 
           btnGroup.add([btnBg, btnText]);

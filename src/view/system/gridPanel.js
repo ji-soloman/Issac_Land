@@ -65,16 +65,16 @@ export class GridPanel {
     bgMaskShape.fillRect(this.panelStartX, 0, this.panelWidth, this.panelHeight);
     const bgMask = bgMaskShape.createGeometryMask();
     terrainBg.setMask(bgMask);
-    
+
     this.container.add(terrainBg);
 
     // ====== 背景矩形 ======
     const bg = this.scene.add.rectangle(this.panelStartX, 0, this.panelWidth, this.panelHeight, 0xf4f0e6, 0.9);
     bg.setOrigin(0, 0);
-    bg.setInteractive(); 
+    bg.setInteractive();
 
     bg.on('wheel', (pointer, dx, dy, dz, event) => {
-        this.scrollContent(dy);
+      this.scrollContent(dy);
     });
     this.container.add(bg);
 
@@ -84,6 +84,7 @@ export class GridPanel {
       fontSize: '32px',
       color: '#2c3e50',
       fontStyle: 'bold',
+      padding: { top: 5 },
       shadow: { offsetX: 1, offsetY: 1, color: '#ffffff', fill: true }
     }).setOrigin(0.5, 0);
     this.container.add(titleText);
@@ -98,6 +99,7 @@ export class GridPanel {
       fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold',
+      padding: { top: 5 },
     }).setOrigin(0.5);
 
     this.container.add([closeBg, closeText]);
@@ -122,7 +124,7 @@ export class GridPanel {
     // ====== 滚动内容区域 ======
     this.contentStartY = this.tabsStartY + 50;
     this.contentHeightArea = this.panelHeight - this.contentStartY;
-    
+
     this.contentContainer = this.scene.add.container(0, 0);
     this.container.add(this.contentContainer);
 
@@ -135,17 +137,18 @@ export class GridPanel {
     // ====== Tooltip 悬浮窗 ======
     // 背景透明度修改为 0.8
     this.ttBg = this.scene.add.rectangle(0, 0, 100, 30, 0xffffff, 0.8);
-    this.ttBg.setStrokeStyle(2, 0x1976D2); 
+    this.ttBg.setStrokeStyle(2, 0x1976D2);
     this.ttText = this.scene.add.text(0, 0, '', {
-        fontSize: '14px',
-        color: '#1976D2', 
-        fontStyle: 'bold',
-        align: 'left', // 左对齐以便加成列表显示美观
-        lineSpacing: 4
+      fontSize: '14px',
+      color: '#1976D2',
+      fontStyle: 'bold',
+      align: 'left', // 左对齐以便加成列表显示美观
+      lineSpacing: 4,
+      padding: { top: 5 },
     }).setOrigin(0.5);
-    
+
     this.tooltipContainer = this.scene.add.container(0, 0, [this.ttBg, this.ttText]);
-    this.tooltipContainer.setDepth(2000); 
+    this.tooltipContainer.setDepth(2000);
     this.tooltipContainer.setVisible(false);
     this.container.add(this.tooltipContainer);
 
@@ -171,7 +174,7 @@ export class GridPanel {
 
     tabNames.forEach((tab, index) => {
       const tabX = startX + index * tabWidth + tabWidth / 2;
-      
+
       const bg = this.scene.add.rectangle(tabX, this.tabsStartY, tabWidth - 5, tabHeight, 0xbdc3c7, 1);
       bg.setInteractive({ useHandCursor: true });
       bg.setStrokeStyle(2, 0x95a5a6);
@@ -179,7 +182,8 @@ export class GridPanel {
       const text = this.scene.add.text(tabX, this.tabsStartY, tab.name, {
         fontSize: '18px',
         color: '#333333',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        padding: { top: 5 },
       }).setOrigin(0.5);
 
       bg.on('pointerdown', () => {
@@ -194,8 +198,8 @@ export class GridPanel {
 
   switchTab(tabId) {
     this.currentTab = tabId;
-    this.contentContainer.y = 0; 
-    this.tooltipContainer.setVisible(false); 
+    this.contentContainer.y = 0;
+    this.tooltipContainer.setVisible(false);
 
     Object.keys(this.tabButtons).forEach(key => {
       const btn = this.tabButtons[key];
@@ -223,7 +227,7 @@ export class GridPanel {
   }
 
   renderBuildTab() {
-    let currentY = this.contentStartY + 20; 
+    let currentY = this.contentStartY + 20;
     const centerX = this.panelStartX + this.panelWidth / 2;
     const btnWidth = this.panelWidth * 0.8;
     const btnHeight = 45;
@@ -278,10 +282,10 @@ export class GridPanel {
         currentY += 40;
       });
     }
-    
+
     if (this.gridData.createBuilding) {
-       this.createListItem(get.translation(this.gridData.createBuilding.targetBuilding), this.gridData.createBuilding.num, currentY);
-       currentY += 40;
+      this.createListItem(get.translation(this.gridData.createBuilding.targetBuilding), this.gridData.createBuilding.num, currentY);
+      currentY += 40;
     }
 
     this.contentMaxHeight = currentY - this.contentStartY + 20;
@@ -305,16 +309,16 @@ export class GridPanel {
     const centerX = this.panelStartX + this.panelWidth / 2;
 
     if (this.gridData.products && this.gridData.products.length > 0) {
-        this.gridData.products.forEach(pId => {
-            this.createListItem(get.translation(pId), null, currentY);
-            currentY += 40;
-        });
-    } else {
-        const text = this.scene.add.text(centerX, currentY, get.translation('none'), {
-            fontSize: '18px', color: '#666666'
-        }).setOrigin(0.5);
-        this.contentContainer.add(text);
+      this.gridData.products.forEach(pId => {
+        this.createListItem(get.translation(pId), null, currentY);
         currentY += 40;
+      });
+    } else {
+      const text = this.scene.add.text(centerX, currentY, get.translation('none'), {
+        fontSize: '18px', color: '#666666', padding: { top: 5 },
+      }).setOrigin(0.5);
+      this.contentContainer.add(text);
+      currentY += 40;
     }
     this.contentMaxHeight = currentY - this.contentStartY + 20;
   }
@@ -325,6 +329,7 @@ export class GridPanel {
       fontSize: '20px',
       color: '#ffffff',
       fontStyle: 'bold',
+      padding: { top: 5 },
       shadow: { offsetX: 1, offsetY: 1, color: '#000', fill: true }
     }).setOrigin(0.5);
 
@@ -362,15 +367,15 @@ export class GridPanel {
 
     // 右侧贴边保护
     if (targetX + tw / 2 > this.rightX) {
-        targetX = this.rightX - tw / 2 - 5;
+      targetX = this.rightX - tw / 2 - 5;
     }
     // 左侧边界保护
     if (targetX - tw / 2 < 0) {
-        targetX = tw / 2 + 5;
+      targetX = tw / 2 + 5;
     }
     // 上方空间不够放则展示在下方
     if (targetY - th / 2 < 0) {
-        targetY = targetCenterY + objHeight / 2 + th / 2 + 5;
+      targetY = targetCenterY + objHeight / 2 + th / 2 + 5;
     }
 
     this.tooltipContainer.setPosition(targetX, targetY);
@@ -387,64 +392,64 @@ export class GridPanel {
     bg.setStrokeStyle(borderColor ? 2 : 1, borderColor || 0xcccccc);
 
     const nameText = this.scene.add.text(leftX + 10, y, nameStr, {
-      fontSize: '18px', color: '#333333', fontStyle: 'bold'
+      fontSize: '18px', color: '#333333', fontStyle: 'bold', padding: { top: 5 },
     }).setOrigin(0, 0.5);
 
     this.contentContainer.add([bg, nameText]);
 
     // ====== 区域文字悬浮窗逻辑 ======
     if (tooltipData) {
-        nameText.setInteractive({ useHandCursor: true });
-        
-        nameText.on('pointerover', () => {
-            let ttStr = `${tooltipData.name}\n`;
-            if (tooltipData.special_info) {
-                ttStr += `${tooltipData.special_info}\n`;
-            }
-            if (tooltipData.effect_info) {
-                ttStr += `加成：\n`;
-                // 支持全角冒号及半角冒号切分
-                const effects = tooltipData.effect_info.split(/；|;/);
-                effects.forEach(eff => {
-                    if(eff.trim() !== '') {
-                        ttStr += `· ${eff.trim()}\n`;
-                    }
-                });
-            }
-            
-            // 计算全局绝对坐标 (此时 nameText 的 x 是绝对横坐标)
-            const globalX = nameText.x + nameText.width / 2;
-            const globalY = y + this.contentContainer.y;
-            
-            this.showTooltip(ttStr.trim(), globalX, globalY, nameText.width, nameText.height);
-        });
+      nameText.setInteractive({ useHandCursor: true });
 
-        nameText.on('pointerout', () => {
-            this.tooltipContainer.setVisible(false);
-        });
+      nameText.on('pointerover', () => {
+        let ttStr = `${tooltipData.name}\n`;
+        if (tooltipData.special_info) {
+          ttStr += `${tooltipData.special_info}\n`;
+        }
+        if (tooltipData.effect_info) {
+          ttStr += `加成：\n`;
+          // 支持全角冒号及半角冒号切分
+          const effects = tooltipData.effect_info.split(/；|;/);
+          effects.forEach(eff => {
+            if (eff.trim() !== '') {
+              ttStr += `· ${eff.trim()}\n`;
+            }
+          });
+        }
+
+        // 计算全局绝对坐标 (此时 nameText 的 x 是绝对横坐标)
+        const globalX = nameText.x + nameText.width / 2;
+        const globalY = y + this.contentContainer.y;
+
+        this.showTooltip(ttStr.trim(), globalX, globalY, nameText.width, nameText.height);
+      });
+
+      nameText.on('pointerout', () => {
+        this.tooltipContainer.setVisible(false);
+      });
     }
 
     // ====== 倒计时与沙漏悬浮窗逻辑 ======
     if (countdown !== null && countdown !== undefined) {
       const cdText = this.scene.add.text(rightX - 10, y, countdown.toString(), {
-        fontSize: '18px', color: '#d35400', fontStyle: 'bold'
+        fontSize: '18px', color: '#d35400', fontStyle: 'bold',
       }).setOrigin(1, 0.5);
 
-      const iconHeight = 24; 
+      const iconHeight = 24;
       const scale = iconHeight / 72;
-      
+
       const iconX = rightX - 10 - cdText.width - 5;
       const icon = this.scene.add.image(iconX, y, 'hourglass_icon');
       icon.setScale(scale);
       icon.setOrigin(1, 0.5);
-      
+
       icon.setInteractive({ pixelPerfect: true });
 
       icon.on('pointerover', () => {
         // iconX 也是绝对横坐标 (rightX 推导得出)
         const globalX = icon.x - (icon.width * scale) / 2;
         const globalY = y + this.contentContainer.y;
-        
+
         this.showTooltip(`剩余${countdown}回合`, globalX, globalY, icon.width * scale, icon.height * scale);
       });
 
@@ -469,7 +474,7 @@ export class GridPanel {
     if (newY > maxY) newY = maxY;
 
     this.contentContainer.y = newY;
-    
+
     // 滚动时隐藏 Tooltip 以免发生错位或脱节
     this.tooltipContainer.setVisible(false);
   }
@@ -481,7 +486,7 @@ export class GridPanel {
     this.scene.tweens.add({
       targets: this.container,
       x: 0,
-      duration: 350, 
+      duration: 350,
       ease: 'Cubic.easeOut',
       onComplete: () => {
         this.isAnimating = false;
