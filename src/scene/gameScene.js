@@ -6,6 +6,7 @@ import { TopInfoBar } from '../scene/topInfoBar.js';
 
 import { saveSystem } from '../system/saveSystem.js';
 import { TurnSystem } from '../system/turnSystem.js';
+import { game } from '../system/function.js';
 
 import { MAPS } from '../data/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
@@ -404,10 +405,14 @@ export class GameScene extends Phaser.Scene {
 
     this.events.on('build_region', (result) => {
       console.log('建造特区信息：', result);
-      // 以下内容后续打包进actionSystem.js
-      if (!this.saveData.actionList) this.saveData.actionList = {};
-      this.saveData.actionList.civil['build_region_' + result.gridId] = result;
-      saveSystem.save();
+
+      game.addAction('civil', 'build_region_' + result.gridId, result, {
+        onFail: (info) => {
+          if (info.reason === 'limit') {
+            game.showTips(this, '行动数量超过上限');
+          }
+        }
+      });
     });
 
     this.events.on('create_building_btn', (gridId) => {
