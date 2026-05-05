@@ -21,9 +21,10 @@ export const translation = {
   none: '暂无',
 
   // 左侧边栏
-  techTreeBtn: '科技树',
+  techTreeBtn: '科技',
   militaryBtn: '军事',
-  actionListBtn: '行动列表',
+  actionListBtn: '行动',
+  greatPeopleBtn: '名人',
 
   livestock_slot: '畜牧槽位',
   aquatic_slot: '水产槽位',

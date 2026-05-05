@@ -50,6 +50,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image('tech_tree_btn', 'assets/ui_button/tech_tree.png');
     this.load.image('military_btn', 'assets/ui_button/military.png');
     this.load.image('action_btn', 'assets/ui_button/action_list.png');
+    this.load.image('great_people_btn', 'assets/ui_button/great_people.png');
     this.load.image('common_btn', 'assets/ui/common_btn.png');
     this.load.image('common_btn_green', 'assets/ui/common_btn_green.png');
     this.load.image('common_btn_blue', 'assets/ui/common_btn_blue.png');

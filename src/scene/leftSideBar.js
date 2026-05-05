@@ -17,12 +17,12 @@ export class LeftSideBar {
     const barHeight = height * 0.7;
     const paddingLeft = 15;
     const buttonSpacing = 20;
-    
+
     const barX = 0;
     const barY = height * 0.15;
 
     this.container = this.scene.add.container(barX, barY);
-    this.container.setDepth(1000); 
+    this.container.setDepth(1000);
 
     const systems = [
       {
@@ -42,6 +42,12 @@ export class LeftSideBar {
         image: 'action_btn',
         textKey: 'actionListBtn',
         callback: () => { if (this.onMilitaryClick) this.onActionListClick(); }
+      },
+      {
+        key: 'great_people',
+        image: 'great_people_btn',
+        textKey: 'greatPeopleBtn',
+        callback: () => { if (this.onMilitaryClick) this.onGreatPeopleClick(); }
       }
     ];
 
@@ -50,26 +56,26 @@ export class LeftSideBar {
     systems.forEach((system) => {
       const btn = this.scene.add.image(0, 0, system.image);
 
-      const availableWidth = barWidth - paddingLeft - 10; 
+      const availableWidth = barWidth - paddingLeft - 10;
       const scale = availableWidth / btn.width;
       btn.setScale(scale);
       btn.setOrigin(0, 0);
 
       const btnHeight = btn.height * scale;
       currentY -= (btnHeight + buttonSpacing);
-      
+
       btn.setPosition(paddingLeft, currentY);
 
-      btn.setInteractive({ 
-        pixelPerfect: true, 
+      btn.setInteractive({
+        pixelPerfect: true,
         alphaTolerance: 1,
-        useHandCursor: true 
+        useHandCursor: true
       });
 
       const labelText = this.scene.add.text(
-        paddingLeft + availableWidth / 2, 
+        paddingLeft + availableWidth / 2,
         currentY + (btnHeight * 0.75),
-        get.translation(system.textKey), 
+        get.translation(system.textKey),
         {
           fontSize: '14px',
           color: '#ffffff',
@@ -98,7 +104,7 @@ export class LeftSideBar {
 
       this.container.add([btn, labelText]);
       btn.relatedText = labelText;
-      
+
       btn.customData = { availableWidth, paddingLeft, btnHeight, buttonSpacing };
     });
 
@@ -122,10 +128,10 @@ export class LeftSideBar {
         const availableWidth = barWidth - paddingLeft - 10;
         const scale = availableWidth / (obj.width);
         obj.setScale(scale);
-        
+
         const btnHeight = obj.height * scale;
         currentY -= (btnHeight + buttonSpacing);
-        
+
         obj.setPosition(paddingLeft, currentY);
 
         if (obj.relatedText) {
