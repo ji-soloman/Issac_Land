@@ -41,13 +41,13 @@ export class LeftSideBar {
         key: 'action_list',
         image: 'action_btn',
         textKey: 'actionListBtn',
-        callback: () => { if (this.onMilitaryClick) this.onActionListClick(); }
+        callback: () => { if (this.onActionListClick) this.onActionListClick(); }
       },
       {
         key: 'great_people',
         image: 'great_people_btn',
         textKey: 'greatPeopleBtn',
-        callback: () => { if (this.onMilitaryClick) this.onGreatPeopleClick(); }
+        callback: () => { if (this.onGreatPeopleClick) this.onGreatPeopleClick(); }
       }
     ];
 

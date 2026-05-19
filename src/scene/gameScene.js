@@ -21,9 +21,11 @@ import { TECH_TREE } from '../data/tech_tree.js';
 import { TechTreeSystem } from '../view/system/techTree.js';
 import { MilitarySystem } from '../view/system/military.js';
 import { ActionListSystem } from '../view/system/actionList.js';
+import { GreatPeopleSystem } from '../view/system/greatPeople.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
 import { REGION } from '../data/region.js';
 import { WONDER } from '../data/wonder.js';
+import { GREAT_PEOPLE } from '../data/great_people.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -73,6 +75,11 @@ export class GameScene extends Phaser.Scene {
     Object.entries(WONDER).forEach(([key, value]) => {
       if (value.image) {
         this.load.image(`wonder_${key}`, value.image);
+      }
+    });
+    Object.entries(GREAT_PEOPLE).forEach(([key, value]) => {
+      if (value.image) {
+        this.load.image(`great_people_${key}`, value.image);
       }
     });
   }
@@ -422,6 +429,18 @@ export class GameScene extends Phaser.Scene {
         this.openSystem('action_list');
       }
     };
+    // 名人系统
+    this.leftSideBar.onGreatPeopleClick = () => {
+      if (this.currentGridPanel) {
+        this.currentGridPanel.playExitAnimation(() => {
+          this.currentGridPanel.destroy();
+          this.currentGridPanel = null;
+          this.openSystem('great_people');
+        });
+      } else {
+        this.openSystem('great_people');
+      }
+    };
 
     this.events.on('create_region_btn', (gridId) => {
       console.log('准备在以下地块创建地形:', gridId);
@@ -587,6 +606,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'action_list':
         this.currentSystem = new ActionListSystem(this, this.saveData);
+        break;
+      case 'great_people':
+        this.currentSystem = new GreatPeopleSystem(this, this.saveData);
         break;
 
       default:
