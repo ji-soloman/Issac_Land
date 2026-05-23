@@ -264,7 +264,7 @@ export class GreatPeopleMapSystem {
     // 开发者调试工具相关的状态记录
     this.currentDebugImg = null;
     this.currentDebugData = null;
-    this.currentCoverScale = 1;
+    this.currentMapScale = 1;
 
     this.create();
   }
@@ -285,30 +285,52 @@ export class GreatPeopleMapSystem {
     this.container = this.scene.add.container(0, 0);
     this.container.setDepth(2000);
 
-    // 全屏纯黑打底遮罩
-    const fullBg = this.scene.add.rectangle(0, 0, width, height, 0x000000, 1);
+    // 全屏黑色半透明打底遮罩 (覆盖 16:9 以外空出的区域)
+    const fullBg = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.85);
     fullBg.setOrigin(0, 0);
     this.preventEventPenetration(fullBg);
     this.container.add(fullBg);
 
-    // 1. 渲染大地图，并应用 background-size: cover 逻辑
+    // 1. 渲染大地图，强制 16:9 并在屏幕居中 (类似 contain 逻辑)
     const bgKey = `map_bg_${this.mapId}`;
     const mapImg = this.scene.add.image(width / 2, height / 2, bgKey);
 
-    // 获取原图大小以计算比例
+    const targetRatio = 16 / 9;
+    const screenRatio = width / height;
+
+    let mapDisplayWidth, mapDisplayHeight;
+
+    if (screenRatio > targetRatio) {
+      // 屏幕比 16:9 更宽，以高度为基准铺满，左右留黑边
+      mapDisplayHeight = height;
+      mapDisplayWidth = height * targetRatio;
+    } else {
+      // 屏幕比 16:9 更高，以宽度为基准铺满，上下留黑边
+      mapDisplayWidth = width;
+      mapDisplayHeight = width / targetRatio;
+    }
+
+    // 计算 16:9 区域的左上角起点 (用于坐标换算)
+    const mapStartX = (width - mapDisplayWidth) / 2;
+    const mapStartY = (height - mapDisplayHeight) / 2;
+
+    // 存入实例供事件坐标计算和拖拽工具使用
+    this.mapStartX = mapStartX;
+    this.mapStartY = mapStartY;
+    this.mapDisplayWidth = mapDisplayWidth;
+    this.mapDisplayHeight = mapDisplayHeight;
+
+    // 强制设定地图为 16:9 显示尺寸
+    mapImg.setDisplaySize(mapDisplayWidth, mapDisplayHeight);
+
+    // 获取原图实际大小以计算事件图片的基础缩放比例
     const imgW = mapImg.width || 1;
-    const imgH = mapImg.height || 1;
+    const mapScale = mapDisplayWidth / imgW;
+    this.currentMapScale = mapScale;
 
-    const scaleX = width / imgW;
-    const scaleY = height / imgH;
-
-    // 取宽高中最大的那个进行等比缩放 (实现 cover 效果)
-    const coverScale = Math.max(scaleX, scaleY);
-    this.currentCoverScale = coverScale; // 存入实例供调试工具使用
-    mapImg.setScale(coverScale);
     this.container.add(mapImg);
 
-    // --- 新增：在正上方加上 map.name ---
+    // --- 在屏幕正上方加上 map.name ---
     if (this.mapData.name) {
       const mapTitleText = this.scene.add.text(width / 2, 50, this.mapData.name, {
         fontSize: '48px', color: '#ffffff', fontStyle: 'bold',
@@ -321,16 +343,16 @@ export class GreatPeopleMapSystem {
     // 创建开发者调试UI (默认隐藏)
     this.createDebugPanel();
 
-    // 2. 根据记录的地图缩放比例渲染事件图片
+    // 2. 根据记录的 16:9 地图边界渲染事件图片
     if (this.mapData.events) {
       for (const [evtKey, evtData] of Object.entries(this.mapData.events)) {
         if (!evtData.image || !evtData.location) continue; // 如果没有图片或坐标数据则跳过
 
         const loc = evtData.location;
 
-        // 公式：页面宽度 * 百分比x[0] + 偏移量x[1]
-        const posX = width * (loc.x[0] || 0) + (loc.x[1] || 0);
-        const posY = height * (loc.y[0] || 0) + (loc.y[1] || 0);
+        // 公式：16:9区域左上角起点 + 区域宽高 * 百分比 + 偏移量
+        const posX = mapStartX + mapDisplayWidth * (loc.x[0] || 0) + (loc.x[1] || 0);
+        const posY = mapStartY + mapDisplayHeight * (loc.y[0] || 0) + (loc.y[1] || 0);
 
         const eventImgKey = `map_event_${this.mapId}_${evtKey}`;
         const eventImg = this.scene.add.image(posX, posY, eventImgKey);
@@ -340,14 +362,44 @@ export class GreatPeopleMapSystem {
         if (loc.x[1] === undefined) loc.x[1] = 0;
         if (loc.y[1] === undefined) loc.y[1] = 0;
 
-        // 实际缩放比例 = 之前记录的地图缩放比例 * 自身配置的scale
-        const finalScale = coverScale * loc.scale;
+        // 实际缩放比例 = 地图基础缩放比例 * 自身配置的scale
+        const finalScale = mapScale * loc.scale;
         eventImg.setScale(finalScale);
 
         // --- 开发/正式 切换区 --- 
-        // 开启了 draggable: true 支持拖拽
-        eventImg.setInteractive({ useHandCursor: true, draggable: true });
+        // 开启了 draggable: true 支持拖拽，增加 pixelPerfect 开启像素级点击检测（忽略全透明区域）
+        eventImg.setInteractive({
+          useHandCursor: true,
+          draggable: true,
+          pixelPerfect: true
+        });
         this.preventEventPenetration(eventImg);
+
+        let highlightFx = null;
+        if (eventImg.preFX) {
+          // 参数：color(白色), outerStrength(粗细), innerStrength, knockout
+          highlightFx = eventImg.preFX.addGlow(0xffffff, 4, 0, false);
+          highlightFx.setActive(false); // 默认关闭高光
+        }
+
+        eventImg.on('pointerover', (p, lx, ly, e) => {
+          if (e) e.stopPropagation();
+          if (highlightFx) {
+            highlightFx.setActive(true);
+          } else {
+            // 如果遇到旧版本 Phaser 或不支持 preFX，降级为图片变暗
+            eventImg.setTint(0xcccccc);
+          }
+        });
+
+        eventImg.on('pointerout', (p, e) => {
+          if (e) e.stopPropagation();
+          if (highlightFx) {
+            highlightFx.setActive(false);
+          } else {
+            eventImg.clearTint();
+          }
+        });
 
         // 点击事件：当前为触发调试小窗。正式版将这部分注释掉，解开下方的 function 触发
         eventImg.on('pointerdown', (p, lx, ly, e) => {
@@ -367,15 +419,15 @@ export class GreatPeopleMapSystem {
           eventImg.x = dragX;
           eventImg.y = dragY;
 
-          // 重新计算百分比（精确到两位小数）并反向推算产生的小幅像素偏差，保证强适配性
-          const newPercentX = Math.round((dragX / width) * 100) / 100;
-          const newPercentY = Math.round((dragY / height) * 100) / 100;
+          // 根据 16:9 区域边界重新计算百分比（精确到两位小数）并反推小幅像素偏差
+          const newPercentX = Math.round(((dragX - mapStartX) / mapDisplayWidth) * 100) / 100;
+          const newPercentY = Math.round(((dragY - mapStartY) / mapDisplayHeight) * 100) / 100;
 
           loc.x[0] = newPercentX;
-          loc.x[1] = Math.round(dragX - width * newPercentX);
+          loc.x[1] = Math.round(dragX - (mapStartX + mapDisplayWidth * newPercentX));
 
           loc.y[0] = newPercentY;
-          loc.y[1] = Math.round(dragY - height * newPercentY);
+          loc.y[1] = Math.round(dragY - (mapStartY + mapDisplayHeight * newPercentY));
 
           // 如果调试面板刚好打开了这个对象，实时刷新参数
           if (this.currentDebugImg === eventImg) {
@@ -464,7 +516,7 @@ export class GreatPeopleMapSystem {
     // 解决浮点数精度问题，如 1.01000000001
     loc.scale = Math.round(loc.scale * 100) / 100;
 
-    const finalScale = this.currentCoverScale * loc.scale;
+    const finalScale = this.currentMapScale * loc.scale;
     this.currentDebugImg.setScale(finalScale);
     this.updateDebugText();
   }

@@ -86,8 +86,10 @@ export class SaveSelectScene extends Phaser.Scene {
       padding: { top: 10 },
     }).setOrigin(0);
 
+    let eraName = save.era;
+    if (ERA[save.era]?.name) eraName = ERA[save.era].name;
     const infoText = this.add.text(-width / 2 + 20, -height / 2 + 80,
-      `${ERA[save.era].name} · 第${save.turn}回合`, {
+      `${eraName} · 第${save.turn}回合`, {
       fontSize: '16px',
       color: '#aaaaaa',
       padding: { top: 10 },
