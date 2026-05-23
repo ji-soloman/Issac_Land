@@ -64,7 +64,18 @@ export class SaveSelectScene extends Phaser.Scene {
   /**
    * 创建存档卡片
    */
+  /**
+   * 创建存档卡片
+   */
   createSaveCard(x, y, width, height, save) {
+    // 检查 era 是否包含中文，如果包含则直接删除这个存档
+    if (/[\u4e00-\u9fa5]/.test(save.era)) {
+      saveSystem.deleteSave(save.id).then(() => {
+        this.scene.restart();
+      });
+      return this.add.container(x, y); // 返回空容器占位，等待场景重启
+    }
+
     const container = this.add.container(x, y);
 
     // 背景
