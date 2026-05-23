@@ -344,7 +344,7 @@ export const REGION = {
     category: {
       farm: true,
     },
-    round: 5,
+    round: 4,
     color: 'special',
   },
   pillage_altar: {
@@ -406,7 +406,7 @@ export const REGION = {
     name: '山壁营地',
     terrainInfo: '山脉，丘陵',
     effect_info: '每回合矿石+2，魔石+1，若在山脉矿石额外+1；住房+2，矿物槽位+2',
-    special_info: '矮人专属的矿场特区',
+    special_info: '矮人专属的矿场',
     effect: {
       normal: {
         housing: 2,
@@ -464,7 +464,7 @@ export const REGION = {
     name: '亡灵塔',
     terrainInfo: '任意非水体',
     effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1',
-    special_info: '亡灵专属的学院',
+    special_info: '亡灵专属的学院特区',
     effect: {
       normal: {
         housing: 2,
@@ -518,7 +518,7 @@ export const REGION = {
     name: '悟道台',
     terrainInfo: '任意非水体',
     effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1，科技槽位+1',
-    special_info: '复苏古人专属的学院',
+    special_info: '复苏古人专属的学院特区',
     effect: {
       normal: {
         housing: 2,
@@ -546,7 +546,7 @@ export const REGION = {
     name: '尸解飞升坛',
     terrainInfo: '任意地上地形',
     effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1，科技槽位+1',
-    special_info: '虚海渡人专属的学院',
+    special_info: '虚海渡人专属的学院特区',
     effect: {
       normal: {
         housing: 2,
