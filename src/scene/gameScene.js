@@ -125,6 +125,10 @@ export class GameScene extends Phaser.Scene {
 
       // *注4：【这里结算完后要把回合资源收入清空！！！】
 
+      // ↓ 这里重新初始化新的回合收入
+      const keys = ['culture', 'food', 'magic', 'mine', 'wealth'];
+      const total = Object.fromEntries(keys.map(k => [k, 0]));
+
       //2.结算当前回合行动事件
       for (const [actionType, params] of Object.entries(result)) {
         switch (actionType) {
@@ -154,6 +158,14 @@ export class GameScene extends Phaser.Scene {
                   num: REGION[param.regionKey].round,
                 }
               }
+              else if (actionCivil.startsWith('get_resource_')) {
+                if (data.military[param.soldier]) {
+                  delete data.military[param.soldier].currentStatus;
+                }
+                if (param.resource && !isNaN(total[param.resource])) {
+                  data.resource[param.resource] += param.resultNum;
+                }
+              }
               // 【科技】直接在科技系统里单独挂载事件
             }
             break;
@@ -175,46 +187,56 @@ export class GameScene extends Phaser.Scene {
       // ToDo:
       // 4.计算目前收益给下回合加
       // *注：每个地块依次结算，增加和减少，然后全部挂进回合收入里，然后给下回合去结算（包括人头税）
-      const keys = ['culture', 'food', 'magic', 'mine', 'wealth'];
-      const total = {};
-      for (const k of keys) total[k] = 0;
       const grids = data.map.grids;
-      for (const key in grids) {
-        const g = grids[key];
-        const region = g.region;
+
+      for (const grid of Object.values(grids)) {
+        const region = grid.region;
         if (!region) continue;
+
         const effect = REGION?.[region]?.effect?.turn;
         if (!effect) continue;
-        for (const res in effect) {
-          if (total[res] !== undefined) {
-            total[res] += effect[res];
-          }
+
+        for (const [res, value] of Object.entries(effect)) {
+          if (!(res in total)) continue;
+
+          const result =
+            typeof value === 'function'
+              ? value({ grid })
+              : value;
+
+          if (typeof result !== 'number' || Number.isNaN(result)) continue;
+
+          total[res] += result;
         }
       }
-      if (!data.resource) data.resource = {};
+
+      data.resource ??= {};
+
       for (const k of keys) {
-        data.resource[k + '_income'] = total[k];
+        data.resource[`${k}_income`] = total[k];
       }
 
       // *注：↓【BUFF类】的倒计时放在最后，避免太早有buff影响当前回合资源计算（比如：消耗文化换取额外行动的政策，这回合解锁的话应该下回合才开始扣资源，因为这回合拿不到额外的行动）
 
       // 5.【科技结算】
-      const techFinished = [];
+      if (data.tech_tree) {
+        const techFinished = [];
 
-      for (const [techId, turns] of Object.entries(data.tech_tree.researching)) {
-        const newTurns = turns - 1;
+        for (const [techId, turns] of Object.entries(data.tech_tree.researching)) {
+          const newTurns = turns - 1;
 
-        if (newTurns <= 0) {
-          techFinished.push(techId);
-        } else {
-          data.tech_tree.researching[techId] = newTurns;
+          if (newTurns <= 0) {
+            techFinished.push(techId);
+          } else {
+            data.tech_tree.researching[techId] = newTurns;
+          }
         }
+        // 结束研究的统一最后删
+        techFinished.forEach(techId => {
+          delete data.tech_tree.researching[techId];
+          data.tech_tree.unlocked[techId] = true;
+        });
       }
-      // 结束研究的统一最后删
-      techFinished.forEach(techId => {
-        delete data.tech_tree.researching[techId];
-        data.tech_tree.unlocked[techId] = true;
-      });
 
       // ToDo:
       // 6.政策结算（暂时没做这个系统，以后再说，但是结算顺序是这个）
@@ -234,7 +256,7 @@ export class GameScene extends Phaser.Scene {
       if (this.topInfoBar) {
         this.topInfoBar.refresh();
       }
-    })
+    });
 
   }
 

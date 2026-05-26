@@ -253,14 +253,14 @@ export const REGION = {
   },
   academy: {
     name: '学院特区',
-    effect_info: '每回合文化+3；加工品槽位+1；开启学派',
+    effect_info: '每回合文化+4；加工品槽位+1；开启学派',
     requireInfo: '解锁科技【著作】',
     effect: {
       normal: {
         processedItem_slot: 1,
       },
       turn: {
-        culture: 3,
+        culture: 4,
       }
     },
     canBuild({ tech }) {
@@ -377,7 +377,7 @@ export const REGION = {
   star_grove: {
     name: '星语林地',
     terrainInfo: '丘陵，森林',
-    effect_info: '每回合食物+1，文化+2，若在森林文化额外+1；住房+2，奇物槽位+2',
+    effect_info: '每回合食物+1，文化+3，若在森林文化额外+2；住房+2，奇物槽位+2',
     special_info: '精灵专属的学院特区',
     effect: {
       normal: {
@@ -386,7 +386,7 @@ export const REGION = {
       turn: {
         food: 1,
         culture({ grid }) {
-          return 2 + grid.terrain == 'forest' ? 1 : 0;
+          return 3 + (grid.terrain == 'forest' ? 2 : 0);
         }
       }
     },
@@ -414,7 +414,7 @@ export const REGION = {
       },
       turn: {
         mine({ grid }) {
-          return 2 + grid.terrain == 'mountain' ? 1 : 0;
+          return 2 + (grid.terrain == 'mountain' ? 1 : 0);
         },
         magic: 1,
         culture: 1,
@@ -424,7 +424,7 @@ export const REGION = {
       return ['hills', 'mountain'].includes(grid.terrain);
     },
     special({ race }) {
-      return race == 'elf';
+      return race == 'dwarf';
     },
     category: {
       mine: true,
@@ -463,7 +463,7 @@ export const REGION = {
   necropolis_academy: {
     name: '亡灵塔',
     terrainInfo: '任意非水体',
-    effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1',
+    effect_info: '每回合食物+2，文化+4；住房+2，通用槽位+1',
     special_info: '亡灵专属的学院特区',
     effect: {
       normal: {
@@ -472,7 +472,7 @@ export const REGION = {
       },
       turn: {
         food: 2,
-        culture: 1,
+        culture: 3,
       }
     },
     canBuild({ grid }) {
@@ -517,7 +517,7 @@ export const REGION = {
   dao_academy: {
     name: '悟道台',
     terrainInfo: '任意非水体',
-    effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1，科技槽位+1',
+    effect_info: '每回合矿石+1，文化+3；住房+2，通用槽位+1，科技槽位+1',
     special_info: '复苏古人专属的学院特区',
     effect: {
       normal: {
@@ -526,8 +526,8 @@ export const REGION = {
         tech_research_slot: 1,
       },
       turn: {
-        food: 2,
-        culture: 1,
+        mine: 1,
+        culture: 3,
       }
     },
     canBuild({ grid }) {
@@ -545,7 +545,7 @@ export const REGION = {
   aorpse_ascension_altar: {
     name: '尸解飞升坛',
     terrainInfo: '任意地上地形',
-    effect_info: '每回合食物+1，文化+1；住房+2，通用槽位+1，科技槽位+1',
+    effect_info: '每回合食物+1，文化+3；住房+2，通用槽位+1，科技槽位+1',
     special_info: '虚海渡人专属的学院特区',
     effect: {
       normal: {
@@ -554,8 +554,8 @@ export const REGION = {
         technology_slot: 1,
       },
       turn: {
-        food: 2,
-        culture: 1,
+        food: 1,
+        culture: 3,
       }
     },
     canBuild({ grid }) {

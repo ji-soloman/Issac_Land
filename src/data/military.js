@@ -26,6 +26,11 @@ export const MILITARY = {
     filter: () => false,
     militaryRequired: true,
   },
+  get_resource: {
+    name: '征集物产',
+    intro: 'XX开始向民众征集XX',
+    filter: () => true,
+  },
   perform_mission: {
     name: '执行任务',
   },

@@ -33,7 +33,7 @@ export class TurnSystem {
 
       // 示例逻辑
       if (actionType === 'explore_terrain') {
-        const soldierId = params.soldier;
+        let soldierId = params.soldier;
         console.log('正在结算', soldierId, '的行为', actionType);
 
         const currentGrids = this.saveData.map.grids;
@@ -107,6 +107,20 @@ export class TurnSystem {
       if (actionType.startsWith('build_region')) {
         result.civil[actionType] = params;
       }
+      else if (actionType.startsWith('get_resource_')) {
+        let soldierId = params.soldier;
+        console.log('正在结算', soldierId, '的行为get resource');
+
+        let num = Phaser.Math.Between(3, 6);
+
+        // 赋值给 result 对象
+        result.civil[actionType] = {
+          soldier: params.soldier,
+          resultNum: num,
+          resource: params.resource,
+        };
+      }
+      console.log('文化结算',result.civil);
     });
 
     // 3. 处理Others

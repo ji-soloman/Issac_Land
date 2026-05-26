@@ -4,6 +4,7 @@ import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { ERA } from '../../data/era.js';
 import { REGION } from '../../data/region.js';
+import { get } from '../../system/i18n.js';
 
 export class ActionListSystem {
   constructor(scene, saveData) {
@@ -469,6 +470,30 @@ export class ActionListSystem {
     }
     else if (markedIntro.startsWith('research_tech_')) {
       markedIntro = '启发了科技【' + actionData.name + '】';
+    }
+    else if (key.startsWith('get_resource_')) {
+      let intro = MILITARY['get_resource']?.intro || key;
+      let replacements = [];
+
+      if (actionData.soldier) {
+        let detail = this.saveData.military[actionData.soldier];
+        let unitName =
+          MILITARY_UNIT[detail?.name]?.name ||
+          detail?.name ||
+          actionData.soldier;
+
+        replacements.push(unitName);
+      }
+      else {
+        replacements.push('');
+      }
+
+      replacements.push(get.translation(actionData.resource));
+      markedIntro=intro;
+
+      replacements.forEach(val => {
+        markedIntro = markedIntro.replace('XX', `{{${val}}}`);
+      });
     }
 
     // UI 背景绘制
