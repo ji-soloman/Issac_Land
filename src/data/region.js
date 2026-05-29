@@ -269,7 +269,7 @@ export const REGION = {
     category: {
       academy: true,
     },
-    round: 2,
+    round: 3,
     color: 'academy',
   },
   holy: {

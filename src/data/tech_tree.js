@@ -38,7 +38,7 @@ export const TECH_TREE = {
   },
   construction_2: {
     name: '制陶业',
-    info: '解锁奇观【金字塔】',
+    info: '解锁奇观【金字塔】\n解锁建筑【粮仓】',
     location: [1, 3],
     cost: {},
     requires: ['construction_1'],
@@ -49,7 +49,7 @@ export const TECH_TREE = {
   },
   leadership_2: {
     name: '军事化',
-    info: '解锁区域【军事特区】',
+    info: '解锁区域【军事特区】\n解锁建筑【兵营】',
     location: [1, 5],
     cost: {},
     requires: [],
@@ -163,6 +163,7 @@ export const TECH_TREE = {
   },
   country_1: {
     name: '早期帝国',
+    info: '解锁建筑【广场】',
     location: [4, 5],
     cost: {},
     requires: [],
@@ -225,7 +226,7 @@ export const TECH_TREE = {
   },
   literature_1: {
     name: '著作',
-    info: '解锁区域【学院特区】',
+    info: '解锁区域【学院特区】\n解锁建筑【图书馆】',
     location: [7, 4],
     cost: {},
     requires: [],

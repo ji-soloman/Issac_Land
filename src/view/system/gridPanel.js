@@ -69,7 +69,14 @@ export class GridPanel {
     this.container.add(terrainBg);
 
     // ====== 背景矩形 ======
-    const bg = this.scene.add.rectangle(this.panelStartX, 0, this.panelWidth, this.panelHeight, 0xf4f0e6, 0.9);
+    let bgOpacity = 0.9;
+    if (this.data && this.data.settings && typeof this.data.settings.grid_opacity === 'number') {
+      const op = this.data.settings.grid_opacity;
+      if (op > 0 && op < 1) {
+        bgOpacity = op;
+      }
+    }
+    const bg = this.scene.add.rectangle(this.panelStartX, 0, this.panelWidth, this.panelHeight, 0xf4f0e6, bgOpacity);
     bg.setOrigin(0, 0);
     bg.setInteractive();
 
@@ -79,7 +86,7 @@ export class GridPanel {
     this.container.add(bg);
 
     // ====== 标题 ======
-    const titleY = 30;
+    const titleY = 25;
     const titleText = this.scene.add.text(this.panelStartX + this.panelWidth / 2, titleY, this.getGridName(this.gridId, this.data), {
       fontSize: '32px',
       color: '#2c3e50',
@@ -88,6 +95,22 @@ export class GridPanel {
       shadow: { offsetX: 1, offsetY: 1, color: '#ffffff', fill: true }
     }).setOrigin(0.5, 0);
     this.container.add(titleText);
+
+    // ====== 地形文字 ======
+    let terrainName = '';
+    if (this.terrainInfo && this.terrainInfo.type && terrain && terrain[this.terrainInfo.type]) {
+      const tInfo = terrain[this.terrainInfo.type];
+      terrainName = tInfo.name ? tInfo.name : (typeof tInfo === 'string' ? tInfo : '');
+    }
+    const terrainY = titleY + 45; // 放在区名下方，给区名留出足够空间
+    const terrainText = this.scene.add.text(this.panelStartX + this.panelWidth / 2, terrainY, terrainName, {
+      fontSize: '18px',
+      color: '#555555',
+      fontStyle: 'bold',
+      padding: { top: 5 },
+      shadow: { offsetX: 1, offsetY: 1, color: '#ffffff', fill: true }
+    }).setOrigin(0.5, 0);
+    this.container.add(terrainText);
 
     // ====== 关闭按钮 ======
     const closeBtnX = this.rightX - 25;
@@ -118,11 +141,11 @@ export class GridPanel {
     });
 
     // ====== 顶部标签页 ======
-    this.tabsStartY = titleY + 60;
+    this.tabsStartY = terrainY + 50; // 向下平移，完全避开上方地形文字的范围
     this.createTabs();
 
     // ====== 滚动内容区域 ======
-    this.contentStartY = this.tabsStartY + 50;
+    this.contentStartY = this.tabsStartY + 35; // 避开标签按钮的下边缘
     this.contentHeightArea = this.panelHeight - this.contentStartY;
 
     this.contentContainer = this.scene.add.container(0, 0);
@@ -265,6 +288,12 @@ export class GridPanel {
       const rObj = REGION[rId];
       const bColor = colorMap[rObj.color];
       this.createListItem(rObj.name, this.gridData.createRegion.num, currentY, bColor, rObj);
+      currentY += 40;
+    } else if (this.data.actionList && this.data.actionList.civil && this.data.actionList.civil['build_region_' + this.gridId] && this.data.actionList.civil['build_region_' + this.gridId].regionKey) {
+      const rId = this.data.actionList.civil['build_region_' + this.gridId].regionKey;
+      const rObj = REGION[rId];
+      const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
+      this.createListItem(rObj ? rObj.name : rId, 'pending', currentY, bColor, rObj);
       currentY += 40;
     }
 
@@ -431,14 +460,17 @@ export class GridPanel {
 
     // ====== 倒计时与沙漏悬浮窗逻辑 ======
     if (countdown !== null && countdown !== undefined) {
-      const cdText = this.scene.add.text(rightX - 10, y, countdown.toString(), {
+      const isPending = (countdown === 'pending');
+      const cdTextStr = isPending ? '' : countdown.toString();
+
+      const cdText = this.scene.add.text(rightX - 10, y, cdTextStr, {
         fontSize: '18px', color: '#d35400', fontStyle: 'bold',
       }).setOrigin(1, 0.5);
 
       const iconHeight = 24;
       const scale = iconHeight / 72;
 
-      const iconX = rightX - 10 - cdText.width - 5;
+      const iconX = rightX - 10 - (isPending ? 0 : cdText.width + 5);
       const icon = this.scene.add.image(iconX, y, 'hourglass_icon');
       icon.setScale(scale);
       icon.setOrigin(1, 0.5);
@@ -450,7 +482,8 @@ export class GridPanel {
         const globalX = icon.x - (icon.width * scale) / 2;
         const globalY = y + this.contentContainer.y;
 
-        this.showTooltip(`剩余${countdown}回合`, globalX, globalY, icon.width * scale, icon.height * scale);
+        const ttStr = isPending ? '准备建造中...' : `剩余${countdown}回合`;
+        this.showTooltip(ttStr, globalX, globalY, icon.width * scale, icon.height * scale);
       });
 
       icon.on('pointerout', () => {

@@ -400,7 +400,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return true;
+      return tech.leadership_2;
     },
     cost: {
       mine: 4,
@@ -435,7 +435,7 @@ export const BUILDING = {
       return category.living;
     },
     require_tech(tech) {
-      return true;
+      return tech.farming_4;
     },
     cost: {
       mine: 3,
@@ -510,7 +510,7 @@ export const BUILDING = {
       return category.mine;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 4,
@@ -528,7 +528,7 @@ export const BUILDING = {
       return category.living || category.farm;
     },
     require_tech(tech) {
-      return true;
+      return tech.construction_2;
     },
     cost: {
       mine: 4,
@@ -546,7 +546,7 @@ export const BUILDING = {
       return category.farm;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 4,
@@ -564,7 +564,7 @@ export const BUILDING = {
       return category.living || category.entertainment;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 5,
@@ -600,7 +600,7 @@ export const BUILDING = {
       return category.main || category.living;
     },
     require_tech(tech) {
-      return true;
+      return tech.country_1;
     },
     cost: {
       mine: 3,
@@ -654,7 +654,7 @@ export const BUILDING = {
       return category.holy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 10,
@@ -673,7 +673,7 @@ export const BUILDING = {
       return category.pasture || category.living;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 3,
@@ -691,7 +691,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 4,
@@ -709,7 +709,7 @@ export const BUILDING = {
       return category.holy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -727,7 +727,7 @@ export const BUILDING = {
       return category.academy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -745,7 +745,7 @@ export const BUILDING = {
       return category.holy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 10,
@@ -763,7 +763,7 @@ export const BUILDING = {
       return category.holy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 10,
@@ -781,7 +781,7 @@ export const BUILDING = {
       return category.holy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 15,
@@ -799,7 +799,7 @@ export const BUILDING = {
       return category.holy;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 10,
@@ -817,7 +817,7 @@ export const BUILDING = {
       return category.main;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -835,7 +835,7 @@ export const BUILDING = {
       return category.port;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 6,
@@ -853,7 +853,7 @@ export const BUILDING = {
       return category.port;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -871,7 +871,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 5,
@@ -889,7 +889,7 @@ export const BUILDING = {
       return category.pasture;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -907,7 +907,7 @@ export const BUILDING = {
       return category.pasture;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 5,
@@ -925,7 +925,7 @@ export const BUILDING = {
       return category.military || category.main;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 5,
@@ -943,7 +943,7 @@ export const BUILDING = {
       return category.main;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 20,
@@ -961,7 +961,7 @@ export const BUILDING = {
       return category.farm;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -979,7 +979,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -997,7 +997,7 @@ export const BUILDING = {
       return category.pasture || category.farm;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 4,
@@ -1015,7 +1015,7 @@ export const BUILDING = {
       return category.mine;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -1033,7 +1033,7 @@ export const BUILDING = {
       return category.farm;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 5,
@@ -1051,7 +1051,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 10,
@@ -1069,7 +1069,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 8,
@@ -1087,7 +1087,7 @@ export const BUILDING = {
       return category.military || category.main;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 10,
@@ -1105,7 +1105,7 @@ export const BUILDING = {
       return category.entertainment;
     },
     require_tech(tech) {
-      return true;
+      return false;
     },
     cost: {
       mine: 12,
