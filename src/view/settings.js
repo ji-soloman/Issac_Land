@@ -5,7 +5,7 @@ export class Settings {
   constructor(scene) {
     this.scene = scene;
 
-    // 配置菜单列表（目前只有"显示"）
+    // 配置菜单列表
     this.menuList = ['显示'];
     this.currentMenu = this.menuList[0];
 
@@ -38,6 +38,7 @@ export class Settings {
 
     this.container = this.scene.add.container(0, 0);
     this.container.setDepth(3000); // 设置一个较高的层级覆盖下方UI
+    this.container.setScrollFactor(0); // 确保整个设置面板固定在屏幕上，不随地图相机滚动
 
     // 全屏纯黑打底半透明遮罩
     const fullBg = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.7);
@@ -99,12 +100,14 @@ export class Settings {
 
     // 设置左侧显示遮罩 mask，超过部分将被隐藏
     const maskGraphics = this.scene.add.graphics();
+    maskGraphics.setScrollFactor(0); // 确保遮罩图形的世界坐标固定，不随大地图相机滚动而漂移
     maskGraphics.fillStyle(0xffffff);
     maskGraphics.fillRect(panelX, startContentY, leftWidth, contentHeight);
     const mask = maskGraphics.createGeometryMask();
     maskGraphics.setVisible(false);
     this.leftContainer.setMask(mask);
-    this.container.add(maskGraphics);
+    // 移除了原先的 this.container.add(maskGraphics); 
+    // 几何遮罩的 Graphics 绝不能 add 到 Container 中，否则在 WebGL 下会导致 Stencil 状态机污染导致地图变黑。
 
     // 渲染左侧按钮
     this.renderLeftMenu(leftWidth);
@@ -211,8 +214,12 @@ export class Settings {
 
     editBtnBg.on('pointerdown', (p, lx, ly, e) => {
       if (e) e.stopPropagation();
+
+      // 防止重复连续点击打开多个透明度编辑子界面
+      if (this.scene.editOpacityInstance) return;
+
       // 实例化在同文件底部定义的编辑地形透明度新界面，且不关闭当前的设置界面
-      new EditTerrainOpacity(this.scene);
+      this.scene.editOpacityInstance = new EditTerrainOpacity(this.scene);
     });
 
     editBtnBg.on('pointerover', () => editBtnBg.setFillStyle(0x666666));
@@ -230,6 +237,10 @@ export class Settings {
       alpha: 0,
       duration: 200,
       onComplete: () => {
+        // 【销毁时释放全局锁】确保下次能够正常再次打开设置
+        if (this.scene.settingsInstance === this) {
+          this.scene.settingsInstance = null;
+        }
         this.container.destroy();
       }
     });
@@ -272,6 +283,7 @@ class EditTerrainOpacity {
 
     this.container = this.scene.add.container(0, 0);
     this.container.setDepth(4000); // 确保在设置界面（3000）之上，以此不关闭之前的设置界面
+    this.container.setScrollFactor(0); // 确保编辑地形透明度面板固定在屏幕上，不随地图相机滚动
 
     // 全屏半透明黑色背景层，用来锁定下层交互
     const fullBg = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.6);
@@ -376,7 +388,7 @@ class EditTerrainOpacity {
 
     cancelBtnBg.on('pointerdown', (p, lx, ly, e) => {
       if (e) e.stopPropagation();
-      this.container.destroy(); // 直接销毁，不存储任何变动
+      this.closeAndRelease(); // 调用统一的关闭释放逻辑
     });
     cancelBtnBg.on('pointerover', () => cancelBtnBg.setFillStyle(0x555555));
     cancelBtnBg.on('pointerout', () => cancelBtnBg.setFillStyle(0x444444));
@@ -397,7 +409,7 @@ class EditTerrainOpacity {
       this.scene.saveData.settings.grid_opacity = this.currentOpacity;
       saveSystem.save().then(() => {
         console.log(`[存储完毕] 地形遮罩透明度已设为: ${this.currentOpacity}`);
-        this.container.destroy(); // 保存后正常关闭新界面
+        this.closeAndRelease();
       })
     });
     saveBtnBg.on('pointerover', () => saveBtnBg.setFillStyle(0x665544));
@@ -408,5 +420,13 @@ class EditTerrainOpacity {
     // 缓动淡入显示
     this.container.alpha = 0;
     this.scene.tweens.add({ targets: this.container, alpha: 1, duration: 150 });
+  }
+
+  // 统一负责释放实例锁并销毁容器
+  closeAndRelease() {
+    if (this.scene.editOpacityInstance === this) {
+      this.scene.editOpacityInstance = null;
+    }
+    this.container.destroy();
   }
 }
