@@ -24,8 +24,8 @@ export class TechTreeSystem {
     this.TEXT_CENTER_OFFSET = 0;
     this.initialRows = {
       farming_1: 1,
-      construction_1: 3,
-      leadership_1: 5
+      leadership_1: 3,
+      construction_1: 5
     };
 
     this.scrollX = 0;

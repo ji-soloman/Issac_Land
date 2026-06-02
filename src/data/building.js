@@ -412,7 +412,7 @@ export const BUILDING = {
   library: {
     name: '图书馆',
     effect_info: '文化+3 可以抄录卷轴 施法人口+1',
-    tech_info: '著作',
+    tech_info: '教育',
     region_info: '学院区',
     require_region(category) {
       return category.academy;
@@ -535,6 +535,29 @@ export const BUILDING = {
     },
     effect: {},
     round: 2,
+  },
+
+  nongqifang: {
+    name: '农器坊',
+    effect_info: '食物+2 矿石+2',
+    tech_info: '工具',
+    region_info: '农田',
+    require_region(category) {
+      return category.farm;
+    },
+    require_tech(tech) {
+      return tech.construction_5;
+    },
+    cost: {
+      mine: 3,
+    },
+    effect: {
+      turn: {
+        food: 2,
+        mine: 2,
+      },
+    },
+    round: 3,
   },
 
   mill: {
@@ -871,7 +894,7 @@ export const BUILDING = {
       return category.military;
     },
     require_tech(tech) {
-      return false;
+      return tech.riding_1;
     },
     cost: {
       mine: 5,
@@ -997,7 +1020,7 @@ export const BUILDING = {
       return category.pasture || category.farm;
     },
     require_tech(tech) {
-      return false;
+      return tech.construction_4;
     },
     cost: {
       mine: 4,
@@ -1015,7 +1038,7 @@ export const BUILDING = {
       return category.mine;
     },
     require_tech(tech) {
-      return false;
+      return tech.construction_4;
     },
     cost: {
       mine: 8,

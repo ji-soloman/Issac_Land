@@ -95,7 +95,7 @@ export const REGION = {
       }
     },
     canBuild({ grid, tech }) {
-      return ['hill', 'mountain'].includes(grid.terrain) && tech.construction_3;
+      return ['hills', 'mountain'].includes(grid.terrain) && tech.construction_3;
     },
     special({ race }) {
       return race != 'ancient' && race != 'voidwalker';
@@ -168,7 +168,7 @@ export const REGION = {
       }
     },
     canBuild({ grid, tech }) {
-      return ['coastal', 'neritic'].includes(grid.terrain);
+      return ['coastal', 'neritic'].includes(grid.terrain) && tech.boating_1;
     },
     category: {
       harbor: true,
@@ -254,7 +254,7 @@ export const REGION = {
   academy: {
     name: '学院特区',
     effect_info: '每回合文化+4；加工品槽位+1；开启学派',
-    requireInfo: '解锁科技【著作】',
+    requireInfo: '解锁科技【教育】',
     effect: {
       normal: {
         processedItem_slot: 1,
