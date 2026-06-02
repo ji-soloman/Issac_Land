@@ -57,6 +57,8 @@ export class GameScene extends Phaser.Scene {
     this.load.image('common_btn_green', 'assets/ui/common_btn_green.png');
     this.load.image('common_btn_blue', 'assets/ui/common_btn_blue.png');
 
+    this.load.image('settings_btn', 'assets/ui/settings_btn.png');
+
     // 加载科技图标
     this.load.image('tech_icon_default', 'assets/tech_tree/icon/default.png');
     // 沙漏图标

@@ -2,6 +2,8 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { get } from '../system/i18n.js';
 import { ERA } from '../data/era.js';
 
+import { Settings } from '../view/settings.js';
+
 export class TopInfoBar {
   constructor(scene) {
     this.scene = scene;
@@ -128,7 +130,16 @@ export class TopInfoBar {
       fontStyle: 'bold'
     }).setOrigin(1, 0.5);
 
-    this.container.add([this.eraText, this.turnValueText, this.turnLabelText]);
+    // 新增：设置按钮
+    this.settingsBtn = this.scene.add.image(0, startY, 'settings_btn').setOrigin(1, 0.5);
+    // 确保点击事件只发生在非透明部分 (pixelPerfect)
+    this.settingsBtn.setInteractive({ useHandCursor: true, pixelPerfect: true });
+    this.settingsBtn.on('pointerdown', (p, lx, ly, e) => {
+      if (e) e.stopPropagation();
+      new Settings(this.scene); // 打开设置界面
+    });
+
+    this.container.add([this.eraText, this.turnValueText, this.turnLabelText, this.settingsBtn]);
   }
 
   formatDisplayValue(val) {
@@ -185,6 +196,16 @@ export class TopInfoBar {
 
     const turnLabelRightEdge = turnValueCenter - (45 / 2) - 5;
     this.turnLabelText.setX(turnLabelRightEdge);
+
+    // 新增：计算设置按钮的位置（贴在“回合”文本的左侧）
+    const turnLabelLeftEdge = this.turnLabelText.x - this.turnLabelText.width;
+    this.settingsBtn.setX(turnLabelLeftEdge - 20); // 间隔 20px
+
+    // 新增：自动等比例缩放按钮，让其最高不要超过 30px，适配背景条的 40px 高度
+    if (this.settingsBtn.texture.key !== '__DEFAULT') {
+      const maxDim = Math.max(this.settingsBtn.width, this.settingsBtn.height) || 1;
+      this.settingsBtn.setScale(28 / maxDim);
+    }
   }
 
   updateTooltipContent(resKey, actualValue) {
