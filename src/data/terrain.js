@@ -19,8 +19,16 @@ export const terrain = {
     name: '森林',
     image: 'assets/terrain/forest.png',
   },
+  river: {
+    name: '河流',
+    image: 'assets/terrain/neritic.png',
+  },
   neritic: {
     name: '浅海',
+    image: 'assets/terrain/neritic.png',
+  },
+  ocean: {
+    name: '深海',
     image: 'assets/terrain/neritic.png',
   },
 }

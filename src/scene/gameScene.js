@@ -8,8 +8,9 @@ import { saveSystem } from '../system/saveSystem.js';
 import { TurnSystem } from '../system/turnSystem.js';
 import { game } from '../system/function.js';
 
-import { MAPS } from '../data/map.js';
+import { MAPS } from '../data/map/EWland/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
+import { InitGame } from '../view/system/initGame.js';
 import { GridPanel } from '../view/system/gridPanel.js';
 import { CreateWonder } from '../view/system/createWonder.js';
 import { CreateRegion } from '../view/system/createRegion.js';
@@ -35,7 +36,7 @@ export class GameScene extends Phaser.Scene {
   preload() {
     // 加载地图背景
     const mapType = saveSystem.currentSaveData.map_type;
-    const mapConfig = MAPS[mapType];
+    const mapConfig = MAPS;
     this.load.image('map_bg', mapConfig.image);
     this.load.image('btm_ui', '/assets/ui/btm_ui.png');
     this.load.image('info_page', 'assets/ui/info_page.png');
@@ -102,7 +103,12 @@ export class GameScene extends Phaser.Scene {
     this.overlayWheelHandler = null;
     this.currentGridPanel = null;
 
-    this.turnSystem = new TurnSystem(this, this.saveData)
+    this.turnSystem = new TurnSystem(this, this.saveData);
+
+    // 新存档首次进入游戏：触发初始化流程（选择起始主城）
+    if (this.saveData.status == 0) {
+      this.initGame = new InitGame(this, this.saveData);
+    }
 
     this.events.on('END_TURN', () => {
       this.turnSystem.executeTurn(); // 感觉没必要拆成两个，后面看情况全都丢到turnSystem里面
@@ -268,31 +274,6 @@ export class GameScene extends Phaser.Scene {
       this.saveData.map = {};
     }
 
-    // 检查是否需要初始化格子
-    const needsInit = !this.saveData.map.grids ||
-      Object.keys(this.saveData.map.grids).length === 0;
-
-    if (needsInit) {
-      console.log('初始化地图格子数据...');
-
-      this.saveData.map.grids = {};
-
-      this.saveData.map.grids['g1'] = {
-        locked: true,
-        region: 'main',
-        terrain: null,
-        buildings: [],
-        products: []
-      };
-
-      console.log('地图格子初始化完成:', this.saveData.map.grids);
-
-      // 立即保存
-      saveSystem.save().then(() => {
-        console.log('初始化数据已保存');
-      });
-    }
-
     var saveData = this.saveData;
 
     //初始化行动
@@ -352,8 +333,9 @@ export class GameScene extends Phaser.Scene {
 
   createMap() {
     const mapType = this.saveData.map_type;
-    const mapConfig = MAPS[mapType];
+    const mapConfig = MAPS;
     this.mapView = new MapView(this, mapConfig, this.saveData.map);
+    //this.mapView.editMode.choosePanel();
   }
 
   createBottomBar() {
@@ -380,6 +362,19 @@ export class GameScene extends Phaser.Scene {
         this.closeCurrentSystem();
       }
 
+      // 再次点击当前已高亮选中的格子 -> 取消选中并关闭面板，不再重新打开
+      if (this.currentGridPanel && this.mapView.selectedGridId === gridId) {
+        this.currentGridPanel.playExitAnimation(() => {
+          this.currentGridPanel.destroy();
+          this.currentGridPanel = null;
+        });
+        this.mapView.clearSelectedGrid();
+        return;
+      }
+
+      // 选中新的格子（若之前有别的格子高亮，会自动取消它的高亮）
+      this.mapView.setSelectedGrid(gridId);
+
       if (this.currentGridPanel) {
         // 播放退出动画后再创建新面板
         this.currentGridPanel.playExitAnimation(() => {
@@ -397,20 +392,22 @@ export class GameScene extends Phaser.Scene {
 
     // 底部栏按钮事件
     this.bottomBar.onPersonalClick = () => {
-      // 如果有打开的格子面板，先关闭
+      // 如果有打开的格子面板，先关闭（同时取消地图上的选中高亮）
       if (this.currentGridPanel) {
         this.currentGridPanel.destroy();
         this.currentGridPanel = null;
+        this.mapView.clearSelectedGrid();
       }
 
       this.openSystem('info');
     };
 
     this.bottomBar.onPackageClick = () => {
-      // 如果有打开的格子面板，先关闭
+      // 如果有打开的格子面板，先关闭（同时取消地图上的选中高亮）
       if (this.currentGridPanel) {
         this.currentGridPanel.destroy();
         this.currentGridPanel = null;
+        this.mapView.clearSelectedGrid();
       }
 
       this.openSystem('package');
@@ -423,6 +420,7 @@ export class GameScene extends Phaser.Scene {
         this.currentGridPanel.playExitAnimation(() => {
           this.currentGridPanel.destroy();
           this.currentGridPanel = null;
+          this.mapView.clearSelectedGrid();
           this.openSystem('tech_tree');
         });
       } else {
@@ -435,6 +433,7 @@ export class GameScene extends Phaser.Scene {
         this.currentGridPanel.playExitAnimation(() => {
           this.currentGridPanel.destroy();
           this.currentGridPanel = null;
+          this.mapView.clearSelectedGrid();
           this.openSystem('military');
         });
       } else {
@@ -447,6 +446,7 @@ export class GameScene extends Phaser.Scene {
         this.currentGridPanel.playExitAnimation(() => {
           this.currentGridPanel.destroy();
           this.currentGridPanel = null;
+          this.mapView.clearSelectedGrid();
           this.openSystem('action_list');
         });
       } else {
@@ -459,6 +459,7 @@ export class GameScene extends Phaser.Scene {
         this.currentGridPanel.playExitAnimation(() => {
           this.currentGridPanel.destroy();
           this.currentGridPanel = null;
+          this.mapView.clearSelectedGrid();
           this.openSystem('great_people');
         });
       } else {
@@ -507,6 +508,7 @@ export class GameScene extends Phaser.Scene {
           this.currentGridPanel.playExitAnimation(() => {
             this.currentGridPanel.destroy();
             this.currentGridPanel = null;
+            this.mapView.clearSelectedGrid();
           });
         }
       });
@@ -658,6 +660,9 @@ export class GameScene extends Phaser.Scene {
     if (this.currentGridPanel) {
       this.currentGridPanel.destroy();
       this.currentGridPanel = null;
+    }
+    if (this.mapView) {
+      this.mapView.clearSelectedGrid();
     }
   }
 }

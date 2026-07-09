@@ -12,6 +12,7 @@ const DEFAULT_SAVE_TEMPLATE = {
   subRace: '',
   tarot: '',
   map_type: '',
+  status: 0, // 0新手，1老手（新手教程里选择初始主城，不可跳过，选完后改成1）
   resource: {
     food: 0,
     culture: 0,
@@ -186,7 +187,7 @@ class SaveSystem {
       updatedAt: save.meta?.updatedAt,
       lastPlayedAt: save.meta?.lastPlayedAt
     }))
-    .sort((a, b) => new Date(b.lastPlayedAt) - new Date(a.lastPlayedAt)); // 按最后游玩时间排序
+      .sort((a, b) => new Date(b.lastPlayedAt) - new Date(a.lastPlayedAt)); // 按最后游玩时间排序
   }
 
   /**

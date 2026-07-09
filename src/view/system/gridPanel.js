@@ -3,7 +3,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { get } from '../../system/i18n.js';
 import { terrain } from '../../data/terrain.js';
 import { REGION } from '../../data/region.js';
-import { MAPS } from '../../data/map.js';
+import { MAPS } from '../../data/map/EWland/map.js';
 
 const colorMap = {
   living: 0xF2D8A7,
@@ -27,7 +27,9 @@ export class GridPanel {
     this.gridData = data.map.grids[gridId];
     this.data = data;
     this.isAnimating = false;
-    this.terrainInfo = MAPS[data.map_type].grids[gridId];
+    // 地形信息统一来自 MAP 配置表（MAPS.grids），而不是存档格点自己存储的字段，
+    // 保证和 InitGame / MapView 里对同一张地图地形的读取方式一致
+    this.terrainInfo = MAPS.grids?.[gridId];
 
     this.currentTab = null;
 
@@ -47,7 +49,7 @@ export class GridPanel {
     this.panelStartX = this.rightX - this.panelWidth;
 
     // ====== 地形背景图片 ======
-    const terrainType = this.terrainInfo.type || 'land';
+    const terrainType = this.terrainInfo?.type || 'land';
     const terrainConfig = terrain[terrainType];
     const terrainImageKey = `terrain_${terrainType}`;
 

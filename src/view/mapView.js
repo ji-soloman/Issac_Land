@@ -9,23 +9,23 @@ export class MapView {
 
     // --- 地图尺寸配置 ---
     this.MAP_WIDTH = 3280;
-    this.MAP_HEIGHT = 3280 * 3 / 4; // 2460px
+    this.MAP_HEIGHT = 3280 * 9 / 16;
 
     // --- 六边形尺寸配置 ---
     // 原始中心到边的距离
-    this.HEX_APOTHEM = 60;
+    this.HEX_APOTHEM = 120;
     // 原始外接圆半径
     this.HEX_RADIUS = this.HEX_APOTHEM / 0.866025;
 
     // --- 3D 倾斜配置 ---
     // 决定倾斜程度，数值越小，看起来倾斜角度越大。
-    this.TILT_FACTOR = 0.65;
+    this.TILT_FACTOR = 0.45;
 
     // --- 缩放配置 ---
-    this.minZoom = 0.5;
-    this.maxZoom = 4.0;
-    this.currentZoom = 1.0;
-    this.zoomStep = 0.1;
+    this.minZoom = 0.3;
+    this.maxZoom = 0.66;
+    this.currentZoom = 0.4;
+    this.zoomStep = 0.02;
 
     // --- 拖拽状态 ---
     this.isDragging = false;
@@ -36,7 +36,26 @@ export class MapView {
     this.onGridClick = null;
     this.interactionEnabled = true;
 
+    // --- 当前选中（高亮）的格子编号，再次点击同一个格子时用于判断是否需要取消选中 ---
+    this.selectedGridId = null;
+
+    // --- 编辑模式 / 选点面板状态 ---
+    // active: 是否处于编辑模式；tempGrids: 编辑模式下临时创建出来的“之前不显示”的格子；
+    // onChoose: 调用 choosePanel 时传入的外部回调，点击任意格子都会触发
+    // active:    是否处于选点模式���choosePanel 激活期间为 true���
+    // isDevMode: true = 由开发工具调用���外部可据此显示“地形排布开发工具”等 dev UI���
+    //            false = 由游戏流程调用���如 initGame 选城���，不显示 dev UI
+    // tempGrids: 临时发光格子
+    // onChoose:  点击任意格子后的外部回调
+    this.editMode = {
+      active: false,
+      isDevMode: false,
+      tempGrids: {},
+      onChoose: null,
+    };
+
     this.create();
+    this.setupEditMode();
   }
 
   create() {
@@ -49,6 +68,16 @@ export class MapView {
     // 2. 加载地图背景
     this.mapBg = this.scene.add.image(0, 0, 'map_bg').setOrigin(0);
     // this.mapBg.setDisplaySize(this.MAP_WIDTH, this.MAP_HEIGHT);
+
+    // --- 动态计算 8K 或任何分辨率资产的缩放系数 ---
+    const baseWidth = 3280; // 以你最初设计的 3280 宽度为基准
+    this.MAP_WIDTH = this.mapBg.width;   // 自动获取 8K 图片实际宽度 (7680)
+    this.MAP_HEIGHT = this.mapBg.height; // 自动获取 8K 图片实际高度 (4320)
+
+    // 计算当前图片相对原设计的放大倍数
+    const resolutionScale = this.MAP_WIDTH / baseWidth;
+    // ----------------------------------------------------
+
     this.mapBg.setPipeline('TextureTintPipeline');
     this.mapBg.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.container.add(this.mapBg);
@@ -57,38 +86,292 @@ export class MapView {
     this.gridsContainer = this.scene.add.container(0, 0);
     this.container.add(this.gridsContainer);
 
-    // 4. 绘制格子
+    // 4. 根据地图实际尺寸，自动生成铺满全图的六边形网格布局
+    //    网格数量只取决于地图底图的像素尺寸（this.MAP_WIDTH / this.MAP_HEIGHT），
+    //    与运行设备的屏幕/窗口尺寸无关，因此任何设备上的格子总数都是一致的。
+    this.buildGridLayout();
+
+    // 5. 绘制格子（只绘制存档中存在的格子编号）
     this.gridObjects = {};
     this.drawGrids();
 
-    // 5. 初始居中
+    // 6. 初始居中
     this.centerMap();
 
-    // 6. 绑定事件
+    // 7. 绑定事件
     this.setupInteraction();
   }
 
-  drawGrids() {
-    const grids = this.mapConfig.grids || {};
-    // console.log('开始绘制，格子数据:', grids);
+  /**
+   * 自动生成铺满整张地图的六边形网格布局。
+   *
+   * - 网格编号从 g1 开始，按行优先顺序自动递增（g1, g2, g3...）。
+   * - 网格的总行数/总列数只由地图底图的像素尺寸决定，与设备屏幕尺寸无关，
+   *   因此同一张地图在任何设备上生成的格子数量、编号、坐标都完全一致。
+   * - 数据表（mapConfig.grids）中原有的 coord 字段不再用于定位，
+   *   格子的实际像素坐标统一由本方法计算得出。
+   * - 同时建立 offset 坐标 (col, row) <-> axial 坐标 (q, r) 的映射，
+   *   用于后续 getGridNeighbors() 快速查找某个格子周边的六个相邻格子。
+   */
+  buildGridLayout() {
+    // 同一行内，相邻格子中心点的水平距离 = sqrt(3) * 半径 = 2 * 内切圆半径(APOTHEM)
+    const colSpacing = this.HEX_APOTHEM * 2;
+    // 相邻两行格子中心点的垂直距离，本应是 1.5 * 半径，
+    // 由于绘制时对 Y 轴做了 TILT_FACTOR 压扁（3D 倾斜效果），这里也要同步压扁，
+    // 否则网格的视觉间距会和实际渲染的六边形对不上。
+    const rowSpacing = this.HEX_RADIUS * 1.5 * this.TILT_FACTOR;
 
-    Object.entries(grids).forEach(([gridId, gridTemplate]) => {
-      if (gridTemplate.coord) {
-        const saveGridData = this.saveData.grids?.[gridId] || {};
-        const gridData = {
-          ...gridTemplate,
-          ...saveGridData
-        };
-        const hex = this.createHexagon(gridId, gridData);
-        this.gridObjects[gridId] = hex;
+    // --- 边距：保证格子完整显示在地图图片内 ---
+    // 六边形水平方向半宽 = HEX_APOTHEM（顶点 x 坐标的最大绝对值）
+    // 六边形垂直方向半高 = HEX_RADIUS * TILT_FACTOR（压扁后顶点 y 坐标的最大绝对值）
+    // 如果没有这个边距，格子中心点贴着地图边缘时，六边形会有一半被裁切在图片外面。
+    const offsetX = this.HEX_APOTHEM;
+    const offsetY = this.HEX_RADIUS * this.TILT_FACTOR;
+
+    // 奇数行会整体右移半格（colSpacing / 2），所以预留这部分宽度，
+    // 确保奇数行最右侧的格子也完整落在地图宽度范围内。
+    const usableWidthForCols = this.MAP_WIDTH - offsetX * 2 - colSpacing / 2;
+    const usableHeight = this.MAP_HEIGHT - offsetY * 2;
+
+    this.totalCols = Math.max(1, Math.floor(usableWidthForCols / colSpacing) + 1);
+    this.totalRows = Math.max(1, Math.floor(usableHeight / rowSpacing) + 1);
+
+    this.gridLayout = {};   // gridId -> { col, row, q, r, x, y }
+    this.coordToId = {};    // "col,row" -> gridId，用于邻格反查
+
+    let index = 1;
+    for (let row = 0; row < this.totalRows; row++) {
+      // 奇数行整体向右偏移半格，形成蜂窝式交错排列（odd-r 偏移布局）
+      const rowOffset = (row % 2 === 1) ? colSpacing / 2 : 0;
+
+      for (let col = 0; col < this.totalCols; col++) {
+        const gridId = 'g' + index;
+
+        const x = offsetX + col * colSpacing + rowOffset;
+        const y = offsetY + row * rowSpacing;
+
+        // offset 坐标 (col, row) -> axial 坐标 (q, r)，标准 odd-r 转换公式
+        const q = col - (row - (row & 1)) / 2;
+        const r = row;
+
+        this.gridLayout[gridId] = { col, row, q, r, x, y };
+        this.coordToId[`${col},${row}`] = gridId;
+
+        index++;
       }
+    }
+  }
+
+  /**
+   * 根据格子编号查找其周边的六个相邻格子编号。
+   * 返回的数组固定长度为 6，按六个边的方向顺序排列；
+   * 如果某个方向上没有相邻格子（超出地图网格范围），对应位置为 null。
+   *
+   * 注意：返回的是“地图网格拓扑”上存在的相邻格子编号，
+   * 不代表该格子在存档中一定存在/会被渲染，调用方可自行结合 saveData 过滤。
+   *
+   * @param {string} gridId 例如 'g123'
+   * @returns {(string|null)[]} 长度为 6 的相邻格子编号数组
+   */
+  getGridNeighbors(gridId) {
+    const layout = this.gridLayout?.[gridId];
+    if (!layout) return [null, null, null, null, null, null];
+
+    const { q, r } = layout;
+
+    // pointy-top 六边形的标准 6 个轴向方向
+    const directions = [
+      { dq: 1, dr: 0 },
+      { dq: 1, dr: -1 },
+      { dq: 0, dr: -1 },
+      { dq: -1, dr: 0 },
+      { dq: -1, dr: 1 },
+      { dq: 0, dr: 1 },
+    ];
+
+    return directions.map(({ dq, dr }) => {
+      const nq = q + dq;
+      const nr = r + dr;
+
+      // axial 坐标 -> offset 坐标 (col, row)
+      const nRow = nr;
+      const nCol = nq + (nr - (nr & 1)) / 2;
+
+      return this.coordToId[`${nCol},${nRow}`] || null;
+    });
+  }
+
+  /**
+   * 初始化编辑模式（选点面板）相关功能。
+   * 对外暴露 this.editMode.choosePanel() 和 this.editMode.closeChoosePanel() 两个方法：
+   *
+   * - choosePanel(onChoose?)：把所有“当前存档里不存在、因此没有被绘制出来”的格子也临时显示出来，
+   *   用持续发光的样式区分；同时整张地图进入编辑模式——
+   *   此时点击任意一个格子（无论是之前就显示的，还是新显示出来的）都只会在控制台
+   *   输出该格子的编号（gn），不会触发原本的 onGridClick 回调。
+   *   可选传入一个回调函数 onChoose(gridId)，点击任意格子时会被调用，外部即可拿到选中的格子编号。
+   *
+   * - closeChoosePanel()：退出编辑模式，销毁所有临时显示的发光格子，并清空上面传入的回调，
+   *   地图恢复成进入编辑模式之前的样子（已有格子的点击行为也恢复成原本的 onGridClick）。
+   */
+  setupEditMode() {
+    this.editMode.choosePanel = (onChoose, { devMode = false } = {}) => {
+      if (this.editMode.active) {
+        console.log('已经处于选点模式，无需重复进入');
+        return;
+      }
+      this.editMode.active = true;
+      this.editMode.isDevMode = devMode;
+      this.editMode.tempGrids = {};
+      // 外部传入的回调：点击任意格子（已存在的 / 临时发光的）都会触发，参数为格子编号(gn)
+      this.editMode.onChoose = typeof onChoose === 'function' ? onChoose : null;
+
+      Object.keys(this.gridLayout).forEach((gridId) => {
+        // 存档里已经存在、已经绘制出来的格子跳过，不重复创建
+        if (this.gridObjects[gridId]) return;
+
+        const layout = this.gridLayout[gridId];
+        this.editMode.tempGrids[gridId] = this.createGlowHexagon(gridId, layout);
+      });
+
+      console.log(`已进入选点模式，新增显示 ${Object.keys(this.editMode.tempGrids).length} 个格子`);
+    };
+
+    this.editMode.closeChoosePanel = () => {
+      if (!this.editMode.active) {
+        console.log('当前不在选点模式');
+        return;
+      }
+
+      Object.values(this.editMode.tempGrids || {}).forEach(({ cellContainer, glowTween }) => {
+        if (glowTween) glowTween.stop();
+        if (cellContainer) cellContainer.destroy(true);
+      });
+
+      this.editMode.tempGrids = {};
+      this.editMode.onChoose = null;
+      this.editMode.isDevMode = false;
+      this.editMode.active = false;
+      if (this.scene && this.scene.input) {
+        this.scene.input.setDefaultCursor('default');
+      }
+      console.log('已退出选点模式，地图已还原');
+    };
+  }
+
+  /**
+   * 创建一个“持续发光”的临时格子（用于编辑模式下展示存档中不存在的格子）。
+   * 点击后只在控制台输出格子编号，不会触发 this.onGridClick。
+   *
+   * @param {string} gridId
+   * @param {{x:number, y:number}} layout
+   * @returns {{cellContainer: Phaser.GameObjects.Container, graphics: Phaser.GameObjects.Graphics, glowTween: Phaser.Tweens.Tween}}
+   */
+  createGlowHexagon(gridId, layout) {
+    const { x, y } = layout;
+
+    const cellContainer = this.scene.add.container(x, y);
+    this.gridsContainer.add(cellContainer);
+
+    const graphics = this.scene.add.graphics();
+    const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
+
+    // 发光样式：用青色半透明填充 + 高亮描边，和正常格子的样式区分开
+    const glowColor = 0x00ffff;
+    const drawGlowBase = () => {
+      graphics.clear();
+      graphics.fillStyle(glowColor, 0.25);
+      graphics.fillPoints(hexPoints, true);
+      graphics.lineStyle(3, glowColor, 1);
+      graphics.strokePoints(hexPoints, true);
+    };
+    drawGlowBase();
+
+    cellContainer.add(graphics);
+
+    // 持续发光动画：透明度在高低之间来回过渡，循环播放
+    const glowTween = this.scene.tweens.add({
+      targets: graphics,
+      alpha: { from: 0.35, to: 1 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    // 悬浮高亮：使用独立的图层叠加显示，不去暂停/修改底层 graphics 及其发光动画。
+    // 之前的实现是暂停 glowTween 并手动 setAlpha(1)，移出后再 resume——
+    // 但 resume 只会从暂停时的进度继续，并不会补偿被暂停掉的这段时间，
+    // 导致这个格子的发光节奏和其它没被悬浮过的格子错开，看起来“变色”/样式不同步。
+    // 改为叠加一层独立高亮图形，悬浮时显示、移出时隐藏，底层发光格全程不受影响，
+    // 保证移出后和其它默认格子的显示样式完全一致。
+    const highlightGraphics = this.scene.add.graphics();
+    highlightGraphics.fillStyle(0xffffff, 0.5);
+    highlightGraphics.fillPoints(hexPoints, true);
+    highlightGraphics.lineStyle(3, 0xffffff, 0.9);
+    highlightGraphics.strokePoints(hexPoints, true);
+    highlightGraphics.setVisible(false);
+    cellContainer.add(highlightGraphics);
+
+    const hitArea = new Phaser.Geom.Polygon(hexPoints);
+    graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
+
+    graphics.on('pointerdown', () => {
+      if (this.isDragging) return;
+      console.log(gridId);
+      if (typeof this.editMode.onChoose === 'function') {
+        this.editMode.onChoose(gridId);
+      }
+    });
+
+    // 悬浮时：只显示高亮图层，底层发光格及其动画保持原样运行，不做暂停/修改
+    graphics.on('pointerover', () => {
+      highlightGraphics.setVisible(true);
+      this.scene.input.setDefaultCursor('pointer');
+    });
+
+    // 离开时：隐藏高亮图层即可，底层发光格因为从未被打断，样式和其它格子保持一致
+    graphics.on('pointerout', () => {
+      highlightGraphics.setVisible(false);
+      this.scene.input.setDefaultCursor('default');
+    });
+
+    return { cellContainer, graphics, glowTween, highlightGraphics };
+  }
+
+  drawGrids() {
+    // 只绘制存档（saveData.grids）中存在的格子编号，数据表（mapConfig.grids）
+    // 仅用于提供 wonder 等附加信息，不再提供坐标（主城判定改为 saveGridData.isMain）
+    const savedGrids = this.saveData.grids || {};
+    const templates = this.mapConfig.grids || {};
+
+    Object.keys(savedGrids).forEach((gridId) => {
+      const layout = this.gridLayout?.[gridId];
+      if (!layout) {
+        // 存档中的格子编号超出了自动生成的网格范围，跳过并提示
+        console.warn(`格子 ${gridId} 不在自动生成的网格范围内，已跳过绘制`);
+        return;
+      }
+
+      const gridTemplate = templates[gridId] || {};
+      const saveGridData = savedGrids[gridId] || {};
+
+      // 坐标统一来自自动生成的网格布局，数据表中原有的 coord 字段不再生效
+      const gridData = {
+        ...gridTemplate,
+        ...saveGridData,
+        x: layout.x,
+        y: layout.y,
+      };
+
+      const hex = this.createHexagon(gridId, gridData);
+      this.gridObjects[gridId] = hex;
     });
   }
 
   createHexagon(gridId, gridData) {
-    const { coord, region = null, locked = false, wonder } = gridData || {};
-    const x = coord[0] * this.MAP_WIDTH;
-    const y = coord[1] * this.MAP_HEIGHT;
+    // 主城判定：只看 isMain 字段（由 InitGame 建城时写入），不再使用 locked 判定"已解锁"样式
+    const { x, y, isMain = false, wonder } = gridData || {};
 
     // 创建一个独立的单元容器，用来承载当前格子的所有组件
     const cellContainer = this.scene.add.container(x, y);
@@ -98,18 +381,39 @@ export class MapView {
     const graphics = this.scene.add.graphics();
     const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
 
-    const isMain = region === 'main';
-    const isUnlocked = locked;
-    let fillColor = isMain ? 0xff0000 : (isUnlocked ? 0x90EE90 : 0x808080);
-    let fillAlpha = isMain ? 0.8 : (isUnlocked ? 0.6 : 0.5);
-    let strokeColor = (isMain || isUnlocked) ? 0xffff00 : 0x606060;
-    let strokeWidth = (isMain || isUnlocked) ? 3 : 2;
+    let fillColor = isMain ? 0xff0000 : 0x808080;
+    let fillAlpha = isMain ? 0.8 : 0.5;
+    let strokeColor = isMain ? 0xffff00 : 0x606060;
+    let strokeWidth = isMain ? 3 : 2;
+
+    // 提前检查当前格子是否有奇观显示
+    const hasWonder = wonder && WONDER[wonder] && WONDER[wonder].image;
+
+    // 是否被选中（点击后高亮，再次点击取消），由外部通过 setSelected() 控制
+    let isSelected = false;
 
     const drawBase = (isHover = false) => {
       graphics.clear();
-      graphics.fillStyle(fillColor, isHover ? 0.9 : fillAlpha);
+
+      // 计算最终使用的填充透明度和边框透明度
+      let currentFillAlpha = isHover ? 0.9 : fillAlpha;
+      let currentStrokeAlpha = 1.0;
+
+      // 如果有奇观，且鼠标没有悬浮在格子上，将格子和边框的透明度降为 0.1
+      if (hasWonder && !isHover) {
+        currentFillAlpha = 0.1;
+        currentStrokeAlpha = 0.1;
+      }
+
+      graphics.fillStyle(fillColor, currentFillAlpha);
       graphics.fillPoints(hexPoints, true);
-      graphics.lineStyle(isHover ? 4 : strokeWidth, isHover ? 0xffffff : strokeColor, 1);
+
+      // 选中态描边：用醒目的青色粗描边覆盖普通描边，用来和其它格子区分；
+      // hover 态的白色描边优先级更高（悬浮时依然按原本的悬浮样式显示）
+      const useSelectedStroke = isSelected && !isHover;
+      const finalStrokeColor = isHover ? 0xffffff : (useSelectedStroke ? 0x00e5ff : strokeColor);
+      const finalStrokeWidth = isHover ? 4 : (useSelectedStroke ? 5 : strokeWidth);
+      graphics.lineStyle(finalStrokeWidth, finalStrokeColor, currentStrokeAlpha);
       graphics.strokePoints(hexPoints, true);
 
       // 如果处于高光状态且有奇观，绘制一个包含图片范围的组合框
@@ -127,7 +431,7 @@ export class MapView {
 
     // 处理奇观图片
     let wonderImage = null;
-    if (wonder && WONDER[wonder] && WONDER[wonder].image) {
+    if (hasWonder) {
       const imageKey = 'wonder_' + wonder;
       wonderImage = this.scene.add.image(0, 0, imageKey); // 相对容器 0,0
 
@@ -150,48 +454,97 @@ export class MapView {
 
     drawBase(false);
 
-    if (isMain || isUnlocked) {
-      const hitArea = new Phaser.Geom.Polygon(hexPoints);
-      graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
+    // --- 点击事件：所有格子统一绑定 ---
+    // 普通点击逻辑保持不变（仅触发 this.onGridClick）；
+    // 但如果当前处于编辑模式（this.editMode.active），点击后只在控制台输出格子编号，
+    // 不会触发原有的 onGridClick 回调。退出编辑模式后自动恢复原有点击行为。
+    const hitArea = new Phaser.Geom.Polygon(hexPoints);
+    graphics.setInteractive(hitArea, Phaser.Geom.Polygon.Contains);
+    if (wonderImage) {
+      wonderImage.setInteractive();
+    }
 
-      // 如果有图片，让图片也能触发 graphics 的 hover
-      if (wonderImage) {
-        wonderImage.setInteractive();
+    const onClick = () => {
+      if (this.isDragging) return;
+      if (this.editMode && this.editMode.active) {
+        console.log(gridId);
+        if (typeof this.editMode.onChoose === 'function') {
+          this.editMode.onChoose(gridId);
+        }
+        return;
       }
+      if (this.onGridClick) {
+        this.onGridClick(gridId);
+      }
+    };
 
-      const onOver = () => {
+    [graphics, wonderImage].forEach(obj => {
+      if (!obj) return;
+      obj.on('pointerdown', onClick);
+    });
+
+    // --- 悬浮高亮效果 ---
+    // 编辑模式下：任意格子悬浮都会变成半透明实心高亮 + pointer 光标，用于和未选中的格子区分。
+    // 非编辑模式下：显示样式保持不变，仍然只有主城（isMain）格子才有 hover 反馈。
+    const drawEditHover = (isHover) => {
+      if (isHover) {
+        graphics.clear();
+        graphics.fillStyle(0xffffff, 0.5);
+        graphics.fillPoints(hexPoints, true);
+        graphics.lineStyle(3, 0xffffff, 0.9);
+        graphics.strokePoints(hexPoints, true);
+      } else {
+        // 退出 hover，恢复成原本（非编辑模式下）的基础显示样式
+        drawBase(false);
+      }
+    };
+
+    const onOver = () => {
+      if (this.editMode && this.editMode.active) {
+        drawEditHover(true);
+        this.scene.input.setDefaultCursor('pointer');
+        return;
+      }
+      if (isMain) {
         drawBase(true);
         if (wonderImage) {
           //wonderImage.setTint(0xffffff);
           wonderImage.setAlpha(0.85);
         }
         this.scene.input.setDefaultCursor('pointer');
-      };
+      }
+    };
 
-      const onOut = () => {
+    const onOut = () => {
+      if (this.editMode && this.editMode.active) {
+        drawEditHover(false);
+        this.scene.input.setDefaultCursor('default');
+        return;
+      }
+      if (isMain) {
         drawBase(false);
         if (wonderImage) {
           //wonderImage.clearTint();
           wonderImage.setAlpha(1.0);
         }
         this.scene.input.setDefaultCursor('default');
-      };
+      }
+    };
 
-      const onClick = () => {
-        if (!this.isDragging && this.onGridClick) {
-          this.onGridClick(gridId);
-        }
-      };
+    [graphics, wonderImage].forEach(obj => {
+      if (!obj) return;
+      obj.on('pointerover', onOver);
+      obj.on('pointerout', onOut);
+    });
 
-      // 绑定事件
-      [graphics, wonderImage].forEach(obj => {
-        if (!obj) return;
-        obj.on('pointerover', onOver);
-        obj.on('pointerout', onOut);
-        obj.on('pointerdown', onClick);
-      });
-    }
-    return graphics;
+    // 供外部（MapView.setSelectedGrid / clearSelectedGrid）调用，切换选中高亮状态
+    const setSelected = (selected) => {
+      isSelected = !!selected;
+      // 用非 hover 状态重绘一次，让选中/取消选中立即生效
+      drawBase(false);
+    };
+
+    return { graphics, setSelected };
   }
 
   // --- 计算带有立体倾斜效果的六边形顶点 ---
@@ -226,6 +579,7 @@ export class MapView {
       this.currentZoom = Phaser.Math.Clamp(this.currentZoom, this.minZoom, this.maxZoom);
 
       if (oldZoom !== this.currentZoom) {
+        console.log(`当前缩放比例: ${this.currentZoom.toFixed(3)} (范围: ${this.minZoom} ~ ${this.maxZoom})`);
         const worldX = (pointer.x - this.container.x) / oldZoom;
         const worldY = (pointer.y - this.container.y) / oldZoom;
 
@@ -284,6 +638,19 @@ export class MapView {
     const bgWidth = this.mapBg.width || this.MAP_WIDTH;
     const bgHeight = this.mapBg.height || this.MAP_HEIGHT;
 
+    // === 根据当前屏幕尺寸与底图动态计算绝对安全的最小缩放 ===
+    const minZoomX = width / bgWidth;
+    const minZoomY = height / bgHeight;
+
+    this.minZoom = Math.max(0.3, minZoomX, minZoomY);
+
+    // 如果当前的缩放值因某种原因小于最新的安全线，强制修正并同步缩放
+    if (this.currentZoom < this.minZoom) {
+      this.currentZoom = this.minZoom;
+      this.container.setScale(this.currentZoom);
+    }
+    // ===================================================================
+
     const mapW = bgWidth * this.currentZoom;
     const mapH = bgHeight * this.currentZoom;
 
@@ -316,11 +683,39 @@ export class MapView {
     }
     this.gridObjects = {};
     this.drawGrids();
+
+    // 重绘会产生全新的格子对象，之前记录的选中格子需要重新应用高亮
+    if (this.selectedGridId && this.gridObjects[this.selectedGridId]) {
+      this.gridObjects[this.selectedGridId].setSelected(true);
+    }
   }
 
   // 禁用地图交互
   disableInteraction() {
     this.interactionEnabled = false;
     this.isDragging = false; // 重置拖拽状态
+  }
+
+  /**
+   * 选中指定格子（高亮显示）。如果之前有其它格子处于选中状态，会先取消其高亮。
+   * 同一个格子重复调用是安全的（幂等）。
+   * @param {string} gridId
+   */
+  setSelectedGrid(gridId) {
+    if (this.selectedGridId && this.selectedGridId !== gridId) {
+      this.gridObjects[this.selectedGridId]?.setSelected?.(false);
+    }
+    this.selectedGridId = gridId;
+    this.gridObjects[gridId]?.setSelected?.(true);
+  }
+
+  /**
+   * 取消当前选中格子的高亮（不传参数时清除全部选中状态）。
+   */
+  clearSelectedGrid() {
+    if (this.selectedGridId) {
+      this.gridObjects[this.selectedGridId]?.setSelected?.(false);
+    }
+    this.selectedGridId = null;
   }
 }
