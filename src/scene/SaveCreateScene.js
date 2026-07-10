@@ -3,7 +3,6 @@ import { saveSystem } from '../system/saveSystem.js';
 import { RACES } from '../data/race.js';
 import { TAROT } from '../data/tarot.js';
 import { REGION } from '../data/region.js';
-import { MAPS } from '../data/map.js';
 
 export class SaveCreateScene extends Phaser.Scene {
   constructor() {
@@ -906,9 +905,6 @@ export class SaveCreateScene extends Phaser.Scene {
   }
 
   async finishCreate() {
-    // 从 MAPS 中随机抽一个
-    const mapTypes = Object.keys(MAPS);
-    const randomMapType = mapTypes[Math.floor(Math.random() * mapTypes.length)];
 
     // 准备初始数据
     const initialData = {

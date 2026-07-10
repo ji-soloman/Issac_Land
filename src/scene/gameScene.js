@@ -103,7 +103,7 @@ export class GameScene extends Phaser.Scene {
     this.overlayWheelHandler = null;
     this.currentGridPanel = null;
 
-    this.turnSystem = new TurnSystem(this, this.saveData);
+    this.turnSystem = new TurnSystem(this, this.saveData, this.mapView);
 
     // 新存档首次进入游戏：触发初始化流程（选择起始主城）
     if (this.saveData.status == 0) {

@@ -2,16 +2,18 @@
 // import { MilitaryLogic } from './logic/MilitaryLogic.js';
 // import { OthersLogic } from './logic/OthersLogic.js';
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
-import { MAPS } from '../data/map.js';
+import { MAPS } from '../data/map/EWland/map.js';
 
 export class TurnSystem {
   /**
-   * @param {Phaser.Scene} scene - 场景引用
-   * @param {Object} saveData - 存档数据
+   * @param {Phaser.Scene} scene   - 场景引用
+   * @param {Object}       saveData - 存档数据
+   * @param {Object}       mapView  - MapView 实例，用于复用 getGridNeighbors 邻格算法
    */
-  constructor(scene, saveData) {
+  constructor(scene, saveData, mapView) {
     this.scene = scene;
     this.saveData = saveData;
+    this.mapView = mapView;
   }
 
   executeTurn() {
@@ -37,60 +39,86 @@ export class TurnSystem {
         console.log('正在结算', soldierId, '的行为', actionType);
 
         const currentGrids = this.saveData.map.grids;
-        const allGrids = MAPS[this.saveData.map_type].grids;
+        const mapGrids = MAPS.grids;   // 地图配置表，记录每个格点的地形信息
+        const exploreResult = {};          // 记录本次实际解锁的格点，格式: { gn: terrainType }
 
-        // 确定本次要解锁的数量 (随机 1~3 个)
-        const numToUnlock = Phaser.Math.Between(1, 3);
+        // ── 找出所有主城格点 ──────────────────────────────────────────────
+        // 一局游戏中主城可能大于 1 个（多文明 / 多城），全部纳入处理范围
+        const mainGridIds = Object.keys(currentGrids).filter(
+          gn => currentGrids[gn]?.isMain === true
+        );
 
-        // 获取所有的 Key
-        const allKeys = Object.keys(allGrids);
+        if (mainGridIds.length === 0) {
+          console.log('explore_terrain: 存档中暂无主城格点，跳过探索结算');
+          result.military.explore_terrain = { soldier: soldierId, result: exploreResult };
+          return;
+        }
 
-        // 筛选出所有符合条件（即尚未解锁）的格点 Key
-        const eligibleKeys = allKeys.filter(key => {
-          const currentData = currentGrids[key];
-          /**
-           * 判断条件：
-           * 1. current 中不存在该格子 (undefined)
-           * 2. 或者该格子存在但 locked 不为 true
-           */
-          return !currentData || currentData.locked !== true;
-        });
+        // ── 汇总所有主城周围6格中尚未解锁的候选格点 ─────────────────────
+        // 用 Set 去重，避免两个主城相邻时同一格被重复统计
+        const candidateSet = new Set();
 
-        // 打乱
-        Phaser.Utils.Array.Shuffle(eligibleKeys);
+        for (const mainGn of mainGridIds) {
+          // getGridNeighbors 返回长度为 6 的数组，超出地图边界的方向返回 null
+          const neighbors = this.mapView.getGridNeighbors(mainGn);
 
-        // 截取出我们本次实际要解锁的格子（处理剩余格子不足 numToUnlock 的情况）
-        const keysToProcess = eligibleKeys.slice(0, numToUnlock);
+          for (const neighborGn of neighbors) {
+            if (!neighborGn) continue;                         // 超出地图边界
+            if (!mapGrids[neighborGn]) continue;               // 不在配置表中（水域等不参与配置的格点）
+            if (currentGrids[neighborGn]?.hasMain) continue;  // 已经被某个主城解锁过了
 
-        // 用于记录返回结果，格式为: { gridKey1: terrain, gridKey2: terrain }
-        const exploreResult = {};
+            candidateSet.add(neighborGn);
+          }
+        }
 
-        // 遍历选出的随机格点执行解锁逻辑
-        for (const key of keysToProcess) {
-          const config = allGrids[key];
+        const candidates = Array.from(candidateSet);
 
-          // 确保对象存在
-          if (!currentGrids[key]) currentGrids[key] = {};
+        if (candidates.length === 0) {
+          console.log('explore_terrain: 所有主城周边格点均已解锁');
+          result.military.explore_terrain = { soldier: soldierId, result: exploreResult };
+          return;
+        }
 
-          // 解锁状态设为 true
-          currentGrids[key].locked = true;
+        // ── Roll 本次解锁数量（2~3），不超过候选数量 ─────────────────────
+        const numToUnlock = Math.min(Phaser.Math.Between(2, 3), candidates.length);
 
-          // --- 处理地形赋值 ---
-          let selectedTerrain = '';
-          const terrainSource = config.type;
+        // 随机打乱后取前 numToUnlock 个
+        Phaser.Utils.Array.Shuffle(candidates);
+        const keysToUnlock = candidates.slice(0, numToUnlock);
 
-          if (typeof terrainSource === 'string') {
-            selectedTerrain = terrainSource;
-          } else if (Array.isArray(terrainSource)) {
-            // 从列表中随机抽取一个
-            selectedTerrain = Phaser.Utils.Array.GetRandom(terrainSource);
+        // ── 写入存档并记录结果 ────────────────────────────────────────────
+        for (const gn of keysToUnlock) {
+          const config = mapGrids[gn];
+
+          // 确定该格点的地形类型（配置表中 type 可能是字符串或字符串数组）
+          let terrainType = '';
+          if (typeof config.type === 'string') {
+            terrainType = config.type;
+          } else if (Array.isArray(config.type)) {
+            terrainType = Phaser.Utils.Array.GetRandom(config.type);
           }
 
-          currentGrids[key].terrain = selectedTerrain;
+          // 找到该格点最近的主城（若有多个主城邻格，取第一个 isMain 主城）
+          const ownerMain = mainGridIds.find(mainGn => {
+            const neighbors = this.mapView.getGridNeighbors(mainGn);
+            return neighbors.includes(gn);
+          }) || mainGridIds[0];
 
-          // --- 记录到结果集 ---
-          exploreResult[key] = selectedTerrain;
+          // 存储格式：
+          //   hasMain  → 拥有该格点的主城格点号（用于 GridPanel 显示城名）
+          //   region   → 空字符串（暂未划入具体区域）
+          //   buildings / products → 初始化为空，后续建设时填入
+          currentGrids[gn] = {
+            hasMain: ownerMain,
+            region: '',
+            buildings: {},
+            products: {},
+          };
+
+          exploreResult[gn] = terrainType;
         }
+
+        console.log(`explore_terrain: 本次解锁 ${keysToUnlock.length} 个格点`, exploreResult);
 
         // 赋值给 result 对象
         result.military.explore_terrain = {
@@ -120,7 +148,7 @@ export class TurnSystem {
           resource: params.resource,
         };
       }
-      console.log('文化结算',result.civil);
+      console.log('文化结算', result.civil);
     });
 
     // 3. 处理Others

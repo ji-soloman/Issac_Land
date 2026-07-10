@@ -5,7 +5,6 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { saveSystem } from '../../system/saveSystem.js';
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
-import { MAPS } from '../../data/map.js';
 import { get } from '../../system/i18n.js';
 
 export class MilitaryUnitViewer {

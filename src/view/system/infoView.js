@@ -1,5 +1,4 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
-import { MAPS } from '../../data/map.js';
 import { RACES } from '../../data/race.js';
 import { TAROT } from '../../data/tarot.js';
 import { ERA } from '../../data/era.js';

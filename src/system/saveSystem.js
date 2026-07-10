@@ -31,6 +31,15 @@ const DEFAULT_SAVE_TEMPLATE = {
     grids: {}
   },
   buff: {},
+  tech_tree: {
+    unlocked: {
+      farming_1: true,
+      construction_1: true,
+      leadership_1: true,
+    },
+    researching: {},
+    tech_research_slot: 1,
+  },
   meta: {
     version: '1.0.0',
     createdAt: null,

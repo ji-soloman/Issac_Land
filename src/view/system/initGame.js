@@ -260,6 +260,7 @@ export class InitGame {
       buildings: {},
       products: {},
       isMain: true,
+      name: this.saveData.capital,   // 主城名称取自存档中的 capital 字段
     };
     // 建城完成，游戏正式进入回合流程
     this.saveData.status = 1;

@@ -2,9 +2,9 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { saveSystem } from '../../system/saveSystem.js';
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
-import { MAPS } from '../../data/map.js';
 import { get } from '../../system/i18n.js';
 import { MilitaryUnitViewer } from './militaryUnitView.js';
+import { MAPS } from '../../data/map/EWland/map.js';
 
 export class MilitarySystem {
   constructor(scene, saveData) {
@@ -71,8 +71,7 @@ export class MilitarySystem {
     const totalRowWidth = cardsPerRow * cardWidth + (cardsPerRow - 1) * cardSpacing;
     const startX = sidePadding + (availableWidth - totalRowWidth) / 2 + cardWidth / 2;
 
-    const mapType = this.saveData.map_type;
-    const mapGrids = MAPS[mapType]?.grids || {};
+    const mapGrids = MAPS.grids || {};
     const saveGrids = this.saveData.map?.grids || {};
     const actions = Object.entries(MILITARY);
 
@@ -163,6 +162,9 @@ export class MilitarySystem {
   }
 
   checkActionAvailable(action, mapGrids, saveGrids) {
+    // action.filter 接收 { saveGrids, mapGrids }：
+    //   saveGrids — 存档格点，gn.isMain / gn.hasMain 判断主城/附属关系
+    //   mapGrids  — MAP 配置表格点，gn.type 为地形类型
     if (!action.filter || typeof action.filter !== 'function') return true;
     try {
       return action.filter({ saveGrids, mapGrids });
@@ -449,7 +451,7 @@ export class SoldierSelector {
     closeHitArea.setInteractive({ useHandCursor: true });
 
     const closeText = this.scene.add.text(0, 0, '×', {
-      fontSize: '32px', color: '#ff4444', fontStyle: 'bold',padding: { top: 2 }
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold', padding: { top: 2 }
     }).setOrigin(0.5);
 
     closeBtnContainer.add([closeHitArea, closeText]);
@@ -492,7 +494,7 @@ export class SoldierSelector {
     // 3. 如果没有数据
     if (validSoldiers.length === 0) {
       const noDataText = this.scene.add.text(0, 50, '无可执行任务的单位', {
-        fontSize: '18px', color: '#999',padding: { top: 2 }
+        fontSize: '18px', color: '#999', padding: { top: 2 }
       }).setOrigin(0.5);
       this.listContainer.add(noDataText);
       return;
@@ -580,7 +582,7 @@ export class SoldierSelector {
     });
 
     const nameText = this.scene.add.text(-width / 2 + 20, 0, MILITARY_UNIT[soldier.name].name, {
-      fontSize: '20px', color: '#fff', fontStyle: 'bold',padding: { top: 2 }
+      fontSize: '20px', color: '#fff', fontStyle: 'bold', padding: { top: 2 }
     }).setOrigin(0, 0.5);
 
     // 属性显示
@@ -591,11 +593,11 @@ export class SoldierSelector {
     }
 
     const statsText = this.scene.add.text(0, 0, statsStr, {
-      fontSize: '14px', color: '#aaaaaa',padding: { top: 2 }
+      fontSize: '14px', color: '#aaaaaa', padding: { top: 2 }
     }).setOrigin(0.5);
 
     const selectBtn = this.scene.add.text(width / 2 - 20, 0, '选择', {
-      fontSize: '16px', color: '#00ff00',padding: { top: 2 }
+      fontSize: '16px', color: '#00ff00', padding: { top: 2 }
     }).setOrigin(1, 0.5);
 
     container.add([bg, border, nameText, statsText, selectBtn]);
@@ -673,7 +675,7 @@ export class ResourceSelector {
     closeHitArea.setInteractive({ useHandCursor: true });
 
     const closeText = this.scene.add.text(0, 0, '×', {
-      fontSize: '32px', color: '#ff4444', fontStyle: 'bold',padding: { top: 2 }
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold', padding: { top: 2 }
     }).setOrigin(0.5);
 
     closeBtnContainer.add([closeHitArea, closeText]);
@@ -718,7 +720,7 @@ export class ResourceSelector {
       icon.setDisplaySize(80, 80);
 
       const resName = this.scene.add.text(0, 50, get.translation(res), {
-        fontSize: '20px', color: '#fff', fontStyle: 'bold',padding: { top: 2 }
+        fontSize: '20px', color: '#fff', fontStyle: 'bold', padding: { top: 2 }
       }).setOrigin(0.5);
 
       card.add([cardBg, cardBorder, icon, resName]);

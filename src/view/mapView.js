@@ -47,11 +47,13 @@ export class MapView {
     //            false = 由游戏流程调用���如 initGame 选城���，不显示 dev UI
     // tempGrids: 临时发光格子
     // onChoose:  点击任意格子后的外部回调
+    // selectedGridId: 选点模式下，当前被点击选中并保持高亮的格子编号（悬浮之外的持久高亮）
     this.editMode = {
       active: false,
       isDevMode: false,
       tempGrids: {},
       onChoose: null,
+      selectedGridId: null,
     };
 
     this.create();
@@ -223,6 +225,7 @@ export class MapView {
       this.editMode.active = true;
       this.editMode.isDevMode = devMode;
       this.editMode.tempGrids = {};
+      this.editMode.selectedGridId = null;
       // 外部传入的回调：点击任意格子（已存在的 / 临时发光的）都会触发，参数为格子编号(gn)
       this.editMode.onChoose = typeof onChoose === 'function' ? onChoose : null;
 
@@ -243,6 +246,13 @@ export class MapView {
         return;
       }
 
+      // 已存在的真实格子如果处于选中高亮状态，退出选点模式前要先还原；
+      // 临时发光格子会被整体销毁，不需要单独处理。
+      if (this.editMode.selectedGridId) {
+        this._setEditModeGridSelected(this.editMode.selectedGridId, false);
+      }
+      this.editMode.selectedGridId = null;
+
       Object.values(this.editMode.tempGrids || {}).forEach(({ cellContainer, glowTween }) => {
         if (glowTween) glowTween.stop();
         if (cellContainer) cellContainer.destroy(true);
@@ -257,6 +267,40 @@ export class MapView {
       }
       console.log('已退出选点模式，地图已还原');
     };
+  }
+
+  /**
+   * 设置（或取消）选点模式下某个格子的持久高亮状态。
+   * 格子对象可能来自 gridObjects（已存在于存档的真实格子）或 editMode.tempGrids（临时发光格子）。
+   * @param {string} gridId
+   * @param {boolean} selected
+   */
+  _setEditModeGridSelected(gridId, selected) {
+    const handle = this.gridObjects[gridId] || this.editMode.tempGrids[gridId];
+    if (handle && typeof handle.setSelected === 'function') {
+      handle.setSelected(selected);
+    }
+  }
+
+  /**
+   * 选点模式下点击某个格子时的统一处理：
+   * - 点击一个新格子 -> 取消上一个选中格子的高亮，高亮这个新格子；
+   * - 再次点击当前已高亮的格子 -> 取消选中；
+   * 高亮效果会一直保持，直到满足上述两种情况之一（而不仅仅是鼠标悬浮）。
+   * @param {string} gridId
+   */
+  _handleEditModeGridClick(gridId) {
+    if (this.editMode.selectedGridId === gridId) {
+      this._setEditModeGridSelected(gridId, false);
+      this.editMode.selectedGridId = null;
+      return;
+    }
+
+    if (this.editMode.selectedGridId) {
+      this._setEditModeGridSelected(this.editMode.selectedGridId, false);
+    }
+    this.editMode.selectedGridId = gridId;
+    this._setEditModeGridSelected(gridId, true);
   }
 
   /**
@@ -299,17 +343,30 @@ export class MapView {
       ease: 'Sine.easeInOut',
     });
 
-    // 悬浮高亮：使用独立的图层叠加显示，不去暂停/修改底层 graphics 及其发光动画。
+    // 悬浮/选中高亮：使用独立的图层叠加显示，不去暂停/修改底层 graphics 及其发光动画。
     // 之前的实现是暂停 glowTween 并手动 setAlpha(1)，移出后再 resume——
     // 但 resume 只会从暂停时的进度继续，并不会补偿被暂停掉的这段时间，
     // 导致这个格子的发光节奏和其它没被悬浮过的格子错开，看起来“变色”/样式不同步。
-    // 改为叠加一层独立高亮图形，悬浮时显示、移出时隐藏，底层发光格全程不受影响，
-    // 保证移出后和其它默认格子的显示样式完全一致。
+    // 改为叠加一层独立高亮图形，底层发光格全程不受影响。
+    // 该图层同时承担两种高亮：临时的悬浮高亮（白色），和持久的选中高亮（青色，
+    // 与真实格子 createHexagon 里选中态使用的颜色保持一致），选中态优先于悬浮态显示。
+    let isSelected = false;
     const highlightGraphics = this.scene.add.graphics();
-    highlightGraphics.fillStyle(0xffffff, 0.5);
-    highlightGraphics.fillPoints(hexPoints, true);
-    highlightGraphics.lineStyle(3, 0xffffff, 0.9);
-    highlightGraphics.strokePoints(hexPoints, true);
+    const drawHighlight = () => {
+      highlightGraphics.clear();
+      if (isSelected) {
+        highlightGraphics.fillStyle(0x00e5ff, 0.35);
+        highlightGraphics.fillPoints(hexPoints, true);
+        highlightGraphics.lineStyle(5, 0x00e5ff, 1);
+        highlightGraphics.strokePoints(hexPoints, true);
+      } else {
+        highlightGraphics.fillStyle(0xffffff, 0.5);
+        highlightGraphics.fillPoints(hexPoints, true);
+        highlightGraphics.lineStyle(3, 0xffffff, 0.9);
+        highlightGraphics.strokePoints(hexPoints, true);
+      }
+    };
+    drawHighlight();
     highlightGraphics.setVisible(false);
     cellContainer.add(highlightGraphics);
 
@@ -319,24 +376,40 @@ export class MapView {
     graphics.on('pointerdown', () => {
       if (this.isDragging) return;
       console.log(gridId);
+      // 切换该格子的持久选中高亮（选中/取消选中），再触发外部选点回调
+      this._handleEditModeGridClick(gridId);
       if (typeof this.editMode.onChoose === 'function') {
         this.editMode.onChoose(gridId);
       }
     });
 
-    // 悬浮时：只显示高亮图层，底层发光格及其动画保持原样运行，不做暂停/修改
+    // 悬浮时：若格子未处于选中态，按悬浮白色样式显示；已选中的格子悬浮时保持选中样式不变
     graphics.on('pointerover', () => {
+      if (!isSelected) {
+        drawHighlight();
+      }
       highlightGraphics.setVisible(true);
       this.scene.input.setDefaultCursor('pointer');
     });
 
-    // 离开时：隐藏高亮图层即可，底层发光格因为从未被打断，样式和其它格子保持一致
+    // 离开时：未选中的格子隐藏高亮图层；已选中的格子保持青色持久高亮，直到被再次点击或选中其它格子
     graphics.on('pointerout', () => {
-      highlightGraphics.setVisible(false);
+      if (isSelected) {
+        drawHighlight();
+      } else {
+        highlightGraphics.setVisible(false);
+      }
       this.scene.input.setDefaultCursor('default');
     });
 
-    return { cellContainer, graphics, glowTween, highlightGraphics };
+    // 供外部（MapView._setEditModeGridSelected）调用，切换持久选中高亮状态
+    const setSelected = (selected) => {
+      isSelected = !!selected;
+      drawHighlight();
+      highlightGraphics.setVisible(isSelected);
+    };
+
+    return { cellContainer, graphics, glowTween, highlightGraphics, setSelected };
   }
 
   drawGrids() {
@@ -468,6 +541,8 @@ export class MapView {
       if (this.isDragging) return;
       if (this.editMode && this.editMode.active) {
         console.log(gridId);
+        // 切换该格子的持久选中高亮（选中/取消选中），再触发外部选点回调
+        this._handleEditModeGridClick(gridId);
         if (typeof this.editMode.onChoose === 'function') {
           this.editMode.onChoose(gridId);
         }

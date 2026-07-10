@@ -555,12 +555,21 @@ export class GridPanel {
   }
 
   getGridName(gridId, data) {
-    if (gridId === 'g1') {
-      return data.capital;
+    const gn = data.map.grids[gridId];
+
+    // 主城格子：直接显示格点自身存储的 name（建城时写入的 saveData.capital）
+    if (gn?.isMain) {
+      return gn.name || data.capital || '主城';
     }
-    const num = parseInt(gridId.replace('g', ''));
-    const areaNum = num - 1;
-    return `${areaNum}区`;
+
+    // 附属格子：hasMain 指向拥有该格子的主城格点编号，从那里取 name
+    if (gn?.hasMain) {
+      const mainGn = data.map.grids[gn.hasMain];
+      return mainGn?.name || gn.hasMain;
+    }
+
+    // 其他情况（未开发的空地等）
+    return '空地';
   }
 
   destroy() {
