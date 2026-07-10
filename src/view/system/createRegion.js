@@ -532,6 +532,11 @@ export class CreateRegion {
 
   executeBuild() {
     this.scene.events.emit('build_region', { gridId: this.gridId, regionKey: this.selectedRegionKey });
+
+    // 如果 GridPanel 当前正在显示，通知它刷新 build tab 以反映新的建造进度；
+    // 用事件而不是直接引用，让 CreateRegion 和 GridPanel 保持解耦
+    this.scene.events.emit('refresh_grid_panel', this.gridId);
+
     this.close();
   }
 

@@ -913,7 +913,7 @@ export class SaveCreateScene extends Phaser.Scene {
       race: this.selectedRace,
       subRace: this.selectedSubRace,
       tarot: this.selectedTarot,
-      map_type: randomMapType,
+      map_type: 'EWland',
 
       // 根据 selectedEffects 设置对应的值为 true
       trait: this.selectedEffects.includes('trait'),

@@ -279,17 +279,17 @@ export class GridPanel {
     currentY += btnHeight + 30;
 
     // --- 4. 展示区域 (传递完整 rObj 用于弹窗解析) ---
-    if (this.gridData.region !== undefined && this.gridData.region !== null) {
+    if (this.gridData.region !== undefined && this.gridData.region !== null && this.gridData.region !== '') {
       const rId = this.gridData.region;
       const rObj = REGION[rId];
-      const bColor = colorMap[rObj.color];
-      this.createListItem(rObj.name, null, currentY, bColor, rObj);
+      const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
+      this.createListItem(rObj ? rObj.name : rId, null, currentY, bColor, rObj);
       currentY += 40;
     } else if (this.gridData.createRegion) {
       const rId = this.gridData.createRegion.targetRegion;
       const rObj = REGION[rId];
-      const bColor = colorMap[rObj.color];
-      this.createListItem(rObj.name, this.gridData.createRegion.num, currentY, bColor, rObj);
+      const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
+      this.createListItem(rObj ? rObj.name : rId, this.gridData.createRegion.num, currentY, bColor, rObj);
       currentY += 40;
     } else if (this.data.actionList && this.data.actionList.civil && this.data.actionList.civil['build_region_' + this.gridId] && this.data.actionList.civil['build_region_' + this.gridId].regionKey) {
       const rId = this.data.actionList.civil['build_region_' + this.gridId].regionKey;
@@ -568,7 +568,12 @@ export class GridPanel {
       return mainGn?.name || gn.hasMain;
     }
 
-    // 其他情况（未开发的空地等）
+    // 格点自身有 name（非主城、非附属，但有命名）
+    if (gn?.name) {
+      return gn.name;
+    }
+
+    // 既没有 hasMain 也没有 name，显示空地
     return '空地';
   }
 

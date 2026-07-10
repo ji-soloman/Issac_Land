@@ -149,11 +149,12 @@ export class GameScene extends Phaser.Scene {
                     delete data.military[param.soldier].currentStatus;
                   }
                   for (const [gridId, terrain] of Object.entries(param.result)) {
-                    data.map.grids[gridId] = {
-                      terrain: terrain,
-                      locked: true,
-                    }
+                    // turnSystem 已经在结算时将 hasMain/region/buildings/products 写入 grids，
+                    // 这里只补充 terrain 字段，不能整体覆盖，否则 hasMain 等字段会丢失
+                    if (!data.map.grids[gridId]) data.map.grids[gridId] = {};
+                    data.map.grids[gridId].terrain = terrain;
                   }
+                  break;
               }
             }
             break;
@@ -483,6 +484,14 @@ export class GameScene extends Phaser.Scene {
           }
         }
       });
+    });
+
+    // CreateRegion 确认建造后通知 GridPanel 刷新，避免面板信息残留旧数据
+    this.events.on('refresh_grid_panel', (gridId) => {
+      if (this.currentGridPanel && this.currentGridPanel.gridId === gridId) {
+        // switchTab 会清空并重建当前 tab 的内容，以最新 saveData 为准
+        this.currentGridPanel.switchTab(this.currentGridPanel.currentTab);
+      }
     });
 
     this.events.on('create_building_btn', (gridId) => {

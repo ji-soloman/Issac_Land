@@ -1,5 +1,23 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { WONDER } from '../data/wonder.js';
+import { REGION } from '../data/region.js';
+
+// 区域颜色映射（与 GridPanel / CreateRegion 保持一致）
+// key 对应 REGION[x].color，value 为 Phaser 十六进制颜色
+const REGION_COLOR_MAP = {
+  living:        0xF2D8A7,
+  farm:          0x6DBE45,
+  mine:          0x7A7A7A,
+  harbor:        0x2E86C1,
+  pasture:       0xA3B83A,
+  military:      0xB03A2E,
+  academy:       0x4B6CB7,
+  holy:          0xE8C547,
+  trade:         0xE67E22,
+  entertainment: 0xC65DFF,
+  industry:      0xA04000,
+  special:       0x7D3C98,
+};
 
 export class MapView {
   constructor(scene, mapConfig, saveData) {
@@ -49,10 +67,10 @@ export class MapView {
     // onChoose:  点击任意格子后的外部回调
     // selectedGridId: 选点模式下，当前被点击选中并保持高亮的格子编号（悬浮之外的持久高亮）
     this.editMode = {
-      active: false,
+      active:    false,
       isDevMode: false,
       tempGrids: {},
-      onChoose: null,
+      onChoose:  null,
       selectedGridId: null,
     };
 
@@ -444,20 +462,31 @@ export class MapView {
 
   createHexagon(gridId, gridData) {
     // 主城判定：只看 isMain 字段（由 InitGame 建城时写入），不再使用 locked 判定"已解锁"样式
-    const { x, y, isMain = false, wonder } = gridData || {};
+    const { x, y, isMain = false, wonder, region = null } = gridData || {};
 
-    // 创建一个独立的单元容器，用来承载当前格子的所有组件
+    // 凡出现在 saveData.map.grids 里的格子都已解锁（未解锁的根本不会被绘制），
+    // 无需额外字段判断，所有格子统一响应 hover / pointer 效果
+
+    // 非主城格子：如果该格子有已建造完成的区域（region 为非空字符串），
+    // 用区域 colorMap 的颜色覆盖默认灰色；透明度保持和普通非主城格子一致
+    let fillColor = isMain ? 0xff0000 : 0x808080;
+    if (!isMain && region) {
+      const regionConfig = REGION?.[region];
+      if (regionConfig?.color && REGION_COLOR_MAP[regionConfig.color] !== undefined) {
+        fillColor = REGION_COLOR_MAP[regionConfig.color];
+      }
+    }
+
+    let fillAlpha  = isMain ? 0.8 : 0.5;
+    let strokeColor = isMain ? 0xffff00 : 0x606060;
+    let strokeWidth = isMain ? 3 : 2;
+
+    // 创建格子容器和图形对象
     const cellContainer = this.scene.add.container(x, y);
     this.gridsContainer.add(cellContainer);
 
-    // 绘制基础六边形
     const graphics = this.scene.add.graphics();
     const hexPoints = this.getHexagonPoints(this.HEX_RADIUS);
-
-    let fillColor = isMain ? 0xff0000 : 0x808080;
-    let fillAlpha = isMain ? 0.8 : 0.5;
-    let strokeColor = isMain ? 0xffff00 : 0x606060;
-    let strokeWidth = isMain ? 3 : 2;
 
     // 提前检查当前格子是否有奇观显示
     const hasWonder = wonder && WONDER[wonder] && WONDER[wonder].image;
@@ -580,14 +609,9 @@ export class MapView {
         this.scene.input.setDefaultCursor('pointer');
         return;
       }
-      if (isMain) {
-        drawBase(true);
-        if (wonderImage) {
-          //wonderImage.setTint(0xffffff);
-          wonderImage.setAlpha(0.85);
-        }
-        this.scene.input.setDefaultCursor('pointer');
-      }
+      drawBase(true);
+      if (wonderImage) wonderImage.setAlpha(0.85);
+      this.scene.input.setDefaultCursor('pointer');
     };
 
     const onOut = () => {
@@ -596,14 +620,9 @@ export class MapView {
         this.scene.input.setDefaultCursor('default');
         return;
       }
-      if (isMain) {
-        drawBase(false);
-        if (wonderImage) {
-          //wonderImage.clearTint();
-          wonderImage.setAlpha(1.0);
-        }
-        this.scene.input.setDefaultCursor('default');
-      }
+      drawBase(false);
+      if (wonderImage) wonderImage.setAlpha(1.0);
+      this.scene.input.setDefaultCursor('default');
     };
 
     [graphics, wonderImage].forEach(obj => {
