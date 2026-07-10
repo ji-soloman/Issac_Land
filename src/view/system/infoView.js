@@ -41,7 +41,7 @@ export class InfoSystem {
     this.container.add(this.contentContainer);
 
     // ====== 数据准备 ======
-    const mapName = MAPS[this.saveData.map_type]?.name || this.saveData.map_type;
+    const mapName = this.saveData.map_type;
     const raceName = RACES[this.saveData.race]?.name || this.saveData.race;
     const tarotName = TAROT[this.saveData.tarot]?.name || this.saveData.tarot;
 
