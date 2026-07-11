@@ -683,7 +683,19 @@ export const BUILDING = {
       mine: 10,
       magic: 1,
     },
-    effect: {},
+    effect: {
+      trigger: {
+        onComplete({ savedata, scene }) {
+          // 若当前时代 order 低于古典时代（asiaMinor），升级到古典时代
+          const targetKey = 'asiaMinor';
+          const currentKey = savedata.process.era ?? 'primitive';
+          if ((scene.ERA[currentKey]?.order ?? 0) < (scene.ERA[targetKey]?.order ?? 0)) {
+            savedata.process.era = targetKey;
+            scene.showEraAnnouncement(scene.ERA[targetKey].name);
+          }
+        },
+      },
+    },
     round: 4,
   },
 

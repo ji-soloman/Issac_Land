@@ -175,13 +175,15 @@ export class CreateBuilding {
 
     let index = 0;
     for (const [key, config] of Object.entries(BUILDING)) {
-      let isBuildable = true, isAffordable = true;
+      // 不符合当前区域的建筑直接跳过，不显示在列表中
       const regionCheck = this.checkRegion(this.currentData, config);
+      if (!regionCheck) continue;
+
+      let isBuildable = true, isAffordable = true;
       const techCheck = this.checkTech(this.data.tech_tree.unlocked, config);
       const raceCheck = this.checkRace(this.data.race, config);
 
       try {
-        if (!regionCheck) isBuildable = false;
         if (!techCheck) isBuildable = false;
         if (!raceCheck) isBuildable = false;
       } catch (e) {
@@ -437,6 +439,8 @@ export class CreateBuilding {
 
   executeBuild() {
     this.scene.events.emit('build_building', { gridId: this.gridId, buildingKey: this.selectedBuildingKey });
+    // 通知 GridPanel 刷新，与 createRegion 保持一致
+    this.scene.events.emit('refresh_grid_panel', this.gridId);
     this.close();
   }
 

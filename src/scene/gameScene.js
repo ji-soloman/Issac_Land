@@ -25,6 +25,7 @@ import { ActionListSystem } from '../view/system/actionList.js';
 import { GreatPeopleSystem } from '../view/system/greatPeople.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
 import { REGION } from '../data/region.js';
+import { BUILDING } from '../data/building.js';
 import { ERA } from '../data/era.js';
 import { WONDER } from '../data/wonder.js';
 import { GREAT_PEOPLE } from '../data/great_people.js';
@@ -170,6 +171,14 @@ export class GameScene extends Phaser.Scene {
                   num: REGION[param.regionKey].round,
                 }
               }
+              // 【建造建筑】
+              else if (actionCivil.startsWith('build_building')) {
+                const gn = data.map.grids[param.gridId];
+                if (!gn.createBuilding) gn.createBuilding = {};
+                gn.createBuilding[param.buildingKey] = {
+                  num: BUILDING[param.buildingKey].round,
+                };
+              }
               else if (actionCivil.startsWith('get_resource_')) {
                 if (data.military[param.soldier]) {
                   delete data.military[param.soldier].currentStatus;
@@ -185,12 +194,13 @@ export class GameScene extends Phaser.Scene {
       }
 
       // 3.结算每个【地块相关】的倒计时
-      // completedTriggers 收集本回合建造完成并携带 trigger.onComplete 的事件，
-      // 统一在第9项（回合增加之后）触发，保证时代升级等效果在新回合数据下执行
-      const completedTriggers = [];
+      // completedRegionTriggers / completedBuildingTriggers 分开收集，
+      // 统一在第9项（turn++ 之后）按顺序触发：先所有区域，再所有建筑
+      const completedRegionTriggers = [];
+      const completedBuildingTriggers = [];
 
       for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
-        // 【建造区域】
+        // 【建造区域】倒计时
         if (gridsInfo.createRegion) {
           gridsInfo.createRegion.num = (gridsInfo.createRegion.num || 0) - 1;
           if (gridsInfo.createRegion.num <= 0) {
@@ -198,11 +208,31 @@ export class GameScene extends Phaser.Scene {
             data.map.grids[gridsId].region = completedRegionKey;
             delete gridsInfo.createRegion;
 
-            // 若该区域定义了 trigger.onComplete，将其加入待触发队列
             const trigger = REGION[completedRegionKey]?.effect?.trigger?.onComplete;
             if (typeof trigger === 'function') {
-              completedTriggers.push({ regionKey: completedRegionKey, gridId: gridsId });
+              completedRegionTriggers.push({ regionKey: completedRegionKey, gridId: gridsId });
             }
+          }
+        }
+
+        // 【建造建筑】倒计时（一个格子可能同时建造多栋建筑）
+        if (gridsInfo.createBuilding) {
+          for (const [buildingKey, buildingInfo] of Object.entries(gridsInfo.createBuilding)) {
+            buildingInfo.num = (buildingInfo.num || 0) - 1;
+            if (buildingInfo.num <= 0) {
+              if (!gridsInfo.buildings) gridsInfo.buildings = {};
+              gridsInfo.buildings[buildingKey] = true;
+              delete gridsInfo.createBuilding[buildingKey];
+
+              const trigger = BUILDING[buildingKey]?.effect?.trigger?.onComplete;
+              if (typeof trigger === 'function') {
+                completedBuildingTriggers.push({ buildingKey, gridId: gridsId });
+              }
+            }
+          }
+          // 清理空的 createBuilding 对象
+          if (Object.keys(gridsInfo.createBuilding).length === 0) {
+            delete gridsInfo.createBuilding;
           }
         }
       }
@@ -275,8 +305,12 @@ export class GameScene extends Phaser.Scene {
 
       // 9.【Trigger 类事件结算】
       // 在 turn++ 之后执行，保证效果在新回合数据环境下生效
-      for (const trigger of completedTriggers) {
-        this._handleRegionTriggerComplete(trigger.regionKey, data);
+      // 顺序：先所有区域 onComplete，再所有建筑 onComplete
+      for (const trigger of completedRegionTriggers) {
+        this._handleTriggerComplete('region', trigger.regionKey, data);
+      }
+      for (const trigger of completedBuildingTriggers) {
+        this._handleTriggerComplete('building', trigger.buildingKey, data);
       }
       // 9.保存数据
       saveSystem.save();
@@ -506,6 +540,18 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    this.events.on('build_building', (result) => {
+      console.log('建造建筑信息：', result);
+
+      game.addAction('civil', 'build_building_' + result.gridId + '_' + result.buildingKey, result, {
+        onFail: (info) => {
+          if (info.reason === 'limit') {
+            game.showTips(this, '行动数量超过上限');
+          }
+        }
+      });
+    });
+
     // CreateRegion 确认建造后通知 GridPanel 刷新，避免面板信息残留旧数据
     this.events.on('refresh_grid_panel', (gridId) => {
       if (this.currentGridPanel && this.currentGridPanel.gridId === gridId) {
@@ -686,18 +732,20 @@ export class GameScene extends Phaser.Scene {
     this.removeOverlay();
   }
   /**
-   * 执行区域建造完成的 trigger.onComplete 回调。
-   * 具体效果全部定义在 region.js 配置表里，这里只负责读取并调用。
-   * @param {string} regionKey
+   * 统一执行区域/建筑建造完成的 trigger.onComplete 回调。
+   * 具体效果全部定义在 region.js / building.js 配置表里，这里只负责读取并调用。
+   * @param {'region'|'building'} type
+   * @param {string} key - regionKey 或 buildingKey
    * @param {Object} data - saveData 引用
    */
-  _handleRegionTriggerComplete(regionKey, data) {
-    const fn = REGION[regionKey]?.effect?.trigger?.onComplete;
+  _handleTriggerComplete(type, key, data) {
+    const config = type === 'region' ? REGION[key] : BUILDING[key];
+    const fn = config?.effect?.trigger?.onComplete;
     if (typeof fn !== 'function') return;
     try {
       fn({ savedata: data, scene: this });
     } catch (err) {
-      console.error(`trigger.onComplete [${regionKey}] 执行出错:`, err);
+      console.error(`trigger.onComplete [${type}:${key}] 执行出错:`, err);
     }
   }
 
