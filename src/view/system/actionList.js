@@ -468,6 +468,14 @@ export class ActionListSystem {
     if (markedIntro.startsWith('build_region')) {
       markedIntro = '在' + this.getGridName(actionData.gridId) + '建造特区【' + REGION[actionData.regionKey].name + '】';
     }
+    else if (markedIntro.startsWith('remove_region')) {
+      // desc 由 gridPanel._showRemoveRegionConfirm 写入，格式为"移除XX"
+      markedIntro = actionData.desc ?? `移除区域`;
+    }
+    else if (markedIntro.startsWith('build_building')) {
+      const bName = this.scene.BUILDING?.[actionData.buildingKey]?.name ?? actionData.buildingKey;
+      markedIntro = '在' + this.getGridName(actionData.gridId) + '建造建筑【' + bName + '】';
+    }
     else if (markedIntro.startsWith('research_tech_')) {
       markedIntro = '启发了科技【' + actionData.name + '】';
     }
@@ -489,7 +497,7 @@ export class ActionListSystem {
       }
 
       replacements.push(get.translation(actionData.resource));
-      markedIntro=intro;
+      markedIntro = intro;
 
       replacements.forEach(val => {
         markedIntro = markedIntro.replace('XX', `{{${val}}}`);
@@ -548,14 +556,12 @@ export class ActionListSystem {
   }
 
   getGridName(gridId) {
-    if (gridId === 'g1') {
-      return '主城';
-    }
-
-    const num = parseInt(gridId.replace('g', ''));
-    const areaNum = num - 1;
-
-    return `${areaNum}区`;
+    const grids = this.saveData.map?.grids ?? {};
+    const gn = grids[gridId];
+    if (gn?.isMain) return gn.name || this.saveData.capital || '主城';
+    if (gn?.hasMain) return grids[gn.hasMain]?.name ?? gn.hasMain;
+    if (gn?.name) return gn.name;
+    return gridId;
   }
 
   /**

@@ -59,6 +59,10 @@ export class GameScene extends Phaser.Scene {
     this.load.image('common_btn', 'assets/ui/common_btn.png');
     this.load.image('common_btn_green', 'assets/ui/common_btn_green.png');
     this.load.image('common_btn_blue', 'assets/ui/common_btn_blue.png');
+    this.load.image('common_btn_red', 'assets/ui/common_btn_red.png');
+    this.load.image('common_btn_purple', 'assets/ui/common_btn_purple.png');
+    this.load.image('common_btn_light', 'assets/ui/common_btn_light.png');
+    this.load.image('common_btn_dark', 'assets/ui/common_btn_dark.png');
 
     this.load.image('settings_btn', 'assets/ui/settings_btn.png');
 
@@ -91,8 +95,9 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.saveData = saveSystem.currentSaveData;
-    // 挂载到 scene 实例，供 region.js 配置表的 trigger 回调通过 scene.ERA 访问
+    // 挂载到 scene 实例，供配置表的 trigger 回调及 UI 通过 scene.ERA / scene.BUILDING 访问
     this.ERA = ERA;
+    this.BUILDING = BUILDING;
 
     this.initWorld();
     this.createMap();
@@ -140,6 +145,40 @@ export class GameScene extends Phaser.Scene {
       // ↓ 这里重新初始化新的回合收入
       const keys = ['culture', 'food', 'magic', 'mine', 'wealth'];
       const total = Object.fromEntries(keys.map(k => [k, 0]));
+
+      // 1.5【移除区域】在第2步行动结算之前优先处理
+      // 顺序：先依次触发每栋建筑的 onDestroy，再摧毁建筑，最后触发区域 onDestroy 并移除区域
+      const civilActions = data.actionList?.civil ?? {};
+      for (const [actionKey, param] of Object.entries(civilActions)) {
+        if (!actionKey.startsWith('remove_region_')) continue;
+
+        const gn = data.map.grids[param.gridId];
+        if (!gn) continue;
+
+        // 1) 依次摧毁建筑（先触发 onDestroy trigger）
+        const buildings = gn.buildings ?? {};
+        for (const buildingKey of Object.keys(buildings)) {
+          this._handleTriggerComplete('building_destroy', buildingKey, data);
+          delete gn.buildings[buildingKey];
+        }
+        // 清理建造中的建筑
+        if (gn.createBuilding) {
+          for (const buildingKey of Object.keys(gn.createBuilding)) {
+            this._handleTriggerComplete('building_destroy', buildingKey, data);
+          }
+          delete gn.createBuilding;
+        }
+
+        // 2) 触发区域 onDestroy，再移除区域
+        const regionKey = gn.region;
+        if (regionKey) {
+          this._handleTriggerComplete('region_destroy', regionKey, data);
+          delete gn.region;
+        }
+
+        // 3) 从 actionList 中移除该条目
+        delete data.actionList.civil[actionKey];
+      }
 
       //2.结算当前回合行动事件
       for (const [actionType, params] of Object.entries(result)) {
@@ -196,7 +235,7 @@ export class GameScene extends Phaser.Scene {
       // 3.结算每个【地块相关】的倒计时
       // completedRegionTriggers / completedBuildingTriggers 分开收集，
       // 统一在第9项（turn++ 之后）按顺序触发：先所有区域，再所有建筑
-      const completedRegionTriggers = [];
+      const completedRegionTriggers   = [];
       const completedBuildingTriggers = [];
 
       for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
@@ -732,20 +771,33 @@ export class GameScene extends Phaser.Scene {
     this.removeOverlay();
   }
   /**
-   * 统一执行区域/建筑建造完成的 trigger.onComplete 回调。
-   * 具体效果全部定义在 region.js / building.js 配置表里，这里只负责读取并调用。
-   * @param {'region'|'building'} type
-   * @param {string} key - regionKey 或 buildingKey
-   * @param {Object} data - saveData 引用
+   * 统一执行区域/建筑的 trigger 回调。
+   * type 取值：
+   *   'region'          → REGION[key].effect.trigger.onComplete
+   *   'building'        → BUILDING[key].effect.trigger.onComplete
+   *   'region_destroy'  → REGION[key].effect.trigger.onDestroy
+   *   'building_destroy'→ BUILDING[key].effect.trigger.onDestroy
    */
   _handleTriggerComplete(type, key, data) {
-    const config = type === 'region' ? REGION[key] : BUILDING[key];
-    const fn = config?.effect?.trigger?.onComplete;
-    if (typeof fn !== 'function') return;
+    let config, triggerFn;
+    if (type === 'region') {
+      config = REGION[key];
+      triggerFn = config?.effect?.trigger?.onComplete;
+    } else if (type === 'building') {
+      config = BUILDING[key];
+      triggerFn = config?.effect?.trigger?.onComplete;
+    } else if (type === 'region_destroy') {
+      config = REGION[key];
+      triggerFn = config?.effect?.trigger?.onDestroy;
+    } else if (type === 'building_destroy') {
+      config = BUILDING[key];
+      triggerFn = config?.effect?.trigger?.onDestroy;
+    }
+    if (typeof triggerFn !== 'function') return;
     try {
-      fn({ savedata: data, scene: this });
+      triggerFn({ savedata: data, scene: this });
     } catch (err) {
-      console.error(`trigger.onComplete [${type}:${key}] 执行出错:`, err);
+      console.error(`trigger.${type} [${key}] 执行出错:`, err);
     }
   }
 

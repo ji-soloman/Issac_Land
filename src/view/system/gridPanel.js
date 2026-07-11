@@ -4,6 +4,8 @@ import { get } from '../../system/i18n.js';
 import { terrain } from '../../data/terrain.js';
 import { REGION } from '../../data/region.js';
 import { MAPS } from '../../data/map/EWland/map.js';
+import { game } from '../../system/function.js';
+import { BUILDING } from '../../data/building.js';
 
 const colorMap = {
   living: 0xF2D8A7,
@@ -260,30 +262,41 @@ export class GridPanel {
     const rData = this.gridData.region;
     const hasBuiltRegion = rData !== undefined && rData !== null && rData !== '';
 
-    // --- 1. 创建地区按钮 ---
-    this.createActionButton('创建地区', centerX, currentY, btnWidth, btnHeight, 0x4caf50, true, () => {
-      this.scene.events.emit('create_region_btn', this.gridId);
-    });
+    // 检查是否存在"移除区域"待处理行动
+    const isPendingRemove = !!(this.data.actionList?.civil?.['remove_region_' + this.gridId]);
+
+    // --- 1. 创建地区 / 移除区域 按钮 ---
+    if (hasBuiltRegion) {
+      // 已排队移除时按钮置灰；否则显示红底黄字可点击按钮
+      this.createActionButton('移除区域', centerX, currentY, btnWidth, btnHeight, 0xc62828, !isPendingRemove, () => {
+        this._showRemoveRegionConfirm();
+      }, '#ffeb3b');
+    } else {
+      this.createActionButton('创建地区', centerX, currentY, btnWidth, btnHeight, 0x4caf50, true, () => {
+        this.scene.events.emit('create_region_btn', this.gridId);
+      });
+    }
     currentY += btnHeight + 15;
 
-    // --- 2. 升级地区按钮 ---
-    this.createActionButton('升级地区', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion, () => {
+    // --- 2. 升级地区按钮（待移除时同步置灰）---
+    this.createActionButton('升级地区', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
       this.scene.events.emit('upgrade_region_btn', this.gridId);
     });
     currentY += btnHeight + 15;
 
-    // --- 3. 创建建筑按钮 ---
-    this.createActionButton('创建建筑', centerX, currentY, btnWidth, btnHeight, 0x9c27b0, hasBuiltRegion, () => {
+    // --- 3. 创建建筑按钮（待移除时同步置灰）---
+    this.createActionButton('创建建筑', centerX, currentY, btnWidth, btnHeight, 0x9c27b0, hasBuiltRegion && !isPendingRemove, () => {
       this.scene.events.emit('create_building_btn', this.gridId);
     });
     currentY += btnHeight + 30;
 
-    // --- 4. 展示区域 (传递完整 rObj 用于弹窗解析) ---
-    if (this.gridData.region !== undefined && this.gridData.region !== null && this.gridData.region !== '') {
+    // --- 4. 展示区域 ---
+    if (hasBuiltRegion) {
       const rId = this.gridData.region;
       const rObj = REGION[rId];
       const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
-      this.createListItem(rObj ? rObj.name : rId, null, currentY, bColor, rObj);
+      // 待移除时显示"被拆除"标签 + 灰色蒙版
+      this.createListItem(rObj ? rObj.name : rId, null, currentY, bColor, rObj, isPendingRemove ? 'removing' : null);
       currentY += 40;
     } else if (this.gridData.createRegion) {
       const rId = this.gridData.createRegion.targetRegion;
@@ -291,7 +304,7 @@ export class GridPanel {
       const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
       this.createListItem(rObj ? rObj.name : rId, this.gridData.createRegion.num, currentY, bColor, rObj);
       currentY += 40;
-    } else if (this.data.actionList && this.data.actionList.civil && this.data.actionList.civil['build_region_' + this.gridId] && this.data.actionList.civil['build_region_' + this.gridId].regionKey) {
+    } else if (this.data.actionList?.civil?.['build_region_' + this.gridId]?.regionKey) {
       const rId = this.data.actionList.civil['build_region_' + this.gridId].regionKey;
       const rObj = REGION[rId];
       const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
@@ -306,17 +319,24 @@ export class GridPanel {
       currentY += 10;
     }
 
-    // --- 5. 展示建筑 ---
-    if (this.gridData.buildings && this.gridData.buildings.length > 0) {
-      this.gridData.buildings.forEach(bId => {
-        this.createListItem(get.translation(bId), null, currentY);
+    // --- 5. 展示建筑（buildings 是 {key: true} 对象）---
+    const buildings = this.gridData.buildings;
+    if (buildings && typeof buildings === 'object') {
+      for (const bKey of Object.keys(buildings)) {
+        const bObj = BUILDING?.[bKey];
+        // 待移除时每栋建筑也显示"被拆除"+ 灰色蒙版
+        this.createListItem(bObj?.name ?? bKey, null, currentY, null, null, isPendingRemove ? 'removing' : null);
         currentY += 40;
-      });
+      }
     }
 
+    // 建造中的建筑（createBuilding 是 {key: {num}} 对象）
     if (this.gridData.createBuilding) {
-      this.createListItem(get.translation(this.gridData.createBuilding.targetBuilding), this.gridData.createBuilding.num, currentY);
-      currentY += 40;
+      for (const [bKey, bInfo] of Object.entries(this.gridData.createBuilding)) {
+        const bObj = BUILDING?.[bKey];
+        this.createListItem(bObj?.name ?? bKey, bInfo.num, currentY, null, null, isPendingRemove ? 'removing' : null);
+        currentY += 40;
+      }
     }
 
     this.contentMaxHeight = currentY - this.contentStartY + 20;
@@ -354,11 +374,11 @@ export class GridPanel {
     this.contentMaxHeight = currentY - this.contentStartY + 20;
   }
 
-  createActionButton(textStr, x, y, width, height, color, isEnabled, callback) {
+  createActionButton(textStr, x, y, width, height, color, isEnabled, callback, textColor = '#ffffff') {
     const bg = this.scene.add.rectangle(x, y, width, height, color, 1);
     const text = this.scene.add.text(x, y, textStr, {
       fontSize: '20px',
-      color: '#ffffff',
+      color: textColor,
       fontStyle: 'bold',
       padding: { top: 5 },
       shadow: { offsetX: 1, offsetY: 1, color: '#000', fill: true }
@@ -413,8 +433,8 @@ export class GridPanel {
     this.tooltipContainer.setVisible(true);
   }
 
-  // 修改了入参，增加 tooltipData 用于接收区域特有数据
-  createListItem(nameStr, countdown, y, borderColor, tooltipData) {
+  // 修改了入参，增加 tooltipData 用于接收区域特有数据，status='removing' 时显示拆除状态
+  createListItem(nameStr, countdown, y, borderColor, tooltipData, status) {
     const leftX = this.panelStartX + 20;
     const rightX = this.panelStartX + this.panelWidth - 20;
     const centerX = this.panelStartX + this.panelWidth / 2;
@@ -460,8 +480,18 @@ export class GridPanel {
       });
     }
 
-    // ====== 倒计时与沙漏悬浮窗逻辑 ======
-    if (countdown !== null && countdown !== undefined) {
+    // ====== removing 状态：右侧"被拆除"红字 + 整行浅灰蒙版 ======
+    if (status === 'removing') {
+      const removingText = this.scene.add.text(rightX - 10, y, '被拆除', {
+        fontSize: '15px', color: '#e53935', fontStyle: 'bold', padding: { top: 3 },
+      }).setOrigin(1, 0.5);
+      // 浅灰色蒙版叠在行上，不影响下方元素的交互（tooltip 等）
+      const dimOverlay = this.scene.add.rectangle(centerX, y, this.panelWidth * 0.9, 36, 0x888888, 0.35);
+      this.contentContainer.add([removingText, dimOverlay]);
+    }
+
+    // ====== 倒计时与沙漏悬浮窗逻辑（removing 状态下不显示）======
+    if (countdown !== null && countdown !== undefined && status !== 'removing') {
       const isPending = (countdown === 'pending');
       const cdTextStr = isPending ? '' : countdown.toString();
 
@@ -552,6 +582,87 @@ export class GridPanel {
         this.scene.closeGridPanel();
       }
     });
+  }
+
+  _showRemoveRegionConfirm() {
+    const { width, height } = this.scene.scale;
+    const W = 360, H = 210;
+    const cx = width / 2, cy = height / 2;
+    const DEPTH = 3000;
+
+    // 半透明遮罩，阻止点击穿透
+    const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.55)
+      .setDepth(DEPTH).setInteractive();
+
+    const modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+
+    const bg = this.scene.add.rectangle(0, 0, W, H, 0x12111e, 0.97)
+      .setStrokeStyle(1.5, 0x7a6050, 1);
+    modal.add(bg);
+
+    // 标题：黄色，位于浮窗顶部居中
+    const title = this.scene.add.text(0, -H / 2 + 22, '移除区域', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#ffeb3b',
+      fontStyle: 'bold', align: 'center',
+    }).setOrigin(0.5);
+    modal.add(title);
+
+    // 正文：与标题、按钮间距对齐
+    const msg = this.scene.add.text(0, -18,
+      '将移除区域并摧毁区域内全部建筑，\n是否继续？',
+      {
+        fontFamily: 'sans-serif', fontSize: '17px', color: '#f5e6c8',
+        align: 'center', wordWrap: { width: W - 40 },
+      }
+    ).setOrigin(0.5);
+    modal.add(msg);
+
+    const destroy = () => {
+      modal.destroy(true);
+      overlay.destroy();
+    };
+
+    // 图片按钮辅助函数（与 initGame._addCardButton 保持一致）
+    const addBtn = (x, y, label, textureKey, onClick) => {
+      const BW = 120, BH = 38;
+      const btnBg  = this.scene.add.image(x, y, textureKey).setDisplaySize(BW, BH);
+      const btnTxt = this.scene.add.text(x, y, label, {
+        fontFamily: 'sans-serif', fontSize: '17px', color: '#ffffff',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5);
+      btnBg.setInteractive({ useHandCursor: true });
+      btnBg.on('pointerover',  () => btnBg.setAlpha(0.8));
+      btnBg.on('pointerout',   () => btnBg.setAlpha(1));
+      btnBg.on('pointerdown',  () => btnBg.setAlpha(0.6));
+      btnBg.on('pointerup',    () => { btnBg.setAlpha(1); onClick(); });
+      modal.add([btnBg, btnTxt]);
+    };
+
+    // 确认：common_btn_red
+    addBtn(-70, H / 2 - 36, '确认', 'common_btn_red', () => {
+      const regionKey  = this.gridData.region;
+      const regionName = REGION[regionKey]?.name ?? regionKey;
+      game.addAction('civil', 'remove_region_' + this.gridId, {
+        gridId: this.gridId,
+        desc: `移除${regionName}`,
+      }, {
+        onFail: (info) => {
+          if (info.reason === 'limit') game.showTips(this.scene, '行动数量超过上限');
+        },
+        onSuccess: () => {
+          // 行动加入成功后立即刷新 build tab，让按钮置灰和拆除蒙版生效
+          this.switchTab('build');
+        },
+      });
+      destroy();
+    });
+
+    // 取消：common_btn
+    addBtn(70, H / 2 - 36, '取消', 'common_btn', () => destroy());
+
+    modal.setAlpha(0);
+    overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 180 });
   }
 
   getGridName(gridId, data) {
