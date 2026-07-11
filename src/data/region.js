@@ -284,7 +284,18 @@ export const REGION = {
       },
       turn: {
         culture: 3,
-      }
+      },
+      trigger: {
+        onComplete({ savedata, scene }) {
+          // 若当前时代 order 低于奴隶时代，升级到奴隶时代
+          const targetKey = 'slave';
+          const currentKey = savedata.process.era ?? 'primitive';
+          if ((scene.ERA[currentKey]?.order ?? 0) < (scene.ERA[targetKey]?.order ?? 0)) {
+            savedata.process.era = targetKey;
+            scene.showEraAnnouncement(scene.ERA[targetKey].name);
+          }
+        },
+      },
     },
     canBuild({ tech }) {
       return tech.religion_2;
@@ -500,7 +511,18 @@ export const REGION = {
       turn: {
         food: 2,
         culture: 2,
-      }
+      },
+      trigger: {
+        onComplete({ savedata, scene }) {
+          // 与圣地效果相同：若当前时代 order 低于奴隶时代，升级到奴隶时代
+          const targetKey = 'slave';
+          const currentKey = savedata.process.era ?? 'primitive';
+          if ((scene.ERA[currentKey]?.order ?? 0) < (scene.ERA[targetKey]?.order ?? 0)) {
+            savedata.process.era = targetKey;
+            scene.showEraAnnouncement(scene.ERA[targetKey].name);
+          }
+        },
+      },
     },
     canBuild({ grid }) {
       return true;

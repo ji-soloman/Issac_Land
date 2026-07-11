@@ -25,6 +25,7 @@ import { ActionListSystem } from '../view/system/actionList.js';
 import { GreatPeopleSystem } from '../view/system/greatPeople.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
 import { REGION } from '../data/region.js';
+import { ERA } from '../data/era.js';
 import { WONDER } from '../data/wonder.js';
 import { GREAT_PEOPLE } from '../data/great_people.js';
 
@@ -89,6 +90,8 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.saveData = saveSystem.currentSaveData;
+    // 挂载到 scene 实例，供 region.js 配置表的 trigger 回调通过 scene.ERA 访问
+    this.ERA = ERA;
 
     this.initWorld();
     this.createMap();
@@ -182,13 +185,24 @@ export class GameScene extends Phaser.Scene {
       }
 
       // 3.结算每个【地块相关】的倒计时
+      // completedTriggers 收集本回合建造完成并携带 trigger.onComplete 的事件，
+      // 统一在第9项（回合增加之后）触发，保证时代升级等效果在新回合数据下执行
+      const completedTriggers = [];
+
       for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
         // 【建造区域】
         if (gridsInfo.createRegion) {
           gridsInfo.createRegion.num = (gridsInfo.createRegion.num || 0) - 1;
           if (gridsInfo.createRegion.num <= 0) {
-            data.map.grids[gridsId].region = gridsInfo.createRegion.targetRegion;
+            const completedRegionKey = gridsInfo.createRegion.targetRegion;
+            data.map.grids[gridsId].region = completedRegionKey;
             delete gridsInfo.createRegion;
+
+            // 若该区域定义了 trigger.onComplete，将其加入待触发队列
+            const trigger = REGION[completedRegionKey]?.effect?.trigger?.onComplete;
+            if (typeof trigger === 'function') {
+              completedTriggers.push({ regionKey: completedRegionKey, gridId: gridsId });
+            }
           }
         }
       }
@@ -258,6 +272,12 @@ export class GameScene extends Phaser.Scene {
       }
       // 8.回合增加
       data.process.turn++;
+
+      // 9.【Trigger 类事件结算】
+      // 在 turn++ 之后执行，保证效果在新回合数据环境下生效
+      for (const trigger of completedTriggers) {
+        this._handleRegionTriggerComplete(trigger.regionKey, data);
+      }
       // 9.保存数据
       saveSystem.save();
       // 10.刷新地图
@@ -665,6 +685,75 @@ export class GameScene extends Phaser.Scene {
     this.systemOpen = false;
     this.removeOverlay();
   }
+  /**
+   * 执行区域建造完成的 trigger.onComplete 回调。
+   * 具体效果全部定义在 region.js 配置表里，这里只负责读取并调用。
+   * @param {string} regionKey
+   * @param {Object} data - saveData 引用
+   */
+  _handleRegionTriggerComplete(regionKey, data) {
+    const fn = REGION[regionKey]?.effect?.trigger?.onComplete;
+    if (typeof fn !== 'function') return;
+    try {
+      fn({ savedata: data, scene: this });
+    } catch (err) {
+      console.error(`trigger.onComplete [${regionKey}] 执行出错:`, err);
+    }
+  }
+
+  /**
+   * 在屏幕中央播报时代升级信息。
+   * 大标题淡入保持 2 秒后淡出销毁。
+   * @param {string} eraName - 新时代名称
+   */
+  showEraAnnouncement(eraName) {
+    const { width, height } = this.scale;
+
+    // 半透明黑色遮罩，衬托文字，不拦截点击
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height * 0.28, 0x000000, 0.55)
+      .setDepth(2000)
+      .setAlpha(0);
+
+    const label = this.add.text(width / 2, height / 2 - 18, '进入新时代', {
+      fontFamily: 'serif',
+      fontSize: '22px',
+      color: '#d4af6a',
+    }).setOrigin(0.5).setDepth(2001).setAlpha(0);
+
+    const title = this.add.text(width / 2, height / 2 + 22, eraName, {
+      fontFamily: 'serif',
+      fontSize: '48px',
+      color: '#fff8e7',
+      stroke: '#3a2000',
+      strokeThickness: 6,
+      shadow: { offsetX: 2, offsetY: 4, color: '#000', blur: 10, fill: true },
+    }).setOrigin(0.5).setDepth(2001).setAlpha(0);
+
+    // 淡入
+    this.tweens.add({
+      targets: [overlay, label, title],
+      alpha: 1,
+      duration: 600,
+      ease: 'Power2',
+      onComplete: () => {
+        // 停留 2 秒后淡出销毁
+        this.time.delayedCall(2000, () => {
+          this.tweens.add({
+            targets: [overlay, label, title],
+            alpha: 0,
+            duration: 600,
+            ease: 'Power2',
+            onComplete: () => {
+              overlay.destroy();
+              label.destroy();
+              title.destroy();
+            },
+          });
+        });
+      },
+    });
+  }
+
   closeGridPanel() {
     if (this.currentGridPanel) {
       this.currentGridPanel.destroy();
