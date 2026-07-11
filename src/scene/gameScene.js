@@ -20,7 +20,7 @@ import { terrain } from '../data/terrain.js';
 import { LeftSideBar } from '../scene/leftSideBar.js';
 import { TECH_TREE } from '../data/tech_tree.js';
 import { TechTreeSystem } from '../view/system/techTree.js';
-import { MilitarySystem } from '../view/system/military.js';
+import { MilitarySystem } from '../view/system/military_ui.js';
 import { ActionListSystem } from '../view/system/actionList.js';
 import { GreatPeopleSystem } from '../view/system/greatPeople.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
@@ -235,7 +235,7 @@ export class GameScene extends Phaser.Scene {
       // 3.结算每个【地块相关】的倒计时
       // completedRegionTriggers / completedBuildingTriggers 分开收集，
       // 统一在第9项（turn++ 之后）按顺序触发：先所有区域，再所有建筑
-      const completedRegionTriggers   = [];
+      const completedRegionTriggers = [];
       const completedBuildingTriggers = [];
 
       for (const [gridsId, gridsInfo] of Object.entries(data.map.grids)) {
