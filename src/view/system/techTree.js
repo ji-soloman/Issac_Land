@@ -3,6 +3,7 @@ import { TECH_TREE } from '../../data/tech_tree.js';
 import { ERA } from '../../data/era.js';
 import { get } from '../../system/i18n.js';
 import { saveSystem } from '../../system/saveSystem.js';
+import { game } from '../../system/function.js';
 
 export class TechTreeSystem {
   constructor(scene, saveData) {
@@ -781,33 +782,38 @@ export class TechTreeSystem {
     // 再次做一下安全校验，防止异常调用
     if (!this.checkCanAfford(totalCost)) return;
 
-    // 1. 扣除资源逻辑
-    if (!this.saveData.resource) this.saveData.resource = {};
-    for (const [key, val] of Object.entries(totalCost)) {
-      this.saveData.resource[key] = (this.saveData.resource[key] || 0) - val;
-    }
-
-    // 研发所需的回合数（默认为 1）
     const techEra = ERA[tech.era].order;
     const turnsNeeded = techEra || 1;
 
-    // 2. 写入研发数据
-    if (!this.saveData.tech_tree.researching) {
-      this.saveData.tech_tree.researching = {};
-    }
-    this.saveData.tech_tree.researching[id] = turnsNeeded;
-    this.saveData.actionList.civil['research_tech_' + tech.name] = {
+    // 研究科技消耗 1 个民事行动条目（civil slot）：
+    // addAction 负责检查上限并写入 actionList.civil 作为本回合记录，
+    // 只有添加成功（onSuccess）才扣除资源并写入 tech_tree.researching 参与结算。
+    game.addAction('civil', 'research_tech_' + id, {
+      techId: id,
       name: tech.name,
       round: turnsNeeded,
-    }
+    }, {
+      onSuccess: () => {
+        // 确认占用民事条目后，扣除资源并启动研发倒计时
+        if (!this.saveData.resource) this.saveData.resource = {};
+        for (const [key, val] of Object.entries(totalCost)) {
+          this.saveData.resource[key] = (this.saveData.resource[key] || 0) - val;
+        }
 
-    // 3. 保存并刷新界面
-    saveSystem.save().then(() => {
-      // 利用 targetImage 重新打开一次窗口以刷新按钮状态和上方资源显示
-      this.showTechInfo(id, tech, targetImage);
+        if (!this.saveData.tech_tree.researching) {
+          this.saveData.tech_tree.researching = {};
+        }
+        this.saveData.tech_tree.researching[id] = turnsNeeded;
 
-      // 建议：如果你的场景里有顶部资源栏的 UI 组件，可以在这里抛出一个事件通知它刷新
-      // this.scene.events.emit('resource_changed');
+        saveSystem.save().then(() => {
+          this.showTechInfo(id, tech, targetImage);
+        });
+      },
+      onFail: (info) => {
+        if (info.reason === 'limit') {
+          game.showTips(this.scene, '民事行动数量超过上限');
+        }
+      },
     });
   }
 

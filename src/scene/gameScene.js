@@ -218,6 +218,14 @@ export class GameScene extends Phaser.Scene {
                   num: BUILDING[param.buildingKey].round,
                 };
               }
+              // 【研究科技】：techTree.startResearch 已在 onSuccess 里写入 researching，
+              // 这里作为兜底确保数据一致（极少触发），实际倒计时结算在第5步
+              else if (actionCivil.startsWith('research_tech_')) {
+                if (!data.tech_tree.researching) data.tech_tree.researching = {};
+                if (param.techId && !(param.techId in data.tech_tree.researching)) {
+                  data.tech_tree.researching[param.techId] = param.round ?? 1;
+                }
+              }
               else if (actionCivil.startsWith('get_resource_')) {
                 if (data.military[param.soldier]) {
                   delete data.military[param.soldier].currentStatus;

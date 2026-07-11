@@ -1,5 +1,6 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { saveSystem } from '../../system/saveSystem.js';
+import { game } from '../../system/function.js';
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { get } from '../../system/i18n.js';
@@ -71,7 +72,7 @@ export class MilitarySystem {
     const totalRowWidth = cardsPerRow * cardWidth + (cardsPerRow - 1) * cardSpacing;
     const startX = sidePadding + (availableWidth - totalRowWidth) / 2 + cardWidth / 2;
 
-    const mapGrids  = MAPS.grids  || {};
+    const mapGrids = MAPS.grids || {};
     const saveGrids = this.saveData.map?.grids || {};
     const actions = Object.entries(MILITARY);
 
@@ -275,21 +276,22 @@ export class MilitarySystem {
         onSelect: (id, soldier) => {
           new ResourceSelector(this.scene, this.saveData, {
             onSelect: (resourceName) => {
-              if (!this.saveData.actionList.military) this.saveData.actionList.military = {};
-
-              const actionKey = `${actionId}_${Date.now()}`;
-
-              this.saveData.actionList.civil[actionKey] = {
+              const actionKey = `get_resource_${Date.now()}`;
+              game.addAction('civil', actionKey, {
                 soldier: id,
-                resource: resourceName
-              };
-              this.saveData.military[id].currentStatus = actionKey;
-
-              // 存档
-              saveSystem.save();
-
-              // 立刻刷新当前军事行动界面
-              this.refreshUI();
+                resource: resourceName,
+              }, {
+                onSuccess: () => {
+                  this.saveData.military[id].currentStatus = actionKey;
+                  saveSystem.save();
+                  this.refreshUI();
+                },
+                onFail: (info) => {
+                  if (info.reason === 'limit') {
+                    game.showTips(this.scene, '民事行动数量超过上限');
+                  }
+                },
+              });
             }
           });
         }
@@ -304,19 +306,20 @@ export class MilitarySystem {
         title: `选择${action.name}单位`,
         requiredAbility: actionId,
         onSelect: (id, soldier) => {
-          // 更新数据
-          if (!this.saveData.actionList.military) this.saveData.actionList.military = {};
-
-          this.saveData.actionList.military[actionId] = {
+          game.addAction('military', actionId, {
             soldier: id,
-          };
-          this.saveData.military[id].currentStatus = actionId;
-
-          // 存档
-          saveSystem.save();
-
-          // 立刻刷新当前军事行动界面
-          this.refreshUI();
+          }, {
+            onSuccess: () => {
+              this.saveData.military[id].currentStatus = actionId;
+              saveSystem.save();
+              this.refreshUI();
+            },
+            onFail: (info) => {
+              if (info.reason === 'limit') {
+                game.showTips(this.scene, '军事行动数量超过上限');
+              }
+            },
+          });
         }
       });
       return;
@@ -452,7 +455,7 @@ export class SoldierSelector {
     closeHitArea.setInteractive({ useHandCursor: true });
 
     const closeText = this.scene.add.text(0, 0, '×', {
-      fontSize: '32px', color: '#ff4444', fontStyle: 'bold',padding: { top: 2 }
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold', padding: { top: 2 }
     }).setOrigin(0.5);
 
     closeBtnContainer.add([closeHitArea, closeText]);
@@ -495,7 +498,7 @@ export class SoldierSelector {
     // 3. 如果没有数据
     if (validSoldiers.length === 0) {
       const noDataText = this.scene.add.text(0, 50, '无可执行任务的单位', {
-        fontSize: '18px', color: '#999',padding: { top: 2 }
+        fontSize: '18px', color: '#999', padding: { top: 2 }
       }).setOrigin(0.5);
       this.listContainer.add(noDataText);
       return;
@@ -583,7 +586,7 @@ export class SoldierSelector {
     });
 
     const nameText = this.scene.add.text(-width / 2 + 20, 0, MILITARY_UNIT[soldier.name].name, {
-      fontSize: '20px', color: '#fff', fontStyle: 'bold',padding: { top: 2 }
+      fontSize: '20px', color: '#fff', fontStyle: 'bold', padding: { top: 2 }
     }).setOrigin(0, 0.5);
 
     // 属性显示
@@ -594,11 +597,11 @@ export class SoldierSelector {
     }
 
     const statsText = this.scene.add.text(0, 0, statsStr, {
-      fontSize: '14px', color: '#aaaaaa',padding: { top: 2 }
+      fontSize: '14px', color: '#aaaaaa', padding: { top: 2 }
     }).setOrigin(0.5);
 
     const selectBtn = this.scene.add.text(width / 2 - 20, 0, '选择', {
-      fontSize: '16px', color: '#00ff00',padding: { top: 2 }
+      fontSize: '16px', color: '#00ff00', padding: { top: 2 }
     }).setOrigin(1, 0.5);
 
     container.add([bg, border, nameText, statsText, selectBtn]);
@@ -676,7 +679,7 @@ export class ResourceSelector {
     closeHitArea.setInteractive({ useHandCursor: true });
 
     const closeText = this.scene.add.text(0, 0, '×', {
-      fontSize: '32px', color: '#ff4444', fontStyle: 'bold',padding: { top: 2 }
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold', padding: { top: 2 }
     }).setOrigin(0.5);
 
     closeBtnContainer.add([closeHitArea, closeText]);
@@ -690,13 +693,14 @@ export class ResourceSelector {
   }
 
   createResourceCards() {
-    const resources = ['food', 'culture', 'mine'];
+    const resources = ['food', 'culture', 'mine', 'magic'];
     const cardW = 120;
     const cardH = 160;
-    const spacing = 30;
+    const spacing = 20;
 
     // 居中计算起点的 x
-    const startX = -((cardW * 3 + spacing * 2) / 2) + cardW / 2;
+    const totalW = cardW * resources.length + spacing * (resources.length - 1);
+    const startX = -(totalW / 2) + cardW / 2;
 
     resources.forEach((res, index) => {
       const x = startX + index * (cardW + spacing);
@@ -721,7 +725,7 @@ export class ResourceSelector {
       icon.setDisplaySize(80, 80);
 
       const resName = this.scene.add.text(0, 50, get.translation(res), {
-        fontSize: '20px', color: '#fff', fontStyle: 'bold',padding: { top: 2 }
+        fontSize: '20px', color: '#fff', fontStyle: 'bold', padding: { top: 2 }
       }).setOrigin(0.5);
 
       card.add([cardBg, cardBorder, icon, resName]);

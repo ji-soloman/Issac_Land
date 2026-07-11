@@ -139,7 +139,8 @@ export class TurnSystem {
         let soldierId = params.soldier;
         console.log('正在结算', soldierId, '的行为get resource');
 
-        let num = Phaser.Math.Between(3, 6);
+        // magic 每次固定获得 2 个，其他资源随机 3~6 个
+        let num = params.resource === 'magic' ? 2 : Phaser.Math.Between(3, 6);
 
         // 赋值给 result 对象
         result.civil[actionType] = {
