@@ -591,6 +591,10 @@ export class GameScene extends Phaser.Scene {
       console.log('建造建筑信息：', result);
 
       game.addAction('civil', 'build_building_' + result.gridId + '_' + result.buildingKey, result, {
+        onSuccess: () => {
+          // 行动写入成功后刷新 GridPanel，让 pending 状态的建筑条目立即显示
+          this.events.emit('refresh_grid_panel', result.gridId);
+        },
         onFail: (info) => {
           if (info.reason === 'limit') {
             game.showTips(this, '行动数量超过上限');

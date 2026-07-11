@@ -319,13 +319,12 @@ export class GridPanel {
       currentY += 10;
     }
 
-    // --- 5. 展示建筑（buildings 是 {key: true} 对象）---
+    // --- 5. 展示建筑（显示逻辑和区域完全相同，包括建造中和待处理状态）---
     const buildings = this.gridData.buildings;
     if (buildings && typeof buildings === 'object') {
       for (const bKey of Object.keys(buildings)) {
         const bObj = BUILDING?.[bKey];
-        // 待移除时每栋建筑也显示"被拆除"+ 灰色蒙版
-        this.createListItem(bObj?.name ?? bKey, null, currentY, null, null, isPendingRemove ? 'removing' : null);
+        this.createListItem(bObj?.name ?? bKey, null, currentY, null, bObj, isPendingRemove ? 'removing' : null);
         currentY += 40;
       }
     }
@@ -334,9 +333,20 @@ export class GridPanel {
     if (this.gridData.createBuilding) {
       for (const [bKey, bInfo] of Object.entries(this.gridData.createBuilding)) {
         const bObj = BUILDING?.[bKey];
-        this.createListItem(bObj?.name ?? bKey, bInfo.num, currentY, null, null, isPendingRemove ? 'removing' : null);
+        this.createListItem(bObj?.name ?? bKey, bInfo.num, currentY, null, bObj, isPendingRemove ? 'removing' : null);
         currentY += 40;
       }
+    }
+
+    // 已加入行动列表但尚未开始建造的建筑（pending 状态，和区域的 pending 逻辑完全一致）
+    const civilActions = this.data.actionList?.civil ?? {};
+    const prefix = 'build_building_' + this.gridId + '_';
+    for (const [key, param] of Object.entries(civilActions)) {
+      if (!key.startsWith(prefix)) continue;
+      const bKey = param.buildingKey;
+      const bObj = BUILDING?.[bKey];
+      this.createListItem(bObj?.name ?? bKey, 'pending', currentY, null, bObj, isPendingRemove ? 'removing' : null);
+      currentY += 40;
     }
 
     this.contentMaxHeight = currentY - this.contentStartY + 20;
@@ -625,22 +635,22 @@ export class GridPanel {
     // 图片按钮辅助函数（与 initGame._addCardButton 保持一致）
     const addBtn = (x, y, label, textureKey, onClick) => {
       const BW = 120, BH = 38;
-      const btnBg  = this.scene.add.image(x, y, textureKey).setDisplaySize(BW, BH);
+      const btnBg = this.scene.add.image(x, y, textureKey).setDisplaySize(BW, BH);
       const btnTxt = this.scene.add.text(x, y, label, {
         fontFamily: 'sans-serif', fontSize: '17px', color: '#ffffff',
         stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5);
       btnBg.setInteractive({ useHandCursor: true });
-      btnBg.on('pointerover',  () => btnBg.setAlpha(0.8));
-      btnBg.on('pointerout',   () => btnBg.setAlpha(1));
-      btnBg.on('pointerdown',  () => btnBg.setAlpha(0.6));
-      btnBg.on('pointerup',    () => { btnBg.setAlpha(1); onClick(); });
+      btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+      btnBg.on('pointerout', () => btnBg.setAlpha(1));
+      btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
+      btnBg.on('pointerup', () => { btnBg.setAlpha(1); onClick(); });
       modal.add([btnBg, btnTxt]);
     };
 
     // 确认：common_btn_red
     addBtn(-70, H / 2 - 36, '确认', 'common_btn_red', () => {
-      const regionKey  = this.gridData.region;
+      const regionKey = this.gridData.region;
       const regionName = REGION[regionKey]?.name ?? regionKey;
       game.addAction('civil', 'remove_region_' + this.gridId, {
         gridId: this.gridId,

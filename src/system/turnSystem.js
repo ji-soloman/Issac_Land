@@ -135,6 +135,15 @@ export class TurnSystem {
       if (actionType.startsWith('build_region')) {
         result.civil[actionType] = params;
       }
+      else if (actionType.startsWith('build_building')) {
+        result.civil[actionType] = params;
+      }
+      else if (actionType.startsWith('remove_region')) {
+        result.civil[actionType] = params;
+      }
+      else if (actionType.startsWith('research_tech_')) {
+        result.civil[actionType] = params;
+      }
       else if (actionType.startsWith('get_resource_')) {
         let soldierId = params.soldier;
         console.log('正在结算', soldierId, '的行为get resource');

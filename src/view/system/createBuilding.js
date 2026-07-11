@@ -439,8 +439,8 @@ export class CreateBuilding {
 
   executeBuild() {
     this.scene.events.emit('build_building', { gridId: this.gridId, buildingKey: this.selectedBuildingKey });
-    // 通知 GridPanel 刷新，与 createRegion 保持一致
-    this.scene.events.emit('refresh_grid_panel', this.gridId);
+    // refresh_grid_panel 在 gameScene 的 build_building 事件 onSuccess 回调里触发，
+    // 确保行动写入 actionList 后才刷新，避免刷新时读不到 pending 状态
     this.close();
   }
 

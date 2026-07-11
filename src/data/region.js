@@ -178,7 +178,7 @@ export const REGION = {
   },
   pasture: {
     name: '牧场',
-    terrainInfo: '山脉，丘陵',
+    terrainInfo: '平原，山脉，丘陵',
     effect_info: '每回合食物+4，骑兵人口+1，野兽人口+1；畜牧槽位+1',
     requireInfo: '解锁科技【驯化】',
     effect: {
@@ -192,7 +192,7 @@ export const REGION = {
       }
     },
     canBuild({ grid, tech }) {
-      const terrainOK = ['land', 'hills'].includes(grid.terrain);
+      const terrainOK = ['land', 'hills', 'mountain'].includes(grid.terrain);
       const techOK = tech.farming_2 === true;
       return terrainOK && techOK;
     },
