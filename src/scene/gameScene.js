@@ -312,6 +312,13 @@ export class GameScene extends Phaser.Scene {
 
       data.resource ??= {};
 
+      // 人口收入：每个人口（gn.population）产生 1 财富，汇总后计入本回合收益
+      for (const grid of Object.values(grids)) {
+        if (grid.population) {
+          total.wealth += grid.population;
+        }
+      }
+
       for (const k of keys) {
         data.resource[`${k}_income`] = total[k];
       }

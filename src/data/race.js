@@ -2,8 +2,8 @@ export const RACES = {
   human: {
     name: '人类',
     image: 'assets/races/human.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 2
     },
     region: 'farm',
     subraces: {
@@ -43,7 +43,7 @@ export const RACES = {
     name: '精灵',
     region: 'academy',
     image: 'assets/races/elf.jpg',
-    base: {
+    breeding: {
       food: 1,
       civil: 1,
     },
@@ -89,8 +89,8 @@ export const RACES = {
   orc: {
     name: '兽人',
     image: 'assets/races/orc.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 3
     },
     region: 'military',
     subraces: {
@@ -129,8 +129,9 @@ export const RACES = {
   dwarf: {
     name: '矮人',
     image: 'assets/races/elf.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 1,
+      mine: 1,
     },
     region: 'military',
     subraces: {
@@ -169,7 +170,7 @@ export const RACES = {
   // goblin: {
   //   name: '地精',
   //   image: 'assets/races/human.jpg',
-  //   base: {
+  //   breeding: {
   //     food: 1
   //   },
   //   region: 'military',
@@ -209,7 +210,7 @@ export const RACES = {
   // beastkin: {
   //   name: '兽耳人',
   //   image: 'assets/races/human.jpg',
-  //   base: {
+  //   breeding: {
   //     food: 1
   //   },
   //   region: 'military',
@@ -249,8 +250,8 @@ export const RACES = {
   centaur: {
     name: '半人马',
     image: 'assets/races/centaur.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 2
     },
     region: 'military',
     subraces: {
@@ -289,7 +290,7 @@ export const RACES = {
   // lizardfolk: {
   //   name: '蜥蜴人',
   //   image: 'assets/races/human.jpg',
-  //   base: {
+  //   breeding: {
   //     food: 1
   //   },
   //   region: 'military',
@@ -329,8 +330,9 @@ export const RACES = {
   merfolk: {
     name: '人鱼',
     image: 'assets/races/human.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 1,
+      magic: 1,
     },
     region: 'military',
     subraces: {
@@ -369,7 +371,7 @@ export const RACES = {
   // corvidian: {
   //   name: '鸦人',
   //   image: 'assets/races/corvidian.jpg',
-  //   base: {
+  //   breeding: {
   //     food: 1
   //   },
   //   region: 'military',
@@ -409,7 +411,7 @@ export const RACES = {
   // insectoid: {
   //   name: '虫人',
   //   image: 'assets/races/human.jpg',
-  //   base: {
+  //   breeding: {
   //     food: 1
   //   },
   //   region: 'military',
@@ -449,7 +451,7 @@ export const RACES = {
   // plantfolk: {
   //   name: '植物',
   //   image: 'assets/races/human.jpg',
-  //   base: {
+  //   breeding: {
   //     food: 1
   //   },
   //   region: 'military',
@@ -489,8 +491,8 @@ export const RACES = {
   undead: {
     name: '亡灵',
     image: 'assets/races/human.jpg',
-    base: {
-      food: 1
+    breeding: {
+      magic: 2
     },
     region: 'military',
     subraces: {
@@ -529,8 +531,8 @@ export const RACES = {
   primordial: {
     name: '元灵',
     image: 'assets/races/primordial.jpg',
-    base: {
-      food: 1
+    breeding: {
+      magic: 1
     },
     region: 'military',
     subraces: {
@@ -569,8 +571,8 @@ export const RACES = {
   // giant: {
   //   name: '巨人',
   //   image: 'assets/races/human.jpg',
-  //   base: {
-  //     food: 1
+  //   breeding: {
+  //     food: 4
   //   },
   //   region: 'military',
   //   subraces: {
@@ -609,8 +611,9 @@ export const RACES = {
   ancient: {
     name: '复苏古人',
     image: 'assets/races/human.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 2,
+      magic: 1,
     },
     region: 'military',
     subraces: {
@@ -649,8 +652,9 @@ export const RACES = {
   voidwalker: {
     name: '虚海渡人',
     image: 'assets/races/voidwalker.jpg',
-    base: {
-      food: 1
+    breeding: {
+      food: 2,
+      magic: 1,
     },
     region: 'military',
     subraces: {

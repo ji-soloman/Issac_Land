@@ -147,10 +147,16 @@ export class TopInfoBar {
   }
 
   getResourceValue(key) {
-    if (!this.scene.saveData || !this.scene.saveData.resource) {
-      return 0;
+    if (!this.scene.saveData) return 0;
+
+    // 人口：汇总地图上所有格点的 gn.population 之和
+    if (key === 'population') {
+      const grids = this.scene.saveData.map?.grids;
+      if (!grids) return 0;
+      return Object.values(grids).reduce((sum, gn) => sum + (gn.population || 0), 0);
     }
-    return this.scene.saveData.resource[key] || 0;
+
+    return this.scene.saveData.resource?.[key] || 0;
   }
 
   getProcessData() {
