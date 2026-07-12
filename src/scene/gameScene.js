@@ -366,9 +366,19 @@ export class GameScene extends Phaser.Scene {
       for (const trigger of completedBuildingTriggers) {
         this._handleTriggerComplete('building', trigger.buildingKey, data);
       }
-      // 9.保存数据
+
+      // 10.【人口增加】繁衍行动在人口税收结算（第4步）之后写入，避免新增人口当回合就产生税收
+      if (this.pendingBreed && this.pendingBreed.length > 0) {
+        for (const { gridId, count } of this.pendingBreed) {
+          const gn = data.map.grids[gridId];
+          if (gn) gn.population = (gn.population ?? 0) + count;
+        }
+        this.pendingBreed = [];
+      }
+
+      // 11.保存数据
       saveSystem.save();
-      // 10.刷新地图
+      // 12.刷新地图
       this.mapView.refreshMap(data.map);
       if (this.topInfoBar) {
         this.topInfoBar.refresh();
@@ -616,6 +626,13 @@ export class GameScene extends Phaser.Scene {
         // switchTab 会清空并重建当前 tab 的内容，以最新 saveData 为准
         this.currentGridPanel.switchTab(this.currentGridPanel.currentTab);
       }
+    });
+
+    // 繁衍人口：立即扣资源（在 gridPanel 里完成），人口增加记录到 pendingBreed，
+    // 在回合结算的人口税收完成后（trigger 结算之后）统一写入
+    this.events.on('breed_population', ({ gridId, count }) => {
+      if (!this.pendingBreed) this.pendingBreed = [];
+      this.pendingBreed.push({ gridId, count });
     });
 
     this.events.on('create_building_btn', (gridId) => {

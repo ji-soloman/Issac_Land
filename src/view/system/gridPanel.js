@@ -6,6 +6,7 @@ import { REGION } from '../../data/region.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { game } from '../../system/function.js';
 import { BUILDING } from '../../data/building.js';
+import { RACES } from '../../data/race.js';
 
 const colorMap = {
   living: 0xF2D8A7,
@@ -261,28 +262,35 @@ export class GridPanel {
 
     const rData = this.gridData.region;
     const hasBuiltRegion = rData !== undefined && rData !== null && rData !== '';
+    const isMain = !!this.gridData.isMain;
 
     // 检查是否存在"移除区域"待处理行动
     const isPendingRemove = !!(this.data.actionList?.civil?.['remove_region_' + this.gridId]);
 
-    // --- 1. 创建地区 / 移除区域 按钮 ---
-    if (hasBuiltRegion) {
-      // 已排队移除时按钮置灰；否则显示红底黄字可点击按钮
-      this.createActionButton('移除区域', centerX, currentY, btnWidth, btnHeight, 0xc62828, !isPendingRemove, () => {
-        this._showRemoveRegionConfirm();
-      }, '#ffeb3b');
-    } else {
-      this.createActionButton('创建地区', centerX, currentY, btnWidth, btnHeight, 0x4caf50, true, () => {
-        this.scene.events.emit('create_region_btn', this.gridId);
+    // --- 1. 主城：繁衍人口按钮；非主城：创建地区 / 移除区域 ---
+    if (isMain) {
+      this.createActionButton('繁衍人口', centerX, currentY, btnWidth, btnHeight, 0x7b5ea7, true, () => {
+        this._showBreedPanel();
       });
-    }
-    currentY += btnHeight + 15;
+      currentY += btnHeight + 15;
+    } else {
+      if (hasBuiltRegion) {
+        this.createActionButton('移除区域', centerX, currentY, btnWidth, btnHeight, 0xc62828, !isPendingRemove, () => {
+          this._showRemoveRegionConfirm();
+        }, '#ffeb3b');
+      } else {
+        this.createActionButton('创建地区', centerX, currentY, btnWidth, btnHeight, 0x4caf50, true, () => {
+          this.scene.events.emit('create_region_btn', this.gridId);
+        });
+      }
+      currentY += btnHeight + 15;
 
-    // --- 2. 升级地区按钮（待移除时同步置灰）---
-    this.createActionButton('升级地区', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
-      this.scene.events.emit('upgrade_region_btn', this.gridId);
-    });
-    currentY += btnHeight + 15;
+      // --- 2. 升级地区按钮（待移除时同步置灰）---
+      this.createActionButton('升级地区', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
+        this.scene.events.emit('upgrade_region_btn', this.gridId);
+      });
+      currentY += btnHeight + 15;
+    }
 
     // --- 3. 创建建筑按钮（待移除时同步置灰）---
     this.createActionButton('创建建筑', centerX, currentY, btnWidth, btnHeight, 0x9c27b0, hasBuiltRegion && !isPendingRemove, () => {
@@ -592,6 +600,158 @@ export class GridPanel {
         this.scene.closeGridPanel();
       }
     });
+  }
+
+  _showBreedPanel() {
+    const { width, height } = this.scene.scale;
+    const W = 380, H = 280;
+    const cx = width / 2, cy = height / 2;
+    const DEPTH = 3000;
+
+    const race = this.data.race;
+    const raceConfig = RACES[race];
+    const breeding = raceConfig?.breeding ?? { food: 1 };  // 单元资源消耗
+    const curPop = this.gridData.population ?? 0;
+
+    // 计算繁衍 n 个人口的总消耗：(curPop + curPop+1 + ... + curPop+n-1) * breeding
+    const calcCost = (n) => {
+      if (n <= 0) return {};
+      const cost = {};
+      for (const [res, unit] of Object.entries(breeding)) {
+        // 第 k 个新人口消耗 (curPop + k - 1) * unit，k 从 1 到 n
+        // 总和 = unit * (n*curPop + n*(n-1)/2)
+        cost[res] = unit * (n * curPop + (n * (n - 1)) / 2);
+      }
+      return cost;
+    };
+
+    const canAfford = (n) => {
+      if (n <= 0) return true;
+      const cost = calcCost(n);
+      for (const [res, val] of Object.entries(cost)) {
+        const cur = this.data.resource?.[res] ?? 0;
+        // 当前资源为负数时不可继续消耗；否则检查是否足够支付
+        if (cur < 0 || cur < val) return false;
+      }
+      return true;
+    };
+
+    const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.55)
+      .setDepth(DEPTH).setInteractive();
+    const modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+
+    const bg = this.scene.add.rectangle(0, 0, W, H, 0x12111e, 0.97)
+      .setStrokeStyle(1.5, 0x7a6050, 1);
+    modal.add(bg);
+
+    // 标题
+    const title = this.scene.add.text(0, -H / 2 + 22, '繁衍人口', {
+      fontFamily: 'sans-serif', fontSize: '18px', color: '#ffeb3b', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    modal.add(title);
+
+    // 当前人口
+    const popLabel = this.scene.add.text(0, -H / 2 + 56, `当前人口：${curPop}`, {
+      fontFamily: 'sans-serif', fontSize: '16px', color: '#f5e6c8',
+    }).setOrigin(0.5);
+    modal.add(popLabel);
+
+    // 数量选择器
+    let breedCount = 0;
+
+    const minusBtn = this.scene.add.text(-60, -H / 2 + 100, '－', {
+      fontFamily: 'sans-serif', fontSize: '26px', color: '#ffffff',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    const countText = this.scene.add.text(0, -H / 2 + 100, '0', {
+      fontFamily: 'sans-serif', fontSize: '26px', color: '#ffe082', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    const plusBtn = this.scene.add.text(60, -H / 2 + 100, '＋', {
+      fontFamily: 'sans-serif', fontSize: '26px', color: '#ffffff',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    modal.add([minusBtn, countText, plusBtn]);
+
+    // 消耗预览
+    const costText = this.scene.add.text(0, -H / 2 + 148, '本次消耗：无', {
+      fontFamily: 'sans-serif', fontSize: '15px', color: '#aaaaaa', align: 'center',
+    }).setOrigin(0.5);
+    modal.add(costText);
+
+    // 资源不足提示
+    const warnText = this.scene.add.text(0, -H / 2 + 172, '', {
+      fontFamily: 'sans-serif', fontSize: '14px', color: '#f44336', align: 'center',
+    }).setOrigin(0.5);
+    modal.add(warnText);
+
+    const updateDisplay = () => {
+      countText.setText(String(breedCount));
+      if (breedCount === 0) {
+        costText.setText('本次消耗：无');
+        warnText.setText('');
+        return;
+      }
+      const cost = calcCost(breedCount);
+      const parts = Object.entries(cost).map(([res, val]) => `${get.translation(res)} ×${val}`);
+      costText.setText('本次消耗：' + parts.join('  '));
+      warnText.setText(canAfford(breedCount) ? '' : '资源不足');
+    };
+
+    minusBtn.on('pointerdown', () => { if (breedCount > 0) { breedCount--; updateDisplay(); } });
+    plusBtn.on('pointerdown', () => { breedCount++; updateDisplay(); });
+
+    const destroy = () => { modal.destroy(true); overlay.destroy(); };
+
+    const addBtn = (x, y, label, textureKey, onClick) => {
+      const BW = 120, BH = 38;
+      const btnBg = this.scene.add.image(x, y, textureKey).setDisplaySize(BW, BH);
+      const btnTxt = this.scene.add.text(x, y, label, {
+        fontFamily: 'sans-serif', fontSize: '17px', color: '#ffffff',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5);
+      btnBg.setInteractive({ useHandCursor: true });
+      btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+      btnBg.on('pointerout', () => btnBg.setAlpha(1));
+      btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
+      btnBg.on('pointerup', () => { btnBg.setAlpha(1); onClick(); });
+      modal.add([btnBg, btnTxt]);
+    };
+
+    // 确认：立即扣资源，emit繁衍行动
+    addBtn(-70, H / 2 - 36, '确认', 'common_btn_green', () => {
+      if (breedCount <= 0) { destroy(); return; }
+      if (!canAfford(breedCount)) {
+        warnText.setText('资源不足，无法繁衍');
+        return;
+      }
+      const cost = calcCost(breedCount);
+
+      game.addAction('others', 'breed_' + this.gridId + '_' + Date.now(), {
+        gridId: this.gridId,
+        count: breedCount,
+      }, {
+        onSuccess: () => {
+          // 立即扣除资源
+          for (const [res, val] of Object.entries(cost)) {
+            this.data.resource[res] = (this.data.resource[res] ?? 0) - val;
+          }
+          // 扣资源后立即刷新顶部资源栏
+          this.scene.topInfoBar?.refresh();
+          // 人口增加在回合结算末尾进行（gameScene监听breed事件后写入pendingBreed）
+          this.scene.events.emit('breed_population', { gridId: this.gridId, count: breedCount });
+          destroy();
+        },
+        onFail: (info) => {
+          if (info.reason === 'limit') game.showTips(this.scene, '本回合已繁衍过一次');
+        },
+      });
+    });
+
+    addBtn(70, H / 2 - 36, '取消', 'common_btn', () => destroy());
+
+    modal.setAlpha(0); overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 180 });
   }
 
   _showRemoveRegionConfirm() {

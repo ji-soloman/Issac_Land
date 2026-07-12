@@ -45,7 +45,7 @@ export const RACES = {
     image: 'assets/races/elf.jpg',
     breeding: {
       food: 1,
-      civil: 1,
+      culture: 1,
     },
     subraces: {
       a: {

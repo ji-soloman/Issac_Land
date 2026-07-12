@@ -397,9 +397,9 @@ export class TechTreeSystem {
   checkCanAfford(totalCost) {
     const currentRes = this.saveData.resource || {};
     for (const key in totalCost) {
-      if ((currentRes[key] || 0) < totalCost[key]) {
-        return false; // 只要有一个资源不够，就返回 false
-      }
+      const cur = currentRes[key] || 0;
+      // 当前资源为负数时不可继续消耗；否则检查是否足够支付
+      if (cur < 0 || cur < totalCost[key]) return false;
     }
     return true;
   }
@@ -799,6 +799,8 @@ export class TechTreeSystem {
         for (const [key, val] of Object.entries(totalCost)) {
           this.saveData.resource[key] = (this.saveData.resource[key] || 0) - val;
         }
+        // 扣资源后立即刷新顶部资源栏
+        this.scene.topInfoBar?.refresh();
 
         if (!this.saveData.tech_tree.researching) {
           this.saveData.tech_tree.researching = {};
