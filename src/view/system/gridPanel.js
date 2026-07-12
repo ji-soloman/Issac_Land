@@ -267,10 +267,16 @@ export class GridPanel {
     // 检查是否存在"移除区域"待处理行动
     const isPendingRemove = !!(this.data.actionList?.civil?.['remove_region_' + this.gridId]);
 
-    // --- 1. 主城：繁衍人口按钮；非主城：创建地区 / 移除区域 ---
+    // --- 1. 主城：繁衍人口按钮；非主城：创建区域 / 移除区域 ---
     if (isMain) {
       this.createActionButton('繁衍人口', centerX, currentY, btnWidth, btnHeight, 0x7b5ea7, true, () => {
         this._showBreedPanel();
+      });
+      currentY += btnHeight + 15;
+
+      // 主城也保留"升级区域"按钮
+      this.createActionButton('升级区域', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
+        this.scene.events.emit('upgrade_region_btn', this.gridId);
       });
       currentY += btnHeight + 15;
     } else {
@@ -279,14 +285,14 @@ export class GridPanel {
           this._showRemoveRegionConfirm();
         }, '#ffeb3b');
       } else {
-        this.createActionButton('创建地区', centerX, currentY, btnWidth, btnHeight, 0x4caf50, true, () => {
+        this.createActionButton('创建区域', centerX, currentY, btnWidth, btnHeight, 0x4caf50, true, () => {
           this.scene.events.emit('create_region_btn', this.gridId);
         });
       }
       currentY += btnHeight + 15;
 
-      // --- 2. 升级地区按钮（待移除时同步置灰）---
-      this.createActionButton('升级地区', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
+      // --- 2. 升级区域按钮（待移除时同步置灰）---
+      this.createActionButton('升级区域', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
         this.scene.events.emit('upgrade_region_btn', this.gridId);
       });
       currentY += btnHeight + 15;
