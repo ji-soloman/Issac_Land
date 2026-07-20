@@ -269,7 +269,11 @@ export class GridPanel {
 
     // --- 1. 主城：繁衍人口按钮；非主城：创建区域 / 移除区域 ---
     if (isMain) {
-      this.createActionButton('繁衍人口', centerX, currentY, btnWidth, btnHeight, 0x7b5ea7, true, () => {
+      // 检查本回合该主城是否已繁育过：key格式为"{cityName}繁育了x个人口_{gridId}"
+      const breedTag = '_breed_' + this.gridId;
+      const hasBreed = Object.keys(this.data.actionList?.others ?? {}).some(k => k.endsWith(breedTag));
+
+      this.createActionButton('繁衍人口', centerX, currentY, btnWidth, btnHeight, 0x7b5ea7, !hasBreed, () => {
         this._showBreedPanel();
       });
       currentY += btnHeight + 15;
@@ -724,6 +728,9 @@ export class GridPanel {
       modal.add([btnBg, btnTxt]);
     };
 
+    const breedTag = '_breed_' + this.gridId;
+    const hasBreed = Object.keys(this.data.actionList?.others ?? {}).some(k => k.endsWith(breedTag));
+
     // 确认：立即扣资源，emit繁衍行动
     addBtn(-70, H / 2 - 36, '确认', 'common_btn_green', () => {
       if (breedCount <= 0) { destroy(); return; }
@@ -731,9 +738,19 @@ export class GridPanel {
         warnText.setText('资源不足，无法繁衍');
         return;
       }
-      const cost = calcCost(breedCount);
 
-      game.addAction('others', 'breed_' + this.gridId + '_' + Date.now(), {
+      // 同一主城本回合已繁育过，直接拒绝
+      if (hasBreed) {
+        warnText.setText('本回合已繁衍过一次');
+        return;
+      }
+
+      const cost = calcCost(breedCount);
+      const cityName = this.gridData.name || this.gridId;
+      // key 直接用描述文字，actionList 里展示时无需额外解析
+      const actionKey = `${cityName}繁育了${breedCount}个人口${breedTag}`;
+
+      game.addAction('others', actionKey, {
         gridId: this.gridId,
         count: breedCount,
       }, {
@@ -744,12 +761,14 @@ export class GridPanel {
           }
           // 扣资源后立即刷新顶部资源栏
           this.scene.topInfoBar?.refresh();
-          // 人口增加在回合结算末尾进行（gameScene监听breed事件后写入pendingBreed）
+          // 人口增加在回合结算末尾进行
           this.scene.events.emit('breed_population', { gridId: this.gridId, count: breedCount });
+          // 刷新面板，让繁衍按钮立即变灰
+          this.switchTab(this.currentTab);
           destroy();
         },
         onFail: (info) => {
-          if (info.reason === 'limit') game.showTips(this.scene, '本回合已繁衍过一次');
+          if (info.reason === 'limit') game.showTips(this.scene, '行动数量超过上限');
         },
       });
     });
