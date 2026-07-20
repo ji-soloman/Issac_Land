@@ -278,11 +278,15 @@ export class GridPanel {
       });
       currentY += btnHeight + 15;
 
-      // 主城也保留"升级区域"按钮
-      this.createActionButton('升级区域', centerX, currentY, btnWidth, btnHeight, 0x2196f3, hasBuiltRegion && !isPendingRemove, () => {
-        this.scene.events.emit('upgrade_region_btn', this.gridId);
+      this.createActionButton('创建建筑', centerX, currentY, btnWidth, btnHeight, 0x9c27b0, true, () => {
+        this.scene.events.emit('create_building_btn', this.gridId);
       });
       currentY += btnHeight + 15;
+
+      this.createActionButton('其他功能', centerX, currentY, btnWidth, btnHeight, 0x607d8b, true, () => {
+        this.scene.events.emit('main_other_func_btn', this.gridId);
+      });
+      currentY += btnHeight + 30;
     } else {
       if (hasBuiltRegion) {
         this.createActionButton('移除区域', centerX, currentY, btnWidth, btnHeight, 0xc62828, !isPendingRemove, () => {
@@ -300,13 +304,13 @@ export class GridPanel {
         this.scene.events.emit('upgrade_region_btn', this.gridId);
       });
       currentY += btnHeight + 15;
-    }
 
-    // --- 3. 创建建筑按钮（待移除时同步置灰）---
-    this.createActionButton('创建建筑', centerX, currentY, btnWidth, btnHeight, 0x9c27b0, hasBuiltRegion && !isPendingRemove, () => {
-      this.scene.events.emit('create_building_btn', this.gridId);
-    });
-    currentY += btnHeight + 30;
+      // --- 3. 创建建筑按钮（待移除时同步置灰）---
+      this.createActionButton('创建建筑', centerX, currentY, btnWidth, btnHeight, 0x9c27b0, hasBuiltRegion && !isPendingRemove, () => {
+        this.scene.events.emit('create_building_btn', this.gridId);
+      });
+      currentY += btnHeight + 30;
+    }
 
     // --- 4. 展示区域 ---
     if (hasBuiltRegion) {
