@@ -126,6 +126,20 @@ export class TurnSystem {
           result: exploreResult,
         };
       }
+
+      if (actionType.startsWith('get_resource_')) {
+        let soldierId = params.soldier;
+        console.log('正在结算', soldierId, '的行为 get_resource');
+
+        // magic 每次固定获得 2 个，其他资源随机 3~6 个
+        let num = params.resource === 'magic' ? 2 : Phaser.Math.Between(3, 6);
+
+        result.military[actionType] = {
+          soldier: params.soldier,
+          resultNum: num,
+          resource: params.resource,
+        };
+      }
     });
 
     // 2. 处理Civil
@@ -144,21 +158,6 @@ export class TurnSystem {
       else if (actionType.startsWith('research_tech_')) {
         result.civil[actionType] = params;
       }
-      else if (actionType.startsWith('get_resource_')) {
-        let soldierId = params.soldier;
-        console.log('正在结算', soldierId, '的行为get resource');
-
-        // magic 每次固定获得 2 个，其他资源随机 3~6 个
-        let num = params.resource === 'magic' ? 2 : Phaser.Math.Between(3, 6);
-
-        // 赋值给 result 对象
-        result.civil[actionType] = {
-          soldier: params.soldier,
-          resultNum: num,
-          resource: params.resource,
-        };
-      }
-      console.log('文化结算', result.civil);
     });
 
     // 3. 处理Others

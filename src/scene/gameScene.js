@@ -192,12 +192,19 @@ export class GameScene extends Phaser.Scene {
                     delete data.military[param.soldier].currentStatus;
                   }
                   for (const [gridId, terrain] of Object.entries(param.result)) {
-                    // turnSystem 已经在结算时将 hasMain/region/buildings/products 写入 grids，
-                    // 这里只补充 terrain 字段，不能整体覆盖，否则 hasMain 等字段会丢失
                     if (!data.map.grids[gridId]) data.map.grids[gridId] = {};
                     data.map.grids[gridId].terrain = terrain;
                   }
                   break;
+              }
+              // 【征集物产】：写入资源并清除士兵状态
+              if (actionMilitary.startsWith('get_resource_')) {
+                if (data.military[param.soldier]) {
+                  delete data.military[param.soldier].currentStatus;
+                }
+                if (param.resource && !isNaN(total[param.resource])) {
+                  data.resource[param.resource] = (data.resource[param.resource] || 0) + param.resultNum;
+                }
               }
             }
             break;
@@ -224,14 +231,6 @@ export class GameScene extends Phaser.Scene {
                 if (!data.tech_tree.researching) data.tech_tree.researching = {};
                 if (param.techId && !(param.techId in data.tech_tree.researching)) {
                   data.tech_tree.researching[param.techId] = param.round ?? 1;
-                }
-              }
-              else if (actionCivil.startsWith('get_resource_')) {
-                if (data.military[param.soldier]) {
-                  delete data.military[param.soldier].currentStatus;
-                }
-                if (param.resource && !isNaN(total[param.resource])) {
-                  data.resource[param.resource] += param.resultNum;
                 }
               }
               // 【科技】直接在科技系统里单独挂载事件

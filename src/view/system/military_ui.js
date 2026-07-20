@@ -277,7 +277,7 @@ export class MilitarySystem {
           new ResourceSelector(this.scene, this.saveData, {
             onSelect: (resourceName) => {
               const actionKey = `get_resource_${Date.now()}`;
-              game.addAction('civil', actionKey, {
+              game.addAction('military', actionKey, {
                 soldier: id,
                 resource: resourceName,
               }, {
