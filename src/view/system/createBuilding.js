@@ -272,21 +272,40 @@ export class CreateBuilding {
     currentY += effectText.height + 16;
 
     const techStr = config.tech_info || '无';
-    const techText = this.scene.add.text(centerX, currentY, `科技要求:\n${techStr}`, {
-      fontSize: '18px', color: '#bbbbbb', align: 'center', lineSpacing: 8, padding: { top: 2 },
+    const techMet = this.checkTech(this.data.tech_tree.unlocked, config);
+    const techLabelText = this.scene.add.text(centerX, currentY, '科技要求:', {
+      fontSize: '18px', color: '#bbbbbb', align: 'center', padding: { top: 2 },
+    }).setOrigin(0.5, 0);
+    this.detailContent.add(techLabelText);
+    currentY += techLabelText.height + 4;
+
+    const techValText = this.scene.add.text(centerX, currentY, techStr, {
+      fontSize: '18px', color: techMet ? '#bbbbbb' : '#ff5555', align: 'center', lineSpacing: 8, padding: { top: 2 },
       wordWrap: { width: textWrapWidth, useAdvancedWrap: true }
     }).setOrigin(0.5, 0);
-    this.detailContent.add(techText);
-    currentY += techText.height + 16;
+    this.detailContent.add(techValText);
+    currentY += techValText.height + 16;
 
     if (config.cost) {
-      let costStr = Object.entries(config.cost).map(([k, v]) => `${get.translation(k)}: ${v}`).join('  ');
-      const costText = this.scene.add.text(centerX, currentY, `建造消耗:\n${costStr}`, {
-        fontSize: '18px', color: '#ffaaaa', align: 'center', lineSpacing: 8, padding: { top: 2 },
-        wordWrap: { width: textWrapWidth, useAdvancedWrap: true }
+      const resource = this.data.resource || {};
+      const labelText = this.scene.add.text(centerX, currentY, '建造消耗:', {
+        fontSize: '18px', color: '#ffaaaa', align: 'center', padding: { top: 2 },
       }).setOrigin(0.5, 0);
-      this.detailContent.add(costText);
-      currentY += costText.height + 30;
+      this.detailContent.add(labelText);
+      currentY += labelText.height + 4;
+
+      // 逐项显示，不满足的单项标红
+      for (const [k, v] of Object.entries(config.cost)) {
+        const has = resource[k] ?? 0;
+        const enough = has >= v;
+        const itemColor = enough ? '#ffaaaa' : '#ff3333';
+        const itemText = this.scene.add.text(centerX, currentY, `${get.translation(k)}: ${v}`, {
+          fontSize: '18px', color: itemColor, align: 'center', padding: { top: 2 },
+        }).setOrigin(0.5, 0);
+        this.detailContent.add(itemText);
+        currentY += itemText.height + 4;
+      }
+      currentY += 22;
     }
 
     const contentHeight = currentY + 20;
