@@ -57,6 +57,18 @@ export class TechTreeSystem {
       )
     );
 
+    // 页面标题
+    this.container.add(
+      this.scene.add.text(width / 2, this.TOP_PADDING / 2, '科技', {
+        fontSize: '28px',
+        color: '#ffd700',
+        fontFamily: 'serif',
+        fontStyle: 'bold',
+        stroke: '#3a2000',
+        strokeThickness: 4,
+      }).setOrigin(0.5)
+    );
+
     this.contentContainer = this.scene.add.container(0, 0);
     this.container.add(this.contentContainer);
 
@@ -565,42 +577,36 @@ export class TechTreeSystem {
     const totalCost = this.getTechTotalCost(tech);
     const isAffordable = this.checkCanAfford(totalCost);
     const currentRes = this.saveData.resource || {};
-    const displayCost = this.getTechDsiplayCost(tech);
 
-    if (Object.keys(displayCost).length > 0) {
-
-      const costLabel = this.scene.add.text(padding, currentY, "额外消耗：", {
+    {
+      const costLabel = this.scene.add.text(padding, currentY, "消耗：", {
         fontSize: '14px',
         color: '#88aaff',
         fontStyle: 'bold',
         padding: textPad
       });
 
-      let costStrings = Object.entries(displayCost)
-        .map(([key, val]) => {
-          const resourceName = get.translation(key) || key;
-          return `${resourceName}: ${val}`;
-        })
-        .filter(Boolean);
+      const costStrings = Object.entries(totalCost)
+        .map(([key, val]) => `${get.translation(key) || key}: ${val}`)
+        .join('  ');
 
-      if (costStrings.length > 0) {
-        const costColor = isAffordable ? '#ffcc66' : '#ff8888';
+      // 已解锁的科技消耗颜色保持正常，不因资源不足变红
+      const isUnlockedAlready = !!this.saveData.tech_tree?.unlocked?.[id];
+      const costColor = (isUnlockedAlready || isAffordable) ? '#ffcc66' : '#ff8888';
+      const costVal = this.scene.add.text(
+        padding + costLabel.width,
+        currentY,
+        costStrings,
+        {
+          fontSize: '14px',
+          color: costColor,
+          wordWrap: { width: textW - costLabel.width },
+          padding: textPad
+        }
+      );
 
-        const costVal = this.scene.add.text(
-          padding + costLabel.width,
-          currentY,
-          costStrings.join('  '),
-          {
-            fontSize: '14px',
-            color: costColor,
-            wordWrap: { width: textW - costLabel.width },
-            padding: textPad
-          }
-        );
-
-        content.add([costLabel, costVal]);
-        currentY += (Math.max(costLabel.height, costVal.height) - padHeightCorrection) + 10;
-      }
+      content.add([costLabel, costVal]);
+      currentY += (Math.max(costLabel.height, costVal.height) - padHeightCorrection) + 10;
     }
 
     // ===== 前置条件 =====
@@ -661,67 +667,47 @@ export class TechTreeSystem {
     if (!isUnlocked && canUnlock) {
       currentY += 10;
 
-      const btnWidth = 120;
-      const btnHeight = 36;
+      const BW = 130, BH = 38;
       const btnX = popupWidth / 2;
-      const btnY = currentY + btnHeight / 2;
+      const btnY = currentY + BH / 2;
       const researchingTurns = this.saveData.tech_tree?.researching?.[id];
 
       const btnGroup = this.scene.add.container(btnX, btnY);
-      const btnBg = this.scene.add.graphics();
 
       if (researchingTurns !== undefined) {
-        btnBg.fillStyle(0x555555, 1);
-        btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
-
-        const turnText = this.scene.add.text(0, 0, `剩余 ${researchingTurns} 回合`, {
-          fontSize: '14px', color: '#aaaaaa', fontStyle: 'bold', padding: textPad
+        // 研究中：普通图片 + 剩余回合（深色文字在橙黄底上更清晰）
+        const btnBg = this.scene.add.image(0, 0, 'common_btn').setDisplaySize(BW, BH);
+        const btnText = this.scene.add.text(0, 0, `剩余 ${researchingTurns} 回合`, {
+          fontSize: '14px', color: '#3a1a00', fontStyle: 'bold',
+          stroke: '#00000000', strokeThickness: 0,
+        }).setOrigin(0.5);
+        btnGroup.add([btnBg, btnText]);
+      } else if (isAffordable) {
+        // 可解锁：蓝色图片按钮，可点击
+        const btnBg = this.scene.add.image(0, 0, 'common_btn_blue').setDisplaySize(BW, BH);
+        const btnText = this.scene.add.text(0, 0, '解 锁', {
+          fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
+          stroke: '#000000', strokeThickness: 3,
         }).setOrigin(0.5);
 
-        btnGroup.add([btnBg, turnText]);
+        btnBg.setInteractive({ useHandCursor: true });
+        btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+        btnBg.on('pointerout', () => btnBg.setAlpha(1));
+        btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
+        btnBg.on('pointerup', () => { btnBg.setAlpha(1); this.startResearch(id, tech, targetImage); });
+
+        btnGroup.add([btnBg, btnText]);
       } else {
-        if (isAffordable) {
-          btnBg.fillStyle(0x4488ff, 1);
-          btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
-
-          const btnText = this.scene.add.text(0, 0, "解 锁", {
-            fontSize: '16px', color: '#ffffff', fontStyle: 'bold', padding: textPad
-          }).setOrigin(0.5);
-
-          const hitArea = this.scene.add.rectangle(0, 0, btnWidth, btnHeight, 0x000000, 0)
-            .setInteractive({ useHandCursor: true });
-
-          hitArea.on('pointerover', () => {
-            btnBg.clear();
-            btnBg.fillStyle(0x66aaff, 1);
-            btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
-          });
-          hitArea.on('pointerout', () => {
-            btnBg.clear();
-            btnBg.fillStyle(0x4488ff, 1);
-            btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
-          });
-          hitArea.on('pointerdown', () => {
-            this.startResearch(id, tech, targetImage);
-          });
-
-          btnGroup.add([btnBg, hitArea, btnText]);
-        } else {
-          btnBg.fillStyle(0x2a2a2a, 1);
-          btnBg.lineStyle(2, 0x444444, 1);
-          btnBg.fillRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
-          btnBg.strokeRoundedRect(-btnWidth / 2, -btnHeight / 2, btnWidth, btnHeight, 6);
-
-          const btnText = this.scene.add.text(0, 0, "资源不足", {
-            fontSize: '14px', color: '#666666', fontStyle: 'bold', padding: textPad
-          }).setOrigin(0.5);
-
-          btnGroup.add([btnBg, btnText]);
-        }
+        // 资源不足：普通图片 + 提示（深色文字）
+        const btnBg = this.scene.add.image(0, 0, 'common_btn').setDisplaySize(BW, BH);
+        const btnText = this.scene.add.text(0, 0, '资源不足', {
+          fontSize: '14px', color: '#3a1a00', fontStyle: 'bold',
+        }).setOrigin(0.5);
+        btnGroup.add([btnBg, btnText]);
       }
 
       content.add(btnGroup);
-      currentY += btnHeight + 16;
+      currentY += BH + 16;
     } else {
       currentY += 6;
     }
