@@ -675,6 +675,8 @@ export class TechTreeSystem {
       const techSlot = this.saveData.tech_tree?.tech_research_slot ?? 1;
       const isSlotFull = !researchingTurns && researchingCount >= techSlot;
 
+      const btnGroup = this.scene.add.container(btnX, btnY);
+
       if (researchingTurns !== undefined) {
         // 研究中：普通图片 + 剩余回合（深色文字在橙黄底上更清晰）
         const btnBg = this.scene.add.image(0, 0, 'common_btn').setDisplaySize(BW, BH);
