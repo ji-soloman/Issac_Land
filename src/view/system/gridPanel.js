@@ -628,83 +628,118 @@ export class GridPanel {
     const baseBreeding = { ...(raceConfig?.breeding ?? { food: 1 }) };
 
     // ── 收集该城池所有已建成建筑和区域的 onBreed trigger ──────────────
-    // 每个 trigger 返回 { [resource]: delta }，delta 为对单元消耗的修正量（负数=减少）
-    const breedModifiers = [];  // [{ source, delta }]
+    // trigger 可返回：
+    //   { flatDelta: { res: n } }  → 对总消耗的固定修正（不受人口数量缩放）
+    //   { unitDelta: { res: n } }  → 对单元消耗的修正（乘以 baseScale 后影响总量）
+    const breedModifiers = [];  // [{ source, flatDelta?, unitDelta? }]
 
-    const buildings = this.gridData.buildings ?? {};
-    for (const [bKey, built] of Object.entries(buildings)) {
-      if (!built) continue;
-      const trigger = BUILDING[bKey]?.effect?.trigger?.onBreed;
-      if (typeof trigger !== 'function') continue;
-      const delta = trigger({ breeding: baseBreeding, gridData: this.gridData, data: this.data });
-      if (delta && typeof delta === 'object' && Object.keys(delta).length > 0) {
-        breedModifiers.push({ source: BUILDING[bKey].name, delta });
+    const allGrids = this.data.map?.grids ?? {};
+    const cityGridIds = [this.gridId, ...Object.keys(allGrids).filter(
+      gn => allGrids[gn]?.hasMain === this.gridId
+    )];
+
+    for (const gn of cityGridIds) {
+      const gnData = allGrids[gn];
+      if (!gnData) continue;
+
+      const buildings = gnData.buildings ?? {};
+      for (const [bKey, built] of Object.entries(buildings)) {
+        if (!built) continue;
+        const trigger = BUILDING[bKey]?.effect?.trigger?.onBreed;
+        if (typeof trigger !== 'function') continue;
+        const result = trigger({ breeding: baseBreeding, gridData: gnData, data: this.data });
+        if (result && (result.flatDelta || result.unitDelta)) {
+          breedModifiers.push({ source: BUILDING[bKey].name, ...result });
+        }
       }
-    }
 
-    const regionKey = this.gridData.region;
-    if (regionKey) {
-      const trigger = REGION[regionKey]?.effect?.trigger?.onBreed;
-      if (typeof trigger === 'function') {
-        const delta = trigger({ breeding: baseBreeding, gridData: this.gridData, data: this.data });
-        if (delta && typeof delta === 'object' && Object.keys(delta).length > 0) {
-          breedModifiers.push({ source: REGION[regionKey].name, delta });
+      const rKey = gnData.region;
+      if (rKey) {
+        const trigger = REGION[rKey]?.effect?.trigger?.onBreed;
+        if (typeof trigger === 'function') {
+          const result = trigger({ breeding: baseBreeding, gridData: gnData, data: this.data });
+          if (result && (result.flatDelta || result.unitDelta)) {
+            breedModifiers.push({ source: REGION[rKey].name, ...result });
+          }
         }
       }
     }
 
-    // 计算最终单元消耗（汇总 modifier，每项不低于 0）
+    // 汇总单元修正 → effectiveBreeding（影响每人口的单价）
     const effectiveBreeding = { ...baseBreeding };
-    for (const { delta } of breedModifiers) {
-      for (const [res, d] of Object.entries(delta)) {
+    for (const { unitDelta } of breedModifiers) {
+      if (!unitDelta) continue;
+      for (const [res, d] of Object.entries(unitDelta)) {
         if (effectiveBreeding[res] !== undefined) {
           effectiveBreeding[res] = Math.max(0, (effectiveBreeding[res] ?? 0) + d);
         }
       }
     }
 
-    // 按资源汇总修正量，用于显示折扣明细
-    const modSummary = {};
-    for (const { source, delta } of breedModifiers) {
-      for (const [res, d] of Object.entries(delta)) {
-        if (!modSummary[res]) modSummary[res] = { total: 0, parts: [] };
-        modSummary[res].total += d;
-        modSummary[res].parts.push({ source, d });
+    // 按资源汇总固定修正，同名建筑来源合并
+    const flatSummary = {};  // { res: { total, parts: [{source, d}] } }
+    for (const { source, flatDelta } of breedModifiers) {
+      if (!flatDelta) continue;
+      for (const [res, d] of Object.entries(flatDelta)) {
+        if (!flatSummary[res]) flatSummary[res] = { total: 0, parts: [] };
+        flatSummary[res].total += d;
+        // 同名来源合并
+        const existing = flatSummary[res].parts.find(p => p.source === source);
+        if (existing) existing.d += d;
+        else flatSummary[res].parts.push({ source, d });
       }
     }
 
     const curPop = this.gridData.population ?? 0;
 
-    // n 个人口的总消耗，用 effectiveBreeding 计算
+    // 按叠加规则逐人口计算总消耗：
+    // 第 k 个新人口（k=1..n）的消耗 = max(0, (curPop+k-1)*unit + flatDelta) per resource
     const calcCost = (n) => {
       if (n <= 0) return {};
       const cost = {};
-      for (const [res, unit] of Object.entries(effectiveBreeding)) {
-        if (unit <= 0) continue;
-        cost[res] = unit * (n * curPop + (n * (n - 1)) / 2);
+      for (let k = 1; k <= n; k++) {
+        const pop = curPop + k;
+        for (const [res, unit] of Object.entries(effectiveBreeding)) {
+          if (unit <= 0) continue;
+          cost[res] = (cost[res] ?? 0) + pop * unit;
+        }
+        for (const [res, summary] of Object.entries(flatSummary)) {
+          cost[res] = Math.max(0, (cost[res] ?? 0) + summary.total);
+        }
+      }
+      for (const res of Object.keys(cost)) {
+        if (cost[res] === 0) delete cost[res];
       }
       return cost;
     };
 
-    // 生成带折扣明细的消耗预览文本
-    // 例如"本次消耗：食物 ×4（粮仓-2）"
     const buildCostDisplay = (n) => {
       if (n <= 0) return '本次消耗：无';
-      const baseScale = n * curPop + (n * (n - 1)) / 2;
       const parts = [];
-      for (const [res, unit] of Object.entries(effectiveBreeding)) {
-        if (unit <= 0) continue;
-        const total = unit * baseScale;
-        let str = `${get.translation(res)} ×${total}`;
-        if (modSummary[res]) {
-          const detail = modSummary[res].parts
-            .map(p => `${p.source}${p.d > 0 ? '+' : ''}${p.d * baseScale}`)
+      const baseTotals = {};
+      const effectiveTotals = {};
+
+      for (let k = 1; k <= n; k++) {
+        const pop = curPop + k;
+        for (const [res, baseUnit] of Object.entries(baseBreeding)) {
+          if (baseUnit <= 0) continue;
+          baseTotals[res] = (baseTotals[res] ?? 0) + pop * baseUnit;
+          const flat = flatSummary[res]?.total ?? 0;
+          effectiveTotals[res] = (effectiveTotals[res] ?? 0) + Math.max(0, pop * baseUnit + flat);
+        }
+      }
+
+      for (const [res, baseTotal] of Object.entries(baseTotals)) {
+        let str = `${get.translation(res)} ×${baseTotal}`;
+        if (flatSummary[res] && flatSummary[res].total !== 0) {
+          const detail = flatSummary[res].parts
+            .map(p => `${p.source}${p.d * n > 0 ? '+' : ''}${p.d * n}`)
             .join('，');
           str += `（${detail}）`;
         }
         parts.push(str);
       }
-      return '本次消耗：' + parts.join('  ');
+      return '本次消耗：' + parts.join('，');
     };
 
     const canAfford = (n) => {

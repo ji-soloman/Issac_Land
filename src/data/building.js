@@ -535,12 +535,12 @@ export const BUILDING = {
     },
     effect: {
       trigger: {
-        // onBreed：在繁育人口时触发，修正 breeding 的单元消耗
-        // 返回 { [resource]: delta } 表示对该资源的单元消耗修正（负数=减少）
+        // onBreed：在繁育人口时触发，修正繁育的总资源消耗
+        // 返回 { flatDelta: { [resource]: delta } } 表示对总消耗的固定修正（负数=减少）
         // 只在 breeding 中存在 food 时才生效（不强行给不消耗食物的种族减食物）
         onBreed({ breeding }) {
           if (breeding.food === undefined || breeding.food <= 0) return {};
-          return { food: -1 };
+          return { flatDelta: { food: -1 } };
         },
       },
     },
