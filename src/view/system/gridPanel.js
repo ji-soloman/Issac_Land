@@ -624,19 +624,87 @@ export class GridPanel {
 
     const race = this.data.race;
     const raceConfig = RACES[race];
-    const breeding = raceConfig?.breeding ?? { food: 1 };  // 单元资源消耗
+    // 基础单元资源消耗（每个人口的单价）
+    const baseBreeding = { ...(raceConfig?.breeding ?? { food: 1 }) };
+
+    // ── 收集该城池所有已建成建筑和区域的 onBreed trigger ──────────────
+    // 每个 trigger 返回 { [resource]: delta }，delta 为对单元消耗的修正量（负数=减少）
+    const breedModifiers = [];  // [{ source, delta }]
+
+    const buildings = this.gridData.buildings ?? {};
+    for (const [bKey, built] of Object.entries(buildings)) {
+      if (!built) continue;
+      const trigger = BUILDING[bKey]?.effect?.trigger?.onBreed;
+      if (typeof trigger !== 'function') continue;
+      const delta = trigger({ breeding: baseBreeding, gridData: this.gridData, data: this.data });
+      if (delta && typeof delta === 'object' && Object.keys(delta).length > 0) {
+        breedModifiers.push({ source: BUILDING[bKey].name, delta });
+      }
+    }
+
+    const regionKey = this.gridData.region;
+    if (regionKey) {
+      const trigger = REGION[regionKey]?.effect?.trigger?.onBreed;
+      if (typeof trigger === 'function') {
+        const delta = trigger({ breeding: baseBreeding, gridData: this.gridData, data: this.data });
+        if (delta && typeof delta === 'object' && Object.keys(delta).length > 0) {
+          breedModifiers.push({ source: REGION[regionKey].name, delta });
+        }
+      }
+    }
+
+    // 计算最终单元消耗（汇总 modifier，每项不低于 0）
+    const effectiveBreeding = { ...baseBreeding };
+    for (const { delta } of breedModifiers) {
+      for (const [res, d] of Object.entries(delta)) {
+        if (effectiveBreeding[res] !== undefined) {
+          effectiveBreeding[res] = Math.max(0, (effectiveBreeding[res] ?? 0) + d);
+        }
+      }
+    }
+
+    // 按资源汇总修正量，用于显示折扣明细
+    const modSummary = {};
+    for (const { source, delta } of breedModifiers) {
+      for (const [res, d] of Object.entries(delta)) {
+        if (!modSummary[res]) modSummary[res] = { total: 0, parts: [] };
+        modSummary[res].total += d;
+        modSummary[res].parts.push({ source, d });
+      }
+    }
+
     const curPop = this.gridData.population ?? 0;
 
-    // 计算繁衍 n 个人口的总消耗：(curPop + curPop+1 + ... + curPop+n-1) * breeding
+    // n 个人口的总消耗，用 effectiveBreeding 计算
     const calcCost = (n) => {
       if (n <= 0) return {};
       const cost = {};
-      for (const [res, unit] of Object.entries(breeding)) {
-        // 第 k 个新人口消耗 (curPop + k - 1) * unit，k 从 1 到 n
-        // 总和 = unit * (n*curPop + n*(n-1)/2)
+      for (const [res, unit] of Object.entries(effectiveBreeding)) {
+        if (unit <= 0) continue;
         cost[res] = unit * (n * curPop + (n * (n - 1)) / 2);
       }
       return cost;
+    };
+
+    // 生成带折扣明细的消耗预览文本
+    // 例如"本次消耗：食物 ×4（粮仓-2）"
+    const buildCostDisplay = (n) => {
+      if (n <= 0) return '本次消耗：无';
+      const baseScale = n * curPop + (n * (n - 1)) / 2;
+      const parts = [];
+      for (const [res, unit] of Object.entries(effectiveBreeding)) {
+        if (unit <= 0) continue;
+        const total = unit * baseScale;
+        let str = `${get.translation(res)} ×${total}`;
+        if (modSummary[res]) {
+          const detail = modSummary[res].parts
+            .map(p => `${p.source}${p.d > 0 ? '+' : ''}${p.d * baseScale}`)
+            .join('，');
+          str += `（${detail}）`;
+        }
+        parts.push(str);
+      }
+      return '本次消耗：' + parts.join('  ');
     };
 
     const canAfford = (n) => {
@@ -706,9 +774,7 @@ export class GridPanel {
         warnText.setText('');
         return;
       }
-      const cost = calcCost(breedCount);
-      const parts = Object.entries(cost).map(([res, val]) => `${get.translation(res)} ×${val}`);
-      costText.setText('本次消耗：' + parts.join('  '));
+      costText.setText(buildCostDisplay(breedCount));
       warnText.setText(canAfford(breedCount) ? '' : '资源不足');
     };
 
