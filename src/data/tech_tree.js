@@ -114,7 +114,7 @@ export const TECH_TREE = {
   },
   farming_3: {
     name: '养殖',
-    info:'可以提取物产',
+    info: '可以提取物产',
     location: [2, 1],
     cost: {},
     effect: [],
@@ -186,7 +186,7 @@ export const TECH_TREE = {
   },
   construction_5: {
     name: '工具',
-    info:'解锁建筑【农器坊】',
+    info: '解锁建筑【农器坊】',
     location: [3, 5],
     cost: {},
     effect: [],
@@ -206,7 +206,7 @@ export const TECH_TREE = {
   },
   sports_2: {
     name: '投掷',
-    info:'解锁兵组【投石手】',
+    info: '解锁兵组【投石手】',
     location: [4, 4],
     cost: {},
     effect: [],
@@ -216,7 +216,7 @@ export const TECH_TREE = {
   },
   literature_1: {
     name: '教育',
-    info: '解锁区域【学院区】',
+    info: '解锁区域【学院区】\n解锁建筑【图书馆】',
     location: [6, 3],
     cost: {},
     effect: [],

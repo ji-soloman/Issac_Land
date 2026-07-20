@@ -418,7 +418,7 @@ export const BUILDING = {
       return category.academy;
     },
     require_tech(tech) {
-      return tech.leadership_2;
+      return tech.literature_1;
     },
     cost: {
       mine: 5,
@@ -867,7 +867,7 @@ export const BUILDING = {
     tech_info: '天文导航',
     region_info: '港口',
     require_region(category) {
-      return category.port;
+      return category.harbor;
     },
     require_tech(tech) {
       return false;
@@ -885,7 +885,7 @@ export const BUILDING = {
     tech_info: '天文导航',
     region_info: '港口',
     require_region(category) {
-      return category.port;
+      return category.harbor;
     },
     require_tech(tech) {
       return false;
