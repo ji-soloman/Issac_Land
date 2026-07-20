@@ -173,11 +173,19 @@ export class CreateBuilding {
     const startX = areaWidth / 2 - 5;
     const rowSpacing = itemHeight + 10;
 
+    const gridData = this.currentData;
+    const civilActions = this.data.actionList?.civil ?? {};
+
     let index = 0;
     for (const [key, config] of Object.entries(BUILDING)) {
       // 不符合当前区域的建筑直接跳过，不显示在列表中
-      const regionCheck = this.checkRegion(this.currentData, config);
+      const regionCheck = this.checkRegion(gridData, config);
       if (!regionCheck) continue;
+
+      // 建造状态判断（优先级：建造中 > 已建造）
+      const isBuilt = !!(gridData.buildings?.[key]);
+      const isBuilding = !!(gridData.createBuilding?.[key]) ||
+        !!civilActions[`build_building_${this.gridId}_${key}`];
 
       let isBuildable = true, isAffordable = true;
       const techCheck = this.checkTech(this.data.tech_tree.unlocked, config);
@@ -192,28 +200,41 @@ export class CreateBuilding {
 
       if (!this.checkAffordable(this.data.resource, config)) isAffordable = false;
 
+      // 已建造或建造中：不可再次建造
+      const isDone = isBuilt || isBuilding;
+
       const itemContainer = this.scene.add.container(startX, 40 + index * rowSpacing);
-      const itemBg = this.scene.add.rectangle(0, 0, itemWidth, itemHeight, isBuildable ? 0x222222 : 0x111111, 1)
+      const itemBg = this.scene.add.rectangle(0, 0, itemWidth, itemHeight, (isBuildable && !isDone) ? 0x222222 : 0x111111, 1)
         .setStrokeStyle(2, 0x555555)
         .setInteractive({ useHandCursor: true });
 
       this.preventEventPenetration(itemBg, 'left');
 
-      const nameText = this.scene.add.text(0, 0, config.name, {
+      const nameText = this.scene.add.text(-itemWidth * 0.25, 0, config.name, {
         fontSize: '18px',
-        color: isBuildable ? '#ffffff' : '#888888',
+        color: (isBuildable && !isDone) ? '#ffffff' : '#888888',
         padding: { top: 4 },
       }).setOrigin(0.5);
 
       itemContainer.add([itemBg, nameText]);
 
-      if (!isBuildable || !isAffordable) {
+      // 状态标签（右侧显示，优先建造中 > 已建造）
+      if (isBuilding || isBuilt) {
+        const statusLabel = isBuilding ? '建造中' : '已建造';
+        const statusColor = isBuilding ? '#ffcc44' : '#88cc88';
+        const statusText = this.scene.add.text(itemWidth * 0.3, 0, statusLabel, {
+          fontSize: '15px', color: statusColor, fontStyle: 'bold', padding: { top: 4 },
+        }).setOrigin(0.5);
+        itemContainer.add(statusText);
+      }
+
+      if (!isBuildable || !isAffordable || isDone) {
         const lockOverlay = this.scene.add.rectangle(0, 0, itemWidth, itemHeight, 0x000000, 0.45);
         itemContainer.add([lockOverlay]);
       }
 
       itemBg.on('pointerdown', () => this.selectBuilding(key));
-      this.buildingItems[key] = { bg: itemBg, isBuildable, isAffordable, config };
+      this.buildingItems[key] = { bg: itemBg, isBuildable: isBuildable && !isDone, isAffordable, config };
       this.scrollContainer.add(itemContainer);
       index++;
     }
