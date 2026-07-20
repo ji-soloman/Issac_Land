@@ -671,8 +671,9 @@ export class TechTreeSystem {
       const btnX = popupWidth / 2;
       const btnY = currentY + BH / 2;
       const researchingTurns = this.saveData.tech_tree?.researching?.[id];
-
-      const btnGroup = this.scene.add.container(btnX, btnY);
+      const researchingCount = Object.keys(this.saveData.tech_tree?.researching ?? {}).length;
+      const techSlot = this.saveData.tech_tree?.tech_research_slot ?? 1;
+      const isSlotFull = !researchingTurns && researchingCount >= techSlot;
 
       if (researchingTurns !== undefined) {
         // 研究中：普通图片 + 剩余回合（深色文字在橙黄底上更清晰）
@@ -680,6 +681,13 @@ export class TechTreeSystem {
         const btnText = this.scene.add.text(0, 0, `剩余 ${researchingTurns} 回合`, {
           fontSize: '14px', color: '#3a1a00', fontStyle: 'bold',
           stroke: '#00000000', strokeThickness: 0,
+        }).setOrigin(0.5);
+        btnGroup.add([btnBg, btnText]);
+      } else if (isSlotFull) {
+        // 科技槽已满：普通图片 + 提示
+        const btnBg = this.scene.add.image(0, 0, 'common_btn').setDisplaySize(BW, BH);
+        const btnText = this.scene.add.text(0, 0, '科技槽上限', {
+          fontSize: '14px', color: '#3a1a00', fontStyle: 'bold',
         }).setOrigin(0.5);
         btnGroup.add([btnBg, btnText]);
       } else if (isAffordable) {
@@ -767,6 +775,11 @@ export class TechTreeSystem {
 
     // 再次做一下安全校验，防止异常调用
     if (!this.checkCanAfford(totalCost)) return;
+
+    // 科技槽检查：正在研究的数量不能超过 tech_research_slot
+    const researchingCount = Object.keys(this.saveData.tech_tree?.researching ?? {}).length;
+    const techSlot = this.saveData.tech_tree?.tech_research_slot ?? 1;
+    if (researchingCount >= techSlot) return;
 
     const techEra = ERA[tech.era].order;
     const turnsNeeded = techEra || 1;
