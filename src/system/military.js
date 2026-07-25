@@ -96,6 +96,7 @@ export const military = {
       stats: { ...(unit.basic_stats ?? {}) },
       equipments: { ...(unit.equipments ?? {}) },
       ability: { ...(unit.special_ability ?? {}) },
+      level: 1,
     };
 
     if (!saveData.military) saveData.military = {};
