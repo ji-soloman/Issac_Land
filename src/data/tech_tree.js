@@ -156,7 +156,7 @@ export const TECH_TREE = {
   country_1: {
     name: '早期帝国',
     info: '解锁建筑【广场】',
-    location: [5, 3],
+    location: [6, 3],
     cost: {},
     effect: [],
     requires: ['leadership_2', 'religion_2'],
@@ -217,7 +217,7 @@ export const TECH_TREE = {
   literature_1: {
     name: '教育',
     info: '解锁区域【学院区】\n解锁建筑【图书馆】',
-    location: [6, 3],
+    location: [7, 3],
     cost: {},
     effect: [],
     requires: ['country_1'],
@@ -227,7 +227,7 @@ export const TECH_TREE = {
   },
   boating_1: {
     name: '造船术',
-    info: '解锁区域【港口】',
+    info: '解锁区域【港口】\n解锁兵组【划桨小船】',
     location: [5, 5],
     cost: {},
     effect: [],
@@ -235,5 +235,16 @@ export const TECH_TREE = {
     era: 'primitive',
     color: 'green',
     icon: 'assets/tech_tree/icon/navigation.png',
+  },
+  convey_1: {
+    name: '开拓',
+    info: '解锁兵组【移民星舟】',
+    location: [7, 4],
+    cost: {},
+    effect: [],
+    requires: ['country_1', 'boating_1'],
+    era: 'primitive',
+    color: 'blue',
+    icon: 'assets/tech_tree/icon/ship.png',
   },
 };

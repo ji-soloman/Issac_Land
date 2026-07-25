@@ -6,6 +6,7 @@ export const MILITARY_TRANSLATE = {
   cavalry: '骑兵类',
   infantry: '步兵类',
   beast: '野兽类',
+  special_type: '特殊类',
 
   type: '兵种',
   equipments: '装备',

@@ -258,8 +258,7 @@ export class MilitarySystem {
     console.log('执行:', actionId);
 
     if (actionId === 'soldier_check') {
-      if (this.scene.closeCurrentSystem) this.scene.closeCurrentSystem();
-      else this.destroy();
+      // 子页面直接覆盖在父级上，不销毁父级，关闭后自动回到父级
       new MilitaryUnitViewer(this.scene, this.saveData, action.name);
       return;
     }

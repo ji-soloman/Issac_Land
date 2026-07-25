@@ -5,7 +5,10 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { saveSystem } from '../../system/saveSystem.js';
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
+import { MILITARY_SKILL } from '../../data/military_skill.js';
+import { MILITARY_TRANSLATE } from '../../data/military_translate.js';
 import { get } from '../../system/i18n.js';
+import { TECH_TREE } from '../../data/tech_tree.js';
 
 export class MilitaryUnitViewer {
   constructor(scene, saveData, name) {
@@ -169,14 +172,15 @@ export class MilitaryUnitViewer {
       if (unitData) {
         // 合并士兵数据和基础兵种数据
         const displayData = {
-          //...unitData,
           name: MILITARY_UNIT[unitKey].name,
           type: MILITARY_UNIT[unitKey].type,
           id: id,
           image: MILITARY_UNIT[unitKey].image,
           current_stats: soldier.stats,
           current_equipments: soldier.equipments,
-          current_ability: soldier.ability
+          current_ability: soldier.ability,
+          level: soldier.level ?? 1,   // 士兵等级，默认1
+          fromArmy: true,              // 区分兵力表和图鉴
         };
         this.createSoldierCard(unitKey, displayData, x, y, id);
       }
@@ -269,21 +273,21 @@ export class MilitaryUnitViewer {
       }).setOrigin(0.5);
     }
 
-    container.add([bg, border, imageObj, nameBg, nameText/*, idText*/]);
+    container.add([bg, border, imageObj, nameBg, nameText]);
 
-    // 5. 交互：Tooltip
+    // 5. 交互：点击打开详情页
     bg.setInteractive({ useHandCursor: true });
 
-    bg.on('pointerover', (pointer) => {
+    bg.on('pointerover', () => {
       border.setStrokeStyle(2, 0xffff00);
       container.setScale(1.02);
-      this.showTooltip(soldier, x, y);
     });
-
     bg.on('pointerout', () => {
       border.setStrokeStyle(2, 0x88aa88);
       container.setScale(1);
-      this.hideTooltip();
+    });
+    bg.on('pointerdown', () => {
+      new UnitDetailPage(this.scene, this.saveData, key, soldier);
     });
 
     this.contentContainer.add(container);
@@ -336,19 +340,19 @@ export class MilitaryUnitViewer {
 
     container.add([bg, border, imageObj, nameBg, nameText]);
 
-    // 4. 交互：Tooltip
+    // 4. 交互：点击打开详情页
     bg.setInteractive({ useHandCursor: true });
 
-    bg.on('pointerover', (pointer) => {
+    bg.on('pointerover', () => {
       border.setStrokeStyle(2, 0xffff00);
       container.setScale(1.02);
-      this.showTooltip(unit, x, y);
     });
-
     bg.on('pointerout', () => {
       border.setStrokeStyle(2, 0x888888);
       container.setScale(1);
-      this.hideTooltip();
+    });
+    bg.on('pointerdown', () => {
+      new UnitDetailPage(this.scene, this.saveData, key, unit);
     });
 
     this.contentContainer.add(container);
@@ -453,5 +457,449 @@ export class MilitaryUnitViewer {
   destroy() {
     if (this.mainContainer) this.mainContainer.destroy();
     if (this.tooltip) this.tooltip.destroy();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UnitDetailPage — 单个兵力的全屏详情页
+// 点击兵力卡后打开，覆盖在列表页之上，关闭后回到列表页
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DETAIL_DEPTH = 1200;
+const DETAIL_BG = 0x12111e;
+const DETAIL_PANEL = 0x1e1d2e;
+const DETAIL_THEME = 0xffd700;
+
+const STAT_KEYS = [
+  'physical_attack',
+  'spell_attack',
+  'hp',
+  'armor',
+  'mana',
+  'military_order',
+];
+
+class UnitDetailPage {
+  /**
+   * @param {Phaser.Scene} scene
+   * @param {Object}       saveData
+   * @param {string}       unitKey   — MILITARY_UNIT 里的 key
+   * @param {Object}       unitData  — 已整合的展示数据（含 name/image/type 等）
+   */
+  constructor(scene, saveData, unitKey, unitData) {
+    this.scene = scene;
+    this.saveData = saveData;
+    this.unitKey = unitKey;
+    this.unitData = unitData;
+    // 从配置表取基础模板（basic_stats / special_ability 等）
+    this.template = MILITARY_UNIT[unitKey] ?? unitData;
+    this.tooltip = null;
+    this.currentTab = 'info';
+
+    this._build();
+  }
+
+  // ── 主框架 ─────────────────────────────────────
+  _build() {
+    const { width, height } = this.scene.scale;
+
+    // 全屏遮罩（阻止穿透到下层列表）
+    this.overlay = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.82)
+      .setDepth(DETAIL_DEPTH).setInteractive();
+
+    // 根容器
+    this.root = this.scene.add.container(width / 2, height / 2).setDepth(DETAIL_DEPTH + 1);
+
+    // 全屏背景
+    const bg = this.scene.add.rectangle(0, 0, width, height, DETAIL_BG, 0.97);
+    this.root.add(bg);
+
+    // 布局常量
+    const IMG_W = width * 0.30;
+    const TAB_W = 72;
+    const INFO_W = width - IMG_W - TAB_W;
+    this._w = width; this._h = height;
+    this._IMG_W = IMG_W; this._INFO_W = INFO_W; this._TAB_W = TAB_W;
+
+    // 左侧图片（常驻）
+    this._buildImagePanel(IMG_W, height);
+
+    // 右侧 tab 条
+    this._buildTabBar(IMG_W, TAB_W, height);
+
+    // 中间信息区容器（可切换）
+    const infoX = -width / 2 + IMG_W + INFO_W / 2;
+    this._infoContainer = this.scene.add.container(infoX, 0);
+    this.root.add(this._infoContainer);
+    this._renderInfoTab();
+
+    // 右上角关闭按钮
+    this._buildCloseBtn(width, height);
+
+    // 淡入
+    this.root.setAlpha(0);
+    this.overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [this.root, this.overlay], alpha: 1, duration: 160 });
+  }
+
+  // ── 左侧图片区 ─────────────────────────────────
+  _buildImagePanel(imgW, H) {
+    const x = -this._w / 2 + imgW / 2;
+    const imgKey = `soldier_${this.unitKey}`;
+
+    // 分隔线
+    const sep = this.scene.add.rectangle(x + imgW / 2, 0, 1, H, DETAIL_THEME, 0.25);
+    this.root.add(sep);
+
+    if (this.scene.textures.exists(imgKey)) {
+      const img = this.scene.add.image(x, 0, imgKey);
+      const scale = Math.min((imgW - 20) / img.width, (H - 20) / img.height);
+      img.setScale(scale).setOrigin(0.5);
+      this.root.add(img);
+    } else {
+      const ph = this.scene.add.text(x, 0, this.template?.name ?? '?', {
+        fontSize: '22px', color: '#555555', align: 'center',
+        padding: { top: 4 },
+      }).setOrigin(0.5);
+      this.root.add(ph);
+    }
+  }
+
+  // ── 右侧 Tab 条 ────────────────────────────────
+  _buildTabBar(imgW, tabW, H) {
+    const rx = this._w / 2 - tabW / 2;
+    const tabs = ['info', 'equip'];
+    const labels = { info: '信息', equip: '装备' };
+    const tabH = 80;
+    const startY = -H / 2 + 100;
+
+    this._tabObjects = {};
+
+    tabs.forEach((tab, i) => {
+      const ty = startY + i * (tabH + 8);
+      const active = tab === this.currentTab;
+
+      const tbg = this.scene.add.rectangle(rx, ty, tabW - 6, tabH, active ? 0x2a2960 : DETAIL_PANEL, 0.95)
+        .setStrokeStyle(1.5, active ? DETAIL_THEME : 0x444444, 1)
+        .setInteractive({ useHandCursor: true });
+
+      const tlbl = this.scene.add.text(rx, ty, labels[tab], {
+        fontSize: '16px', color: active ? '#ffd700' : '#888888', fontStyle: 'bold',
+        padding: { top: 4 },
+      }).setOrigin(0.5);
+
+      tbg.on('pointerover', () => tbg.setAlpha(0.75));
+      tbg.on('pointerout', () => tbg.setAlpha(1));
+      tbg.on('pointerdown', () => { if (tab !== this.currentTab) this._switchTab(tab); });
+
+      this.root.add([tbg, tlbl]);
+      this._tabObjects[tab] = { tbg, tlbl };
+    });
+  }
+
+  // ── 关闭按钮 ───────────────────────────────────
+  _buildCloseBtn(W, H) {
+    const cx = W / 2 - 40;
+    const cy = -H / 2 + 40;
+    const hit = this.scene.add.circle(cx, cy, 22, 0xff0000, 0)
+      .setInteractive({ useHandCursor: true });
+    const txt = this.scene.add.text(cx, cy, '✕', {
+      fontSize: '28px', color: '#ff4444', fontStyle: 'bold',
+      padding: { top: 4 },
+    }).setOrigin(0.5);
+    hit.on('pointerover', () => txt.setColor('#ffaaaa'));
+    hit.on('pointerout', () => txt.setColor('#ff4444'));
+    hit.on('pointerdown', () => this.destroy());
+    this.root.add([hit, txt]);
+  }
+
+  // ── Tab 切换 ───────────────────────────────────
+  _switchTab(tab) {
+    this.currentTab = tab;
+    // 刷新 tab 高亮
+    const labels = { info: '信息', equip: '装备' };
+    for (const [t, { tbg, tlbl }] of Object.entries(this._tabObjects)) {
+      const active = t === tab;
+      tbg.setFillStyle(active ? 0x2a2960 : DETAIL_PANEL, 0.95);
+      tbg.setStrokeStyle(1.5, active ? DETAIL_THEME : 0x444444, 1);
+      tlbl.setColor(active ? '#ffd700' : '#888888');
+    }
+    this._infoContainer.removeAll(true);
+    if (tab === 'info') this._renderInfoTab();
+    else this._renderEquipTab();
+  }
+
+  // ── 信息 Tab ───────────────────────────────────
+  _renderInfoTab() {
+    const c = this._infoContainer;
+    const W = this._INFO_W - 24;
+    const H = this._h;
+    const pad = 16;
+    let y = -H / 2 + pad;
+    const t = this.template;
+
+    if (!t) {
+      c.add(this.scene.add.text(0, 0, '暂无数据', { fontSize: '18px', color: '#888', padding: { top: 4 } }).setOrigin(0.5));
+      return;
+    }
+
+    // ── 兵力名（confirm 底图，最上方）────────────
+    const nameImgW = Math.min(W * 0.7, 340);
+    const nameImgH = 44;
+    const nameY = y + nameImgH / 2;
+    // 底图先 add（在下层），文字后 add（在上层），Phaser 后 add 的在前面渲染
+    if (this.scene.textures.exists('confirm')) {
+      c.add(this.scene.add.image(0, nameY, 'confirm').setDisplaySize(nameImgW, nameImgH));
+    }
+    const unitName = t.name ?? this.unitData?.name ?? '未知';
+    c.add(this.scene.add.text(0, nameY, unitName, {
+      fontSize: '22px',
+      // confirm 是金色底图时用深色；无底图时用白色
+      color: this.scene.textures.exists('confirm') ? '#1a1200' : '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 4 },
+    }).setOrigin(0.5));
+    y += nameImgH + 10;
+
+    // ── 兵种 ─────────────────────────────────────
+    const typeName = MILITARY_TRANSLATE[t.type ?? this.unitData.type] ?? t.type ?? '';
+    c.add(this.scene.add.text(-W / 2, y, `兵种：${typeName}`, {
+      fontSize: '15px', color: '#aaaaaa', padding: { top: 4 },
+    }).setOrigin(0, 0));
+    y += 28;
+
+    // ── 等级（仅兵力表）─────────────────────────
+    if (this.unitData.fromArmy) {
+      const lv = this.unitData.level ?? 1;
+      c.add(this.scene.add.text(-W / 2, y, `等级：${lv}`, {
+        fontSize: '15px', color: '#aaaaaa', padding: { top: 4 },
+      }).setOrigin(0, 0));
+      y += 28;
+    } else {
+      // ── 科技要求（仅图鉴）─────────────────────
+      const filter = this.template?.filter;
+      const techKeys = filter?.tech ? Object.keys(filter.tech) : [];
+      const techStr = techKeys.length > 0
+        ? techKeys.map(k => TECH_TREE[k]?.name ?? k).join('，')
+        : '无';
+      c.add(this.scene.add.text(-W / 2, y, `科技要求：${techStr}`, {
+        fontSize: '15px', color: '#aaaaaa', padding: { top: 4 },
+      }).setOrigin(0, 0));
+      y += 28;
+    }
+
+    // ── 属性区（固定6项 + 额外，超高可滚动）─────
+    const statH = Math.round(H * 0.28);
+    this._buildStatArea(c, t, -W / 2, y, W, statH);
+    y += statH + 12;
+
+    // ── 被动技能区 ───────────────────────────────
+    const passiveH = 52;
+    const passive = this._getSkillsByType('passive')[0] ?? null;
+    this._buildPassiveArea(c, passive, -W / 2, y, W, passiveH);
+    y += passiveH + 12;
+
+    // ── 主动技能四宫格 + tag 标签 ─────────────────
+    const actives = this._getSkillsByType('initiative').slice(0, 4);
+    const tags = this._getSkillsByType('tag');
+    const gridH = Math.round(H * 0.22);
+    this._buildSkillGrid(c, actives, tags, -W / 2, y, W, gridH);
+  }
+
+  // ── 属性区 ─────────────────────────────────────
+  _buildStatArea(ct, t, x, y, w, h) {
+    const stats = t.basic_stats ?? {};
+    const extra = Object.keys(stats).filter(k => !STAT_KEYS.includes(k));
+    const all = [...STAT_KEYS, ...extra];
+
+    const PAD = 12;   // 增大内边距，确保第一行顶部完整显示
+    const COL_W = (w - PAD) / 2;
+    const ROW_H = 30;
+    const contentH = Math.ceil(all.length / 2) * ROW_H + PAD * 2;
+
+    const frame = this.scene.add.rectangle(x + w / 2, y + h / 2, w, h, DETAIL_PANEL, 0.85)
+      .setStrokeStyle(1, DETAIL_THEME, 0.25);
+    ct.add(frame);
+
+    const inner = this.scene.add.container(x + PAD, y + PAD);
+    ct.add(inner);
+
+    all.forEach((key, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const ix = col * COL_W;
+      const iy = row * ROW_H;
+      const val = stats[key] ?? 0;
+      const label = MILITARY_TRANSLATE[key] ?? key;
+      inner.add(this.scene.add.text(ix, iy, `${label}：${val}`, {
+        fontSize: '15px', color: '#dddddd', padding: { top: 4 },
+      }).setOrigin(0, 0));
+    });
+
+    // 滚动支持
+    if (contentH > h) {
+      let sy = 0;
+      frame.setInteractive();
+      frame.on('wheel', (p, dx, dy) => {
+        sy = Phaser.Math.Clamp(sy - dy * 0.5, -(contentH - h + PAD), 0);
+        inner.setY(y + PAD + sy);
+      });
+    }
+  }
+
+  // ── 被动技能（专属特性）────────────────────────
+  _buildPassiveArea(ct, skill, x, y, w, h) {
+    const bg = this.scene.add.rectangle(x + w / 2, y + h / 2, w, h, DETAIL_PANEL, 0.85)
+      .setStrokeStyle(1, 0x7766cc, 0.5);
+    ct.add(bg);
+
+    if (!skill) {
+      ct.add(this.scene.add.text(x + w / 2, y + h / 2, '被动技能：无', {
+        fontSize: '14px', color: '#444444', padding: { top: 4 },
+      }).setOrigin(0.5));
+      return;
+    }
+
+    ct.add(this.scene.add.text(x + 10, y + 6, '被动技能', {
+      fontSize: '12px', color: '#9988ff', padding: { top: 4 },
+    }).setOrigin(0, 0));
+    const passiveLv = skill.level != null ? `${skill.name}  Lv${skill.level}` : skill.name;
+    ct.add(this.scene.add.text(x + 10, y + 24, passiveLv, {
+      fontSize: '17px', color: '#ffffff', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0, 0));
+
+    if (skill.des) {
+      bg.setInteractive({ useHandCursor: true });
+      bg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
+      bg.on('pointermove', (ptr) => this._moveTip(ptr));
+      bg.on('pointerout', () => this._hideTip());
+    }
+  }
+
+  // ── 主动技能四宫格 + tag 标签 ──────────────────
+  _buildSkillGrid(ct, actives, tags, x, y, w, gridH) {
+    const CELL_W = (w - 4) / 2;
+    const CELL_H = (gridH - 4) / 2;
+    const pos = [
+      [x, y],
+      [x + CELL_W + 4, y],
+      [x, y + CELL_H + 4],
+      [x + CELL_W + 4, y + CELL_H + 4],
+    ];
+
+    pos.forEach(([cx, cy], i) => {
+      const skill = actives[i] ?? null;
+      const sbg = this.scene.add.rectangle(cx + CELL_W / 2, cy + CELL_H / 2, CELL_W, CELL_H, DETAIL_PANEL, 0.85)
+        .setStrokeStyle(1, skill ? 0xffcc44 : 0x333333, skill ? 0.7 : 0.3);
+      ct.add(sbg);
+
+      if (skill) {
+        const activeLv = skill.level != null ? `${skill.name}\nLv${skill.level}` : skill.name;
+        ct.add(this.scene.add.text(cx + CELL_W / 2, cy + CELL_H / 2, activeLv, {
+          fontSize: '15px', color: '#ffcc44', fontStyle: 'bold',
+          align: 'center', wordWrap: { width: CELL_W - 10 },
+          padding: { top: 4 },
+        }).setOrigin(0.5));
+        if (skill.des) {
+          sbg.setInteractive({ useHandCursor: true });
+          sbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
+          sbg.on('pointermove', (ptr) => this._moveTip(ptr));
+          sbg.on('pointerout', () => this._hideTip());
+        }
+      } else {
+        ct.add(this.scene.add.text(cx + CELL_W / 2, cy + CELL_H / 2, '—', {
+          fontSize: '20px', color: '#2a2a2a',
+          padding: { top: 4 },
+        }).setOrigin(0.5));
+      }
+    });
+
+    // Tag 标签
+    if (tags.length > 0) {
+      let tx = x;
+      const ty = y + gridH + 8;
+      tags.forEach(skill => {
+        const lbl = this.scene.add.text(0, 0, skill.name, { fontSize: '13px', color: '#88ee88', padding: { top: 4 } }).setOrigin(0.5);
+        const tw = lbl.width + 18;
+        const tby = ty + 14;
+        const tbx = tx + tw / 2;
+        const tbg = this.scene.add.rectangle(tbx, tby, tw, 26, 0x1a3020, 0.9)
+          .setStrokeStyle(1, 0x55aa55, 0.8);
+        lbl.setPosition(tbx, tby);
+        ct.add([tbg, lbl]);
+        if (skill.des) {
+          tbg.setInteractive({ useHandCursor: true });
+          tbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
+          tbg.on('pointermove', (ptr) => this._moveTip(ptr));
+          tbg.on('pointerout', () => this._hideTip());
+        }
+        tx += tw + 6;
+      });
+    }
+  }
+
+  // ── 装备 Tab ───────────────────────────────────
+  _renderEquipTab() {
+    this._infoContainer.add(this.scene.add.text(0, 0, '装备（暂未实装）', {
+      fontSize: '18px', color: '#555555',
+      padding: { top: 4 },
+    }).setOrigin(0.5));
+  }
+
+  // ── 技能辅助 ───────────────────────────────────
+  _getSkillsByType(type) {
+    const t = this.template;
+    return Object.keys(t?.special_ability ?? {})
+      .filter(k => t.special_ability[k] && MILITARY_SKILL[k]?.type === type)
+      .map(k => MILITARY_SKILL[k]);
+  }
+
+  // ── 技能浮窗 ───────────────────────────────────
+  _showTip(title, des, ptr) {
+    this._hideTip();
+    const TIP_W = 220;
+    const PAD = 10;
+    const ct = this.scene.add.container(ptr.x + 18, ptr.y + 18).setDepth(DETAIL_DEPTH + 20);
+
+    const t1 = this.scene.add.text(PAD, PAD, title, {
+      fontSize: '14px', color: '#ffcc44', fontStyle: 'bold',
+      padding: { top: 4 },
+      wordWrap: { width: TIP_W - PAD * 2, useAdvancedWrap: true },
+    }).setOrigin(0, 0);
+    const t2 = this.scene.add.text(PAD, PAD + t1.height + 4, des, {
+      fontSize: '13px', color: '#cccccc',
+      padding: { top: 4 },
+      wordWrap: { width: TIP_W - PAD * 2, useAdvancedWrap: true },
+    }).setOrigin(0, 0);
+
+    const bgH = PAD * 2 + t1.height + 4 + t2.height;
+    const bg = this.scene.add.rectangle(TIP_W / 2, bgH / 2, TIP_W, bgH, 0x111122, 0.95)
+      .setStrokeStyle(1, DETAIL_THEME, 0.5);
+
+    // 确保浮窗不超出屏幕边缘
+    const { width, height } = this.scene.scale;
+    let tx = ptr.x + 18;
+    let ty = ptr.y + 18;
+    if (tx + TIP_W > width - 8) tx = ptr.x - TIP_W - 8;
+    if (ty + bgH > height - 8) ty = ptr.y - bgH - 8;
+    ct.setPosition(tx, ty);
+
+    ct.add([bg, t1, t2]);
+    this.tooltip = ct;
+  }
+  _moveTip(ptr) { if (this.tooltip) this.tooltip.setPosition(ptr.x + 18, ptr.y + 18); }
+  _hideTip() { if (this.tooltip) { this.tooltip.destroy(true); this.tooltip = null; } }
+
+  // ── 销毁 ───────────────────────────────────────
+  destroy() {
+    this._hideTip();
+    this.scene.tweens.add({
+      targets: [this.root, this.overlay],
+      alpha: 0, duration: 140,
+      onComplete: () => {
+        this.root.destroy(true);
+        this.overlay.destroy();
+      },
+    });
   }
 }

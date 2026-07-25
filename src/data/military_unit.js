@@ -16,8 +16,12 @@ export const MILITARY_UNIT = {
       explore_terrain: true,
       explore_resource: true,
     },
-    population_cost: 1,
-    training_turn: 1,
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
   },
   centaur_scout: {
     name: "半人马斥候",
@@ -36,8 +40,12 @@ export const MILITARY_UNIT = {
       explore_terrain: true,
       explore_resource: true,
     },
-    population_cost: 1,
-    training_turn: 1,
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
   },
   devil_scout: {
     name: "魔教哨探",
@@ -56,8 +64,28 @@ export const MILITARY_UNIT = {
       explore_terrain: true,
       explore_resource: true,
     },
-    population_cost: 1,
-    training_turn: 1,
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
+  },
+  migration_ship: {
+    name: '移民星舟',
+    type: 'special_type',
+    image: 'assets/military/soliders/boat.jpg',
+    equipments: {},
+    basic_stats: {},
+    special_ability: {
+      migration: true,
+    },
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
   },
   warrior: {
     name: "勇士",
@@ -75,8 +103,12 @@ export const MILITARY_UNIT = {
     special_ability: {
       taunt: true,
     },
-    population_cost: 1,
-    training_turn: 1,
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
   },
   pitcher: {
     name: "投石手",
@@ -94,8 +126,17 @@ export const MILITARY_UNIT = {
     special_ability: {
       pitch: true,
     },
-    population_cost: 1,
-    training_turn: 1,
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
+    filter: {
+      tech: {
+        sports_2: true,
+      }
+    }
   },
   boat: {
     name: "划桨小船",
@@ -112,9 +153,19 @@ export const MILITARY_UNIT = {
     },
     special_ability: {
       pitch: true,
-      basic_sailing: true,
+      sailing_lv1: true,
+      convey_lv1: true,
     },
-    population_cost: 1,
-    training_turn: 1,
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 1,
+    },
+    filter: {
+      tech: {
+        boating_1: true,
+      }
+    }
   },
 };
