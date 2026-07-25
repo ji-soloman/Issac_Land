@@ -29,6 +29,7 @@ import { BUILDING } from '../data/building.js';
 import { ERA } from '../data/era.js';
 import { WONDER } from '../data/wonder.js';
 import { GREAT_PEOPLE } from '../data/great_people.js';
+import { military } from '../system/military.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -419,22 +420,11 @@ export class GameScene extends Phaser.Scene {
           scout = 'devil_scout';
           break;
       }
-      this.saveData.military = {
-        s1: {
-          name: scout,
-          stats: MILITARY_UNIT[scout].basic_stats,
-          equipments: MILITARY_UNIT[scout].equipments,
-          ability: MILITARY_UNIT[scout].special_ability,
-        },
-        s2: {
-          name: scout,
-          stats: MILITARY_UNIT[scout].basic_stats,
-          equipments: MILITARY_UNIT[scout].equipments,
-          ability: MILITARY_UNIT[scout].special_ability,
-        },
-      }
-      saveSystem.save().then(() => {
-        console.log('初始化军队列表已保存');
+      // 顺序 await 确保两个兵组时间戳不同（military.addSoldier 内部已保证唯一性）
+      military.addSoldier(scout, this.saveData, this, () => {
+        military.addSoldier(scout, this.saveData, this, () => {
+          console.log('初始化军队列表已保存');
+        });
       });
     }
 
