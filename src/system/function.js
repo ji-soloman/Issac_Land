@@ -46,6 +46,35 @@ export const game = {
   //     console.log('结束:', ok);
   //   }
   // });
+  /**
+   * 检测某种行动类型是否还有可用行动条（剩余数量 > 0）
+   * @param {'military'|'civil'|'others'} type
+   * @returns {boolean}
+   *
+   * 用法示例：
+   *   game.hasAvailableAction('military')  // 是否还有军事行动条
+   */
+  hasAvailableAction(type) {
+    return this.remainingActions(type) > 0;
+  },
+
+  /**
+   * 返回某种行动类型的剩余可用行动条数量
+   * @param {'military'|'civil'|'others'} type
+   * @returns {number}  剩余数量（上限 - 已使用；others 无上限返回 Infinity）
+   *
+   * 用法示例：
+   *   game.remainingActions('military')  // 军事行动剩余条数
+   */
+  remainingActions(type) {
+    const saveData = saveSystem.currentSaveData;
+    if (!saveData) return 0;
+    const limit = get.actionNum(saveData)[type];
+    if (limit === Infinity) return Infinity;
+    const current = Object.keys(saveData.actionList?.[type] ?? {}).length;
+    return Math.max(0, limit - current);
+  },
+
   showTips(scene, tip) {
     const { width, height } = scene.scale;
     const x = width / 2;

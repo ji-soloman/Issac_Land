@@ -5,18 +5,18 @@ import { REGION } from '../data/region.js';
 // 区域颜色映射（与 GridPanel / CreateRegion 保持一致）
 // key 对应 REGION[x].color，value 为 Phaser 十六进制颜色
 const REGION_COLOR_MAP = {
-  living:        0xF2D8A7,
-  farm:          0x6DBE45,
-  mine:          0x7A7A7A,
-  harbor:        0x2E86C1,
-  pasture:       0xA3B83A,
-  military:      0xB03A2E,
-  academy:       0x4B6CB7,
-  holy:          0xE8C547,
-  trade:         0xE67E22,
+  living: 0xF2D8A7,
+  farm: 0x6DBE45,
+  mine: 0x7A7A7A,
+  harbor: 0x2E86C1,
+  pasture: 0xA3B83A,
+  military: 0xB03A2E,
+  academy: 0x4B6CB7,
+  holy: 0xE8C547,
+  trade: 0xE67E22,
   entertainment: 0xC65DFF,
-  industry:      0xA04000,
-  special:       0x7D3C98,
+  industry: 0xA04000,
+  special: 0x7D3C98,
 };
 
 export class MapView {
@@ -67,10 +67,10 @@ export class MapView {
     // onChoose:  点击任意格子后的外部回调
     // selectedGridId: 选点模式下，当前被点击选中并保持高亮的格子编号（悬浮之外的持久高亮）
     this.editMode = {
-      active:    false,
+      active: false,
       isDevMode: false,
       tempGrids: {},
-      onChoose:  null,
+      onChoose: null,
       selectedGridId: null,
     };
 
@@ -235,7 +235,7 @@ export class MapView {
    *   地图恢复成进入编辑模式之前的样子（已有格子的点击行为也恢复成原本的 onGridClick）。
    */
   setupEditMode() {
-    this.editMode.choosePanel = (onChoose, { devMode = false } = {}) => {
+    this.editMode.choosePanel = (onChoose, { devMode = false, allowedGridIds = null } = {}) => {
       if (this.editMode.active) {
         console.log('已经处于选点模式，无需重复进入');
         return;
@@ -244,12 +244,15 @@ export class MapView {
       this.editMode.isDevMode = devMode;
       this.editMode.tempGrids = {};
       this.editMode.selectedGridId = null;
-      // 外部传入的回调：点击任意格子（已存在的 / 临时发光的）都会触发，参数为格子编号(gn)
       this.editMode.onChoose = typeof onChoose === 'function' ? onChoose : null;
 
+      // allowedSet：若指定，只有在该集合内的格点才能被选中（包括已绘制格点）
+      const allowedSet = allowedGridIds ? new Set(allowedGridIds) : null;
+      this.editMode.allowedSet = allowedSet;
+
       Object.keys(this.gridLayout).forEach((gridId) => {
-        // 存档里已经存在、已经绘制出来的格子跳过，不重复创建
         if (this.gridObjects[gridId]) return;
+        if (allowedSet && !allowedSet.has(gridId)) return;
 
         const layout = this.gridLayout[gridId];
         this.editMode.tempGrids[gridId] = this.createGlowHexagon(gridId, layout);
@@ -269,6 +272,7 @@ export class MapView {
       if (this.editMode.selectedGridId) {
         this._setEditModeGridSelected(this.editMode.selectedGridId, false);
       }
+      this.editMode.allowedSet = null;
       this.editMode.selectedGridId = null;
 
       Object.values(this.editMode.tempGrids || {}).forEach(({ cellContainer, glowTween }) => {
@@ -477,7 +481,7 @@ export class MapView {
       }
     }
 
-    let fillAlpha  = isMain ? 0.8 : 0.5;
+    let fillAlpha = isMain ? 0.8 : 0.5;
     let strokeColor = isMain ? 0xffff00 : 0x606060;
     let strokeWidth = isMain ? 3 : 2;
 
@@ -569,8 +573,9 @@ export class MapView {
     const onClick = () => {
       if (this.isDragging) return;
       if (this.editMode && this.editMode.active) {
+        // 有白名单时，已绘制格点不在白名单内则不响应
+        if (this.editMode.allowedSet && !this.editMode.allowedSet.has(gridId)) return;
         console.log(gridId);
-        // 切换该格子的持久选中高亮（选中/取消选中），再触发外部选点回调
         this._handleEditModeGridClick(gridId);
         if (typeof this.editMode.onChoose === 'function') {
           this.editMode.onChoose(gridId);

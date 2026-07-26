@@ -15,6 +15,7 @@ import { GridPanel } from '../view/system/gridPanel.js';
 import { CreateWonder } from '../view/system/createWonder.js';
 import { CreateRegion } from '../view/system/createRegion.js';
 import { CreateBuilding } from '../view/system/createBuilding.js';
+import { GridMainOtherFunctions } from '../view/system/gridMainOtherFunctions.js';
 
 import { terrain } from '../data/terrain.js';
 import { LeftSideBar } from '../scene/leftSideBar.js';
@@ -684,6 +685,10 @@ export class GameScene extends Phaser.Scene {
       console.log('准备在以下地块创建建筑:', gridId);
       const data = this.saveData;
       this.currentBuildingPanel = new CreateBuilding(this, gridId, data);
+    });
+
+    this.events.on('main_other_func_btn', (gridId) => {
+      new GridMainOtherFunctions(this, this.saveData, gridId);
     });
 
     this.events.on('create_wonder_btn', (gridId) => {
