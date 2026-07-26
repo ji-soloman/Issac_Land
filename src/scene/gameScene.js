@@ -207,6 +207,17 @@ export class GameScene extends Phaser.Scene {
                   data.resource[param.resource] = (data.resource[param.resource] || 0) + param.resultNum;
                 }
               }
+              // 【训练兵组】：写入训练队列倒计时（资源已在 onSuccess 时扣除）
+              if (actionMilitary.startsWith('train_soldier_')) {
+                if (!data.military_training) data.military_training = {};
+                // 只有尚未写入（首次结算）才初始化，避免覆盖已有倒计时
+                if (!data.military_training[actionMilitary]) {
+                  data.military_training[actionMilitary] = {
+                    unitKey: param.unitKey,
+                    round: param.round ?? 1,
+                  };
+                }
+              }
             }
             break;
           case 'civil':
@@ -282,6 +293,20 @@ export class GameScene extends Phaser.Scene {
             delete gridsInfo.createBuilding;
           }
         }
+      }
+
+      // 3.5【训练倒计时】每回合减少1，完成后调用 military.addSoldier 获得兵组
+      const trainingQueue = data.military_training ?? {};
+      const completedTraining = [];
+      for (const [key, entry] of Object.entries(trainingQueue)) {
+        entry.round = (entry.round ?? 1) - 1;
+        if (entry.round <= 0) {
+          completedTraining.push({ key, unitKey: entry.unitKey });
+          delete trainingQueue[key];
+        }
+      }
+      for (const { unitKey } of completedTraining) {
+        military.addSoldier(unitKey, data, this);
       }
 
       // ToDo:
@@ -403,10 +428,14 @@ export class GameScene extends Phaser.Scene {
         civil: {},
         others: {},
       }
-      // 立即保存
       saveSystem.save().then(() => {
         console.log('初始化行动列表已保存');
       });
+    }
+
+    // 初始化训练队列
+    if (!this.saveData.military_training) {
+      this.saveData.military_training = {};
     }
 
     //初始化军事
@@ -622,6 +651,33 @@ export class GameScene extends Phaser.Scene {
     this.events.on('breed_population', ({ gridId, count }) => {
       if (!this.pendingBreed) this.pendingBreed = [];
       this.pendingBreed.push({ gridId, count });
+    });
+
+    this.events.on('train_soldier', ({ unitKey, cost, round, unitName, selectedMainGn }) => {
+      const actionKey = 'train_soldier_' + unitKey + '_' + Date.now();
+      game.addAction('military', actionKey, { unitKey, cost, round, unitName, selectedMainGn }, {
+        onSuccess: () => {
+          const res = this.saveData.resource ?? {};
+          const grids = this.saveData.map?.grids ?? {};
+          // 立即扣除资源：population 从选定主城格点扣，其他从 resource 扣
+          for (const [k, v] of Object.entries(cost)) {
+            if (k === 'population' && selectedMainGn && grids[selectedMainGn]) {
+              grids[selectedMainGn].population = (grids[selectedMainGn].population ?? 0) - v;
+            } else {
+              res[k] = (res[k] ?? 0) - v;
+            }
+          }
+          this.topInfoBar?.refresh();
+
+          if (!this.saveData.military_training) this.saveData.military_training = {};
+          this.saveData.military_training[actionKey] = { unitKey, round };
+
+          saveSystem.save();
+        },
+        onFail: (info) => {
+          if (info.reason === 'limit') game.showTips(this, '军事行动数量超过上限');
+        },
+      });
     });
 
     this.events.on('create_building_btn', (gridId) => {

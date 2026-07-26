@@ -568,9 +568,10 @@ class UnitDetailPage {
   // ── 右侧 Tab 条 ────────────────────────────────
   _buildTabBar(imgW, tabW, H) {
     const rx = this._w / 2 - tabW / 2;
-    const tabs = ['info', 'equip'];
-    const labels = { info: '信息', equip: '装备' };
-    const tabH = 80;
+    // 图鉴才有训练 tab，兵力表没有
+    const tabs = this.unitData.fromArmy ? ['info', 'equip'] : ['info', 'equip', 'train'];
+    const labels = { info: '信息', equip: '装备', train: '训练' };
+    const tabH = 72;
     const startY = -H / 2 + 100;
 
     this._tabObjects = {};
@@ -616,8 +617,6 @@ class UnitDetailPage {
   // ── Tab 切换 ───────────────────────────────────
   _switchTab(tab) {
     this.currentTab = tab;
-    // 刷新 tab 高亮
-    const labels = { info: '信息', equip: '装备' };
     for (const [t, { tbg, tlbl }] of Object.entries(this._tabObjects)) {
       const active = t === tab;
       tbg.setFillStyle(active ? 0x2a2960 : DETAIL_PANEL, 0.95);
@@ -626,7 +625,8 @@ class UnitDetailPage {
     }
     this._infoContainer.removeAll(true);
     if (tab === 'info') this._renderInfoTab();
-    else this._renderEquipTab();
+    else if (tab === 'equip') this._renderEquipTab();
+    else if (tab === 'train') this._renderTrainTab();
   }
 
   // ── 信息 Tab ───────────────────────────────────
@@ -841,9 +841,366 @@ class UnitDetailPage {
   // ── 装备 Tab ───────────────────────────────────
   _renderEquipTab() {
     this._infoContainer.add(this.scene.add.text(0, 0, '装备（暂未实装）', {
-      fontSize: '18px', color: '#555555',
-      padding: { top: 4 },
+      fontSize: '18px', color: '#555555', padding: { top: 4 },
     }).setOrigin(0.5));
+  }
+
+  // ── 训练 Tab ───────────────────────────────────
+  _renderTrainTab() {
+    const c = this._infoContainer;
+    const W = this._INFO_W - 24;
+    const H = this._h;
+    const pad = 16;
+    let y = -H / 2 + pad;
+    const t = this.template;
+    const training = t?.training ?? {};
+    const saveData = this.saveData;
+    const grids = saveData.map?.grids ?? {};
+
+    // 当前选中的主城 gridId（用于人口消耗判断）
+    let selectedMainGn = null;
+
+    // ── 科技要求 ──────────────────────────────────
+    const filterTech = t?.filter?.tech ?? {};
+    const unlocked = saveData.tech_tree?.unlocked ?? {};
+    c.add(this.scene.add.text(-W / 2, y, '科技要求：', {
+      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+    }).setOrigin(0, 0));
+    y += 24;
+
+    if (Object.keys(filterTech).length === 0) {
+      c.add(this.scene.add.text(-W / 2 + pad, y, '无', {
+        fontSize: '14px', color: '#888888', padding: { top: 4 },
+      }).setOrigin(0, 0));
+      y += 22;
+    } else {
+      for (const techKey of Object.keys(filterTech)) {
+        const techName = TECH_TREE[techKey]?.name ?? techKey;
+        const met = !!unlocked[techKey];
+        c.add(this.scene.add.text(-W / 2 + pad, y, `• ${techName}`, {
+          fontSize: '14px', color: met ? '#88cc88' : '#ff5555', padding: { top: 4 },
+        }).setOrigin(0, 0));
+        y += 22;
+      }
+    }
+    y += 10;
+
+    // ── 资源要求 ──────────────────────────────────
+    const cost = training.cost ?? {};
+    const resource = saveData.resource ?? {};
+    c.add(this.scene.add.text(-W / 2, y, '资源要求：', {
+      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+    }).setOrigin(0, 0));
+    y += 24;
+
+    // 把 population 和其他资源分开
+    const popAmount = cost.population ?? 0;
+    const otherCost = Object.entries(cost).filter(([k]) => k !== 'population');
+
+    // population 是否满足（初始未选主城视为不满足）
+    let popEnough = false;
+
+    // population 行（如果有）
+    let popText = null;
+    let popRowY = y;
+    if (popAmount > 0) {
+      // 图标
+      const iconKey = 'icon_population';
+      let ix = -W / 2 + pad;
+      if (this.scene.textures.exists(iconKey)) {
+        c.add(this.scene.add.image(ix + 11, y + 11, iconKey).setDisplaySize(22, 22));
+        ix += 26;
+      }
+      // 数量文字（颜色动态更新）
+      popText = this.scene.add.text(ix, y, `人口 ×${popAmount}`, {
+        fontSize: '15px', color: '#ff5555', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0, 0);
+      c.add(popText);
+
+      // "选择"按钮
+      const selBW = 70, selBH = 28;
+      const selX = W / 2 - selBW / 2 - 4;
+      const selBg = this.scene.add.image(selX, y + 11, 'common_btn').setDisplaySize(selBW, selBH)
+        .setInteractive({ useHandCursor: true });
+      const selTxt = this.scene.add.text(selX, y + 11, '选择', {
+        fontSize: '13px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      c.add([selBg, selTxt]);
+
+      // 选择后显示已选主城名的文字（占位，初始空）
+      const selLabel = this.scene.add.text(selX - selBW / 2 - 8, y + 11, '', {
+        fontSize: '13px', color: '#ffd700', padding: { top: 4 },
+      }).setOrigin(1, 0.5);
+      c.add(selLabel);
+
+      selBg.on('pointerover', () => selBg.setAlpha(0.8));
+      selBg.on('pointerout', () => selBg.setAlpha(1));
+      selBg.on('pointerdown', () => selBg.setAlpha(0.6));
+      selBg.on('pointerup', () => {
+        selBg.setAlpha(1);
+        this._showCitySelector(popAmount, grids, selectedMainGn, (gnId) => {
+          selectedMainGn = gnId;
+          const gnName = grids[gnId]?.name ?? gnId;
+          selLabel.setText(gnName);
+
+          // 重新判断人口是否足够
+          popEnough = (grids[gnId]?.population ?? 0) >= popAmount;
+          popText.setColor(popEnough ? '#dddddd' : '#ff5555');
+
+          // 更新训练按钮状态
+          refreshTrainBtn();
+        });
+      });
+
+      y += 36;
+    }
+
+    // 其他资源行
+    let nonPopAfford = true;
+    if (otherCost.length === 0 && popAmount === 0) {
+      c.add(this.scene.add.text(-W / 2 + pad, y, '无', {
+        fontSize: '14px', color: '#888888', padding: { top: 4 },
+      }).setOrigin(0, 0));
+      y += 28;
+    } else if (otherCost.length > 0) {
+      let tx = -W / 2 + pad;
+      for (const [resKey, amount] of otherCost) {
+        const have = resource[resKey] ?? 0;
+        const enough = have >= amount && have >= 0;
+        if (!enough) nonPopAfford = false;
+
+        const iconKey = `icon_${resKey}`;
+        if (this.scene.textures.exists(iconKey)) {
+          c.add(this.scene.add.image(tx + 11, y + 11, iconKey).setDisplaySize(22, 22));
+          tx += 26;
+        }
+        const resText = this.scene.add.text(tx, y, `×${amount}`, {
+          fontSize: '15px', color: enough ? '#dddddd' : '#ff5555', fontStyle: 'bold', padding: { top: 4 },
+        }).setOrigin(0, 0);
+        c.add(resText);
+        tx += resText.width + 14;
+      }
+      y += 32;
+    }
+
+    // ── 回合数 ───────────────────────────────────
+    const round = training.round ?? 1;
+    c.add(this.scene.add.text(-W / 2, y, `训练时间：${round} 回合`, {
+      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+    }).setOrigin(0, 0));
+    y += 36;
+
+    // ── 训练按钮（动态刷新） ───────────────────────
+    const techMet = Object.keys(filterTech).every(k => !!unlocked[k]);
+    const BW = 130, BH = 38;
+    const btnBg = this.scene.add.image(0, y + BH / 2, 'common_btn').setDisplaySize(BW, BH).setAlpha(0.5);
+    const btnTxt = this.scene.add.text(0, y + BH / 2, '训练', {
+      fontSize: '17px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5);
+    c.add([btnBg, btnTxt]);
+
+    const refreshTrainBtn = () => {
+      const popOk = popAmount > 0 ? (popEnough && selectedMainGn !== null) : true;
+      const canTrain = techMet && nonPopAfford && popOk;
+      btnBg.removeAllListeners();
+      if (canTrain) {
+        btnBg.setAlpha(1);
+        btnBg.setInteractive({ useHandCursor: true });
+        btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+        btnBg.on('pointerout', () => btnBg.setAlpha(1));
+        btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
+        btnBg.on('pointerup', () => {
+          btnBg.setAlpha(1);
+          this._showTrainConfirm(cost, round, selectedMainGn);
+        });
+      } else {
+        btnBg.setAlpha(0.5);
+        btnBg.disableInteractive();
+      }
+    };
+
+    // 初始渲染
+    refreshTrainBtn();
+  }
+
+  // ── 主城选择小窗 ────────────────────────────────
+  _showCitySelector(popNeeded, grids, initialSelected, onConfirm) {
+    const { width, height } = this.scene.scale;
+    const W = 300, DEPTH = DETAIL_DEPTH + 30;
+    const cx = width / 2, cy = height / 2;
+
+    // 找出所有 isMain 的主城
+    const mainCities = Object.entries(grids)
+      .filter(([, gn]) => gn.isMain)
+      .map(([id, gn]) => ({ id, name: gn.name ?? id, pop: gn.population ?? 0 }));
+
+    const H = Math.max(160, 70 + mainCities.length * 46 + 56);
+
+    const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.55)
+      .setDepth(DEPTH).setInteractive();
+    const modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+
+    const bg = this.scene.add.rectangle(0, 0, W, H, DETAIL_BG, 0.97)
+      .setStrokeStyle(1.5, DETAIL_THEME, 0.6);
+    modal.add(bg);
+
+    modal.add(this.scene.add.text(0, -H / 2 + 22, '选择主城', {
+      fontSize: '16px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5));
+
+    // 恢复上次选中状态
+    let selected = initialSelected ?? null;
+    const cityBgs = [];
+
+    // 确认按钮（先创建占位引用，后面动态控制）
+    const destroy = () => { modal.destroy(true); overlay.destroy(); };
+    const btnY = H / 2 - 28;
+
+    // 确认按钮：初始置灰
+    const confirmBg = this.scene.add.image(-60, btnY, 'common_btn_green').setDisplaySize(100, 34).setAlpha(0.5);
+    const confirmTxt = this.scene.add.text(-60, btnY, '确认', {
+      fontSize: '15px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5);
+
+    const refreshConfirmBtn = () => {
+      confirmBg.removeAllListeners();
+      if (selected) {
+        confirmBg.setAlpha(1);
+        confirmBg.setInteractive({ useHandCursor: true });
+        confirmBg.on('pointerover', () => confirmBg.setAlpha(0.8));
+        confirmBg.on('pointerout', () => confirmBg.setAlpha(1));
+        confirmBg.on('pointerdown', () => confirmBg.setAlpha(0.6));
+        confirmBg.on('pointerup', () => { confirmBg.setAlpha(1); onConfirm(selected); destroy(); });
+      } else {
+        confirmBg.setAlpha(0.5);
+        confirmBg.disableInteractive();
+      }
+    };
+    refreshConfirmBtn();
+    modal.add([confirmBg, confirmTxt]);
+
+    mainCities.forEach(({ id, name, pop }, i) => {
+      const ry = -H / 2 + 56 + i * 46;
+      const enough = pop >= popNeeded;
+      const itemBg = this.scene.add.rectangle(0, ry, W - 24, 38,
+        enough ? 0x1a2a1a : 0x2a1a1a, 0.9)
+        .setStrokeStyle(1, enough ? 0x44aa44 : 0x444444, 1)
+        .setInteractive({ useHandCursor: enough });
+
+      const nameT = this.scene.add.text(-W / 2 + 20, ry, name, {
+        fontSize: '15px', color: enough ? '#dddddd' : '#666666', padding: { top: 4 },
+      }).setOrigin(0, 0.5);
+      const popT = this.scene.add.text(W / 2 - 20, ry, `人口：${pop}`, {
+        fontSize: '13px', color: enough ? '#aaaaaa' : '#555555', padding: { top: 4 },
+      }).setOrigin(1, 0.5);
+
+      modal.add([itemBg, nameT, popT]);
+      cityBgs.push({ id, itemBg, enough });
+
+      if (enough) {
+        itemBg.on('pointerover', () => { if (selected !== id) itemBg.setAlpha(0.75); });
+        itemBg.on('pointerout', () => itemBg.setAlpha(1));
+        itemBg.on('pointerdown', () => {
+          if (selected === id) {
+            // 再次点击已选主城 → 取消选中
+            selected = null;
+          } else {
+            selected = id;
+          }
+          cityBgs.forEach(({ id: bid, itemBg: bb, enough: e }) => {
+            if (!e) return;
+            const isSelected = bid === selected;
+            bb.setStrokeStyle(1, isSelected ? DETAIL_THEME : 0x44aa44, 1);
+            bb.setFillStyle(isSelected ? 0x2a2960 : 0x1a2a1a, 0.9);
+            bb.setAlpha(1);
+          });
+          refreshConfirmBtn();
+        });
+      }
+    });
+
+    // 取消按钮
+    // 城市列表渲染完成后，应用初始选中状态的高亮（恢复上次选择）
+    if (selected) {
+      cityBgs.forEach(({ id: bid, itemBg: bb, enough: e }) => {
+        if (!e) return;
+        const isSelected = bid === selected;
+        bb.setStrokeStyle(1, isSelected ? DETAIL_THEME : 0x44aa44, 1);
+        bb.setFillStyle(isSelected ? 0x2a2960 : 0x1a2a1a, 0.9);
+      });
+    }
+
+    const cancelBg = this.scene.add.image(60, btnY, 'common_btn').setDisplaySize(100, 34)
+      .setInteractive({ useHandCursor: true });
+    const cancelTxt = this.scene.add.text(60, btnY, '取消', {
+      fontSize: '15px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5);
+    cancelBg.on('pointerover', () => cancelBg.setAlpha(0.8));
+    cancelBg.on('pointerout', () => cancelBg.setAlpha(1));
+    cancelBg.on('pointerdown', () => cancelBg.setAlpha(0.6));
+    cancelBg.on('pointerup', () => { cancelBg.setAlpha(1); destroy(); });
+    modal.add([cancelBg, cancelTxt]);
+
+    modal.setAlpha(0); overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 160 });
+  }
+
+  // ── 训练确认弹窗 ────────────────────────────────
+  _showTrainConfirm(cost, round, selectedMainGn) {
+    const { width, height } = this.scene.scale;
+    const W = 340, H = 180;
+    const cx = width / 2, cy = height / 2;
+    const DEPTH = DETAIL_DEPTH + 20;
+    const t = this.template;
+
+    const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.6)
+      .setDepth(DEPTH).setInteractive();
+    const modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+
+    const bg = this.scene.add.rectangle(0, 0, W, H, DETAIL_BG, 0.97)
+      .setStrokeStyle(1.5, DETAIL_THEME, 0.7);
+
+    const title = this.scene.add.text(0, -H / 2 + 22, '训练确认', {
+      fontSize: '16px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5);
+
+    const msg = this.scene.add.text(0, -10, `是否确定训练【${t.name}】？`, {
+      fontSize: '17px', color: '#f5e6c8', align: 'center',
+      wordWrap: { width: W - 40 }, padding: { top: 4 },
+    }).setOrigin(0.5);
+
+    modal.add([bg, title, msg]);
+
+    const destroy = () => { modal.destroy(true); overlay.destroy(); };
+
+    const addBtn = (x, key, label, onClick) => {
+      const BW = 110, BH = 36;
+      const btnBg = this.scene.add.image(x, H / 2 - 30, key).setDisplaySize(BW, BH)
+        .setInteractive({ useHandCursor: true });
+      const btnTxt = this.scene.add.text(x, H / 2 - 30, label, {
+        fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+      btnBg.on('pointerout', () => btnBg.setAlpha(1));
+      btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
+      btnBg.on('pointerup', () => { btnBg.setAlpha(1); onClick(); });
+      modal.add([btnBg, btnTxt]);
+    };
+
+    addBtn(-65, 'common_btn_green', '确认', () => {
+      this.scene.events.emit('train_soldier', {
+        unitKey: this.unitKey,
+        cost,
+        round,
+        unitName: t.name,
+        selectedMainGn, // 用于人口扣除
+      });
+      destroy();
+    });
+    addBtn(65, 'common_btn', '取消', () => destroy());
+
+    modal.setAlpha(0); overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 160 });
   }
 
   // ── 技能辅助 ───────────────────────────────────

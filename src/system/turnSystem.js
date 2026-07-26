@@ -140,6 +140,11 @@ export class TurnSystem {
           resource: params.resource,
         };
       }
+
+      if (actionType.startsWith('train_soldier_')) {
+        // 训练行动：直接透传到 result，让 gameScene 第2步写入 military_training 倒计时
+        result.military[actionType] = params;
+      }
     });
 
     // 2. 处理Civil

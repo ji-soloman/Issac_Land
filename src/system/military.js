@@ -13,17 +13,48 @@ import { saveSystem } from './saveSystem.js';
 let _lastTimestamp = 0;
 
 /**
- * 从 WorldTimeAPI 获取当前 UTC 时间戳（毫秒）。
- * 没有联网时 reject，由调用方处理提示。
+ * 依次尝试多个可靠的网络时间源，全部失败则回退到本地时间并打印警告。
+ * 使用多个备用源是因为单一来源（如 worldtimeapi.org）可能停服或被屏蔽。
  */
 async function _getNetworkTimestamp() {
-  const res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', {
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error('network error');
-  const data = await res.json();
-  // unixtime 是秒，转为毫秒
-  return data.unixtime * 1000;
+  const sources = [
+    // timeapi.io — worldtimeapi.org 的官方继任者，同一团队维护
+    async () => {
+      const r = await fetch('https://timeapi.io/api/time/current/zone?timeZone=UTC', { cache: 'no-store' });
+      if (!r.ok) throw new Error('timeapi.io failed');
+      const d = await r.json();
+      // dateTime 格式: "2025-07-25T12:34:56.789"
+      return new Date(d.dateTime + 'Z').getTime();
+    },
+    // worldtimeapi.org 替代服务（Cloudflare Workers，兼容原接口）
+    async () => {
+      const r = await fetch('https://timeapi.world/api/timezone/Etc/UTC', { cache: 'no-store' });
+      if (!r.ok) throw new Error('timeapi.world failed');
+      const d = await r.json();
+      return d.unixtime * 1000;
+    },
+    // Cloudflare 的 trace 接口，包含服务器端时间
+    async () => {
+      const r = await fetch('https://cloudflare.com/cdn-cgi/trace', { cache: 'no-store' });
+      if (!r.ok) throw new Error('cloudflare failed');
+      const text = await r.text();
+      const match = text.match(/ts=([0-9.]+)/);
+      if (!match) throw new Error('cloudflare ts not found');
+      return Math.round(parseFloat(match[1]) * 1000);
+    },
+  ];
+
+  for (const source of sources) {
+    try {
+      return await source();
+    } catch (e) {
+      console.warn('military: 时间源失败，尝试下一个', e.message);
+    }
+  }
+
+  // 全部失败：回退到本地时间，打印警告但不阻断流程
+  console.warn('military: 所有网络时间源均不可用，使用本地时间作为兜底');
+  return Date.now();
 }
 
 /**
@@ -75,20 +106,8 @@ export const military = {
       if (mask && mask.active) mask.destroy(true);
     };
 
-    // 获取网络时间戳
-    let ts;
-    try {
-      ts = await _getNetworkTimestamp();
-    } catch (e) {
-      console.error('military.addSoldier: 无法获取网络时间', e);
-      destroyMask();
-      const { game } = await import('./function.js');
-      game.showTips(scene, '请检查网络连接');
-      return;
-    }
-
-    // 确保时间戳唯一
-    ts = _uniqueTimestamp(ts);
+    // 获取网络时间戳（多备用源，全部失败时回退本地时间）
+    const ts = _uniqueTimestamp(await _getNetworkTimestamp());
 
     const soldierId = `s${ts}`;
     const soldierData = {

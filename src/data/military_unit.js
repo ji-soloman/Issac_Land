@@ -82,10 +82,18 @@ export const MILITARY_UNIT = {
     },
     training: {
       cost: {
-        population: 1,
+        population: 4,
+        wealth: 10,
+        magic: 20,
+        food: 50,
       },
-      round: 1,
+      round: 3,
     },
+    filter: {
+      tech: {
+        convey_1: true,
+      }
+    }
   },
   warrior: {
     name: "勇士",
@@ -158,7 +166,9 @@ export const MILITARY_UNIT = {
     },
     training: {
       cost: {
-        population: 1,
+        population: 2,
+        mine: 2,
+        wealth: 1,
       },
       round: 1,
     },
