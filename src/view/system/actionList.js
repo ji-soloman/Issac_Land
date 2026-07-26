@@ -282,10 +282,13 @@ export class ActionListSystem {
 
     // 数量标签
     const count = Object.keys(data).length;
+    const actionNums = get.actionNum(this.saveData);
+    const limit = actionNums[type];
+    const limitStr = (limit === Infinity || limit == null) ? '' : `/${limit}`;
     const countText = this.scene.add.text(
       x + width / 2 - 20,
       y + headerHeight / 2,
-      `(${count})`,
+      `(${count}${limitStr})`,
       {
         fontSize: '18px',
         fontFamily: 'Arial, sans-serif',
@@ -433,29 +436,32 @@ export class ActionListSystem {
    * 创建单个军事行动项
    */
   createMilitaryActionItem(parentContainer, x, y, width, height, key, actionData, color) {
-    let intro = MILITARY[key]?.intro || key;
-    const replacements = [];
+    let markedIntro;
 
-    // 构建替换内容
-    if (actionData.soldier) {
-      var detail = this.saveData.military[actionData.soldier];
-      const unitName = MILITARY_UNIT[detail?.name]?.name || detail?.name || actionData.soldier;
-      replacements.push(unitName);
+    if (key.startsWith('train_soldier_')) {
+      const unitName = MILITARY_UNIT[actionData.unitKey]?.name ?? actionData.unitKey;
+      markedIntro = `开始训练{{【${unitName}】}}`;
+    } else {
+      let intro = MILITARY[key]?.intro || key;
+      const replacements = [];
+
+      if (actionData.soldier) {
+        var detail = this.saveData.military[actionData.soldier];
+        const unitName = MILITARY_UNIT[detail?.name]?.name || detail?.name || actionData.soldier;
+        replacements.push(unitName);
+      }
+
+      let mi = intro;
+      replacements.forEach(val => {
+        mi = mi.replace("XX", `{{${val}}}`);
+      });
+      markedIntro = mi;
     }
 
-    // 依次替换 "XX" 为带有特殊标记的字符串
-    // 标记格式为： {{内容}}
-    let markedIntro = intro;
-    replacements.forEach(val => {
-      markedIntro = markedIntro.replace("XX", `{{${val}}}`);
-    });
-
-    // 3. UI 背景绘制
     const itemBg = this.scene.add.rectangle(x, y + height / 2, width, height, 0x3a3a3a, 0.8);
     itemBg.setStrokeStyle(1, color, 0.5);
     parentContainer.add(itemBg);
 
-    // 解析 markedIntro 并创建彩色文本组
     this.renderColoredText(x - width / 2 + 15, y + height / 2, markedIntro, parentContainer);
   }
 
