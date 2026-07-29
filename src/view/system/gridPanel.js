@@ -243,8 +243,9 @@ export class GridPanel {
     const btnWidth = this.panelWidth * 0.8;
     const btnHeight = 45;
 
-    // 检查是否有驻扎的 migration 兵组且本回合未行动
-    const soldierId = this.gridData?.soldier;
+    // 实时读取当前格点数据（建城后 gridData 缓存已失效，需要重新获取）
+    const gridData = this.data.map.grids[this.gridId];
+    const soldierId = gridData?.soldier;
     const soldier = soldierId ? this.data.military?.[soldierId] : null;
     const template = soldier ? MILITARY_UNIT[soldier.name] : null;
     const hasMigration = !!template?.special_ability?.migration;
@@ -344,11 +345,284 @@ export class GridPanel {
   }
 
   _onBuildNewCity() {
-    // TODO: 建设新城逻辑（后续实装）
-    console.log('建设新城：待实装');
+    const { width, height } = this.scene.scale;
+    const W = 360, H = 280;
+    const cx = width / 2, cy = height / 2;
+    const DEPTH = 3000;
+    const pad = 16;
+
+    const resource = this.data.resource ?? {};
+    const soldierId = this.data.map.grids[this.gridId]?.soldier;
+    const soldier = soldierId ? this.data.military?.[soldierId] : null;
+
+    // 消耗定义
+    const COST = { culture: 100, food: 100 };
+
+    const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.6)
+      .setDepth(DEPTH).setInteractive();
+    const modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+
+    const bg = this.scene.add.rectangle(0, 0, W, H, 0x12111e, 0.97)
+      .setStrokeStyle(1.5, 0xffd700, 0.7);
+    modal.add(bg);
+
+    // 标题
+    modal.add(this.scene.add.text(0, -H / 2 + 22, '建设新城', {
+      fontSize: '18px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5));
+
+    let y = -H / 2 + 54;
+
+    // 资源消耗行（图标 + 数字）
+    const resRow = (resKey, amount, rowY) => {
+      const have = resource[resKey] ?? 0;
+      const enough = have >= amount && have >= 0;
+      const iconKey = `icon_${resKey}`;
+      let rx = -W / 2 + pad + 12;
+      if (this.scene.textures.exists(iconKey)) {
+        modal.add(this.scene.add.image(rx, rowY, iconKey).setDisplaySize(24, 24));
+        rx += 20;
+      }
+      modal.add(this.scene.add.text(rx, rowY, `×${amount}`, {
+        fontSize: '16px', color: enough ? '#dddddd' : '#ff5555',
+        fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0, 0.5));
+    };
+
+    modal.add(this.scene.add.text(-W / 2 + pad, y, '建造消耗：', {
+      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+    }).setOrigin(0, 0.5));
+    y += 28;
+    resRow('culture', COST.culture, y);
+    y += 28;
+    resRow('food', COST.food, y);
+    y += 36;
+
+    // 移民星舟条件
+    // 满足：当前格点没有移民星舟（已不存在），或存在有效的移民星舟
+    const shipMet = !soldierId || !!soldier;
+    const shipLabel = soldierId
+      ? (soldier ? `移民星舟：${this.data.military[soldierId] ? (MILITARY_UNIT[soldier.name]?.name ?? soldier.name) : '已不存在'}` : '移民星舟：已不存在')
+      : '移民星舟：无需要求';
+    modal.add(this.scene.add.text(-W / 2 + pad, y, shipLabel, {
+      fontSize: '14px', color: shipMet ? '#88cc88' : '#ff5555', padding: { top: 4 },
+    }).setOrigin(0, 0.5));
+    y += 32;
+
+    const destroy = () => { modal.destroy(true); overlay.destroy(); };
+
+    // 确认/取消按钮
+    const addBtn = (x, btnY, key, label, onClick) => {
+      const BW = 120, BH = 36;
+      const bb = this.scene.add.image(x, btnY, key).setDisplaySize(BW, BH)
+        .setInteractive({ useHandCursor: true });
+      const bt = this.scene.add.text(x, btnY, label, {
+        fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      bb.on('pointerover', () => bb.setAlpha(0.8));
+      bb.on('pointerout', () => bb.setAlpha(1));
+      bb.on('pointerdown', () => bb.setAlpha(0.6));
+      bb.on('pointerup', () => { bb.setAlpha(1); onClick(); });
+      modal.add([bb, bt]);
+    };
+
+    addBtn(-70, H / 2 - 30, 'common_btn_green', '建造', () => {
+      // 检查民事行动条目
+      if (!game.hasAvailableAction('civil')) {
+        game.showTips(this.scene, '民事行动数量超过上限');
+        return;
+      }
+      // 检查资源
+      const cultureOk = (resource.culture ?? 0) >= COST.culture && (resource.culture ?? 0) >= 0;
+      const foodOk = (resource.food ?? 0) >= COST.food && (resource.food ?? 0) >= 0;
+      if (!cultureOk || !foodOk) {
+        game.showTips(this.scene, '资源不足，无法建城');
+        return;
+      }
+
+      // 关闭消耗面板，打开城市命名输入框
+      destroy();
+      this._showCityNameInput((cityName) => {
+        this._doFoundCity(cityName, soldierId, resource, COST);
+      });
+    });
+
+    addBtn(70, H / 2 - 30, 'common_btn', '取消', () => destroy());
+
+    modal.setAlpha(0); overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 160 });
   }
 
   // 选择相邻未知格点并继续开拓
+  /**
+   * 城市命名输入框（纯 Phaser 实现，Canvas 内置，非 HTML DOM）
+   * 用键盘事件捕获输入，光标闪烁模拟文本框效果。
+   * @param {Function} onConfirm - 确认后回调，参数为城市名字符串
+   */
+  _showCityNameInput(onConfirm) {
+    const { width, height } = this.scene.scale;
+    const W = 360, H = 200;
+    const cx = width / 2, cy = height / 2;
+    const DEPTH = 3100;
+
+    const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.65)
+      .setDepth(DEPTH).setInteractive();
+    const modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+
+    const bg = this.scene.add.rectangle(0, 0, W, H, 0x12111e, 0.97)
+      .setStrokeStyle(1.5, 0xffd700, 0.7);
+    modal.add(bg);
+
+    modal.add(this.scene.add.text(0, -H / 2 + 22, '为新城命名', {
+      fontSize: '18px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5));
+
+    modal.add(this.scene.add.text(0, -H / 2 + 54, '输入城市名（留空则命名为"新城"）', {
+      fontSize: '13px', color: '#888888', padding: { top: 4 },
+    }).setOrigin(0.5));
+
+    // 输入框背景
+    const inputBg = this.scene.add.rectangle(0, -H / 2 + 100, W - 40, 40, 0x1e1d2e, 1)
+      .setStrokeStyle(1.5, 0x888888, 1);
+    modal.add(inputBg);
+
+    // 输入文字显示
+    let inputValue = '';
+    const inputText = this.scene.add.text(-(W - 40) / 2 + 10, -H / 2 + 100, '', {
+      fontSize: '18px', color: '#ffffff', padding: { top: 4 },
+    }).setOrigin(0, 0.5);
+    modal.add(inputText);
+
+    // 光标
+    const cursor = this.scene.add.text(0, -H / 2 + 100, '|', {
+      fontSize: '18px', color: '#ffd700', padding: { top: 4 },
+    }).setOrigin(0, 0.5);
+    modal.add(cursor);
+    const cursorTween = this.scene.tweens.add({
+      targets: cursor, alpha: 0, duration: 500, yoyo: true, repeat: -1,
+    });
+
+    // 错误提示文字
+    const errText = this.scene.add.text(0, -H / 2 + 145, '', {
+      fontSize: '13px', color: '#ff5555', padding: { top: 4 },
+    }).setOrigin(0.5);
+    modal.add(errText);
+
+    const updateDisplay = () => {
+      inputText.setText(inputValue);
+      // 光标紧跟输入文字末尾
+      cursor.setX(-(W - 40) / 2 + 10 + inputText.width);
+    };
+
+    // 键盘事件
+    const onKey = (event) => {
+      const key = event.key;
+      if (key === 'Backspace') {
+        inputValue = [...inputValue].slice(0, -1).join('');
+      } else if (key.length === 1) {
+        if ([...inputValue].length < 16) {
+          inputValue += key;
+        }
+      }
+      updateDisplay();
+    };
+    window.addEventListener('keydown', onKey);
+
+    const destroyInput = () => {
+      cursorTween.stop();
+      window.removeEventListener('keydown', onKey);
+      modal.destroy(true);
+      overlay.destroy();
+    };
+
+    // sanitise：只允许汉字、字母、数字、空格，长度 1~16
+    const sanitise = (raw) => {
+      const trimmed = raw.trim();
+      if (trimmed === '') return { ok: true, value: '新城' };
+      // 过滤掉不允许的字符（只保留 Unicode 字母/数字/汉字/空格）
+      const cleaned = trimmed.replace(/[^\p{L}\p{N}\s]/gu, '');
+      if (cleaned.length === 0) return { ok: false, reason: '名字包含不合法字符，请重新输入' };
+      if ([...cleaned].length > 16) return { ok: false, reason: '名字最多16个字符' };
+      return { ok: true, value: cleaned };
+    };
+
+    // 确认/取消按钮
+    const btnY = H / 2 - 30;
+    const addBtn = (x, key, label, onClick) => {
+      const BW = 120, BH = 36;
+      const bb = this.scene.add.image(x, btnY, key).setDisplaySize(BW, BH)
+        .setInteractive({ useHandCursor: true });
+      const bt = this.scene.add.text(x, btnY, label, {
+        fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      bb.on('pointerover', () => bb.setAlpha(0.8));
+      bb.on('pointerout', () => bb.setAlpha(1));
+      bb.on('pointerdown', () => bb.setAlpha(0.6));
+      bb.on('pointerup', () => { bb.setAlpha(1); onClick(); });
+      modal.add([bb, bt]);
+    };
+
+    addBtn(-70, 'common_btn_green', '确认', () => {
+      const result = sanitise(inputValue);
+      if (!result.ok) {
+        errText.setText(result.reason);
+        return;
+      }
+      destroyInput();
+      onConfirm(result.value);
+    });
+
+    addBtn(70, 'common_btn', '取消', () => destroyInput());
+
+    modal.setAlpha(0); overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 160 });
+    updateDisplay();
+  }
+
+  /**
+   * 执行建城：消耗资源、加民事条目、销毁移民星舟、写入主城数据
+   */
+  _doFoundCity(cityName, soldierId, resource, COST) {
+    // 消耗资源
+    resource.culture = (resource.culture ?? 0) - COST.culture;
+    resource.food = (resource.food ?? 0) - COST.food;
+    this.scene.topInfoBar?.refresh();
+
+    // 加入民事行动条目
+    const actionKey = `build_new_city_${this.gridId}_${Date.now()}`;
+    game.addAction('civil', actionKey, {
+      type: 'build_new_city',
+      gridId: this.gridId,
+      placeholder: true,
+    });
+
+    // 销毁移民星舟
+    if (soldierId && this.data.military?.[soldierId]) {
+      delete this.data.military[soldierId];
+    }
+
+    // 将当前格点转为主城
+    const grids = this.data.map.grids;
+    grids[this.gridId] = {
+      isMain: true,
+      name: cityName,
+      region: 'main',
+      buildings: {},
+      products: {},
+      population: 2,
+    };
+
+    saveSystem.save();
+    this.scene.mapView?.refreshMap(this.data.map);
+
+    // 若 gridPanel 正在显示该格点，关闭（格点已变主城）
+    if (this.scene.currentGridPanel?.gridId === this.gridId) {
+      this.scene.currentGridPanel.destroy();
+      this.scene.currentGridPanel = null;
+      this.scene.mapView?.clearSelectedGrid?.();
+    }
+  }
+
   _startContinueExplore(soldierId, actionKey) {
     const mapGrids = MAPS.grids ?? {};
     const saveGrids = this.data.map?.grids ?? {};
