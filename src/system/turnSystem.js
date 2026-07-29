@@ -59,14 +59,18 @@ export class TurnSystem {
         const candidateSet = new Set();
 
         for (const mainGn of mainGridIds) {
-          // getGridNeighbors 返回长度为 6 的数组，超出地图边界的方向返回 null
           const neighbors = this.mapView.getGridNeighbors(mainGn);
 
           for (const neighborGn of neighbors) {
-            if (!neighborGn) continue;                         // 超出地图边界
-            if (!mapGrids[neighborGn]) continue;               // 不在配置表中（水域等不参与配置的格点）
-            if (currentGrids[neighborGn]?.hasMain) continue;  // 已经被某个主城解锁过了
+            if (!neighborGn) continue;
+            if (!mapGrids[neighborGn]) continue;
 
+            const saved = currentGrids[neighborGn];
+            // 已属城池（分城或主城）的格点不参与探索
+            if (saved?.hasMain) continue;
+            if (saved?.isMain) continue;
+
+            // 未发现格点 或 野地（已发现但不属城池），都可作为候选
             candidateSet.add(neighborGn);
           }
         }
@@ -90,7 +94,6 @@ export class TurnSystem {
         for (const gn of keysToUnlock) {
           const config = mapGrids[gn];
 
-          // 确定该格点的地形类型（配置表中 type 可能是字符串或字符串数组）
           let terrainType = '';
           if (typeof config.type === 'string') {
             terrainType = config.type;
@@ -98,16 +101,21 @@ export class TurnSystem {
             terrainType = Phaser.Utils.Array.GetRandom(config.type);
           }
 
-          // 找到该格点最近的主城（若有多个主城邻格，取第一个 isMain 主城）
           const ownerMain = mainGridIds.find(mainGn => {
             const neighbors = this.mapView.getGridNeighbors(mainGn);
             return neighbors.includes(gn);
           }) || mainGridIds[0];
 
-          // 存储格式：
-          //   hasMain  → 拥有该格点的主城格点号（用于 GridPanel 显示城名）
-          //   region   → 空字符串（暂未划入具体区域）
-          //   buildings / products → 初始化为空，后续建设时填入
+          // 野地（已存在但不属城池）：销毁其驻扎的移民星舟，再改写为分城格式
+          const existing = currentGrids[gn];
+          if (existing && !existing.isMain && !existing.hasMain) {
+            if (existing.soldier && this.saveData.military?.[existing.soldier]) {
+              delete this.saveData.military[existing.soldier];
+              console.log(`explore_terrain: 销毁野地 ${gn} 中的移民星舟 ${existing.soldier}`);
+            }
+          }
+
+          // 写入分城数据（覆盖野地或创建新格点）
           currentGrids[gn] = {
             hasMain: ownerMain,
             region: '',

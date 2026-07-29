@@ -8,13 +8,21 @@ export const MILITARY = {
       const mainGridIds = Object.keys(saveGrids).filter(gn => saveGrids[gn]?.isMain === true);
       if (mainGridIds.length === 0 || !mapView) return false;
 
-      // 只要任意主城的周边6格中存在至少一个未被发现的配置表格点，则可探索
       return mainGridIds.some(mainGn => {
         const neighbors = mapView.getGridNeighbors(mainGn);
         return neighbors.some(neighborGn => {
-          if (!neighborGn) return false;           // 超出地图边界
-          if (!mapGrids[neighborGn]) return false; // 不在配置表（水域等）
-          return !saveGrids[neighborGn];           // 未在存档中 = 未发现
+          if (!neighborGn) return false;
+          if (!mapGrids[neighborGn]) return false;  // 不在配置表（地图边界外）
+
+          const saved = saveGrids[neighborGn];
+
+          // 条件1：未发现的格点（未在存档中）
+          if (!saved) return true;
+
+          // 条件2：野地（已发现，但不属于任何城池：无 isMain 也无 hasMain）
+          if (!saved.isMain && !saved.hasMain) return true;
+
+          return false;
         });
       });
     }
