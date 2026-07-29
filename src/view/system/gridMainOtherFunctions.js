@@ -6,7 +6,7 @@ import { terrain as TERRAIN } from '../../data/terrain.js';
 import { saveSystem } from '../../system/saveSystem.js';
 
 const DEPTH = 1100;
-const BG_COLOR    = 0x12111e;
+const BG_COLOR = 0x12111e;
 const THEME_COLOR = 0xffd700;
 const PANEL_COLOR = 0x1e1d2e;
 
@@ -22,9 +22,9 @@ const PANEL_COLOR = 0x1e1d2e;
  */
 export class GridMainOtherFunctions {
   constructor(scene, saveData, gridId) {
-    this.scene    = scene;
+    this.scene = scene;
     this.saveData = saveData;
-    this.gridId   = gridId;
+    this.gridId = gridId;
 
     this._build();
   }
@@ -56,7 +56,7 @@ export class GridMainOtherFunctions {
       fontSize: '28px', color: '#ff4444', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5);
     closeHit.on('pointerover', () => closeTxt.setColor('#ffaaaa'));
-    closeHit.on('pointerout',  () => closeTxt.setColor('#ff4444'));
+    closeHit.on('pointerout', () => closeTxt.setColor('#ff4444'));
     closeHit.on('pointerdown', () => this.destroy());
     this.root.add([closeHit, closeTxt]);
 
@@ -70,9 +70,9 @@ export class GridMainOtherFunctions {
 
   // ── 功能列表 ───────────────────────────────────
   _buildFunctionList(width, height) {
-    const CARD_W  = Math.min(320, width * 0.38);
-    const CARD_H  = 90;
-    const COLS    = Math.floor(width / (CARD_W + 24));
+    const CARD_W = Math.min(320, width * 0.38);
+    const CARD_H = 90;
+    const COLS = Math.floor(width / (CARD_W + 24));
     const START_X = (width - (COLS * CARD_W + (COLS - 1) * 24)) / 2 + CARD_W / 2;
     const START_Y = 100;
     const SPACING = CARD_H + 20;
@@ -80,9 +80,9 @@ export class GridMainOtherFunctions {
     // 功能定义列表——后续在此追加
     const funcs = [
       {
-        key:     'explore_far',
-        name:    '开拓远方',
-        desc:    '派遣移民星舟，开拓未知的远方地域',
+        key: 'explore_far',
+        name: '开拓远方',
+        desc: '派遣移民星舟，开拓未知的远方地域',
         // 可用条件：存在闲置的移民星舟（训练完成且无 currentStatus）
         available: () => this._hasIdleMigrationUnit() && game.hasAvailableAction('military'),
         locked_tip: '需要闲置的开拓兵组且军事行动条充足',
@@ -91,10 +91,10 @@ export class GridMainOtherFunctions {
     ];
 
     funcs.forEach((fn, i) => {
-      const col  = i % COLS;
-      const row  = Math.floor(i / COLS);
-      const cx   = START_X + col * (CARD_W + 24);
-      const cy   = START_Y + row * SPACING + CARD_H / 2;
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const cx = START_X + col * (CARD_W + 24);
+      const cy = START_Y + row * SPACING + CARD_H / 2;
       this._createFuncCard(cx, cy, CARD_W, CARD_H, fn);
     });
   }
@@ -122,7 +122,7 @@ export class GridMainOtherFunctions {
 
     if (avail) {
       cardBg.on('pointerover', () => { cardBg.setFillStyle(0x2a2960, 0.95); cardBg.setStrokeStyle(2, THEME_COLOR, 1); });
-      cardBg.on('pointerout',  () => { cardBg.setFillStyle(PANEL_COLOR, 0.95); cardBg.setStrokeStyle(1.5, THEME_COLOR, 0.7); });
+      cardBg.on('pointerout', () => { cardBg.setFillStyle(PANEL_COLOR, 0.95); cardBg.setStrokeStyle(1.5, THEME_COLOR, 0.7); });
       cardBg.on('pointerdown', () => {
         // 点击功能时关闭本界面，再打开对应功能面板
         this.destroy();
@@ -159,8 +159,8 @@ export class GridMainOtherFunctions {
       }
 
       // Step 3：计算城池（主城 + 所有分城）周边的未知格点集合
-      const grids      = this.saveData.map?.grids ?? {};
-      const mapView    = this.scene.mapView;
+      const grids = this.saveData.map?.grids ?? {};
+      const mapView = this.scene.mapView;
       const unknownSet = new Set();
 
       // 收集本城池所有格点 id
@@ -233,7 +233,7 @@ export class GridMainOtherFunctions {
       }).setOrigin(0.5);
 
       itemBg.on('pointerover', () => { itemBg.setFillStyle(0x2a2960, 0.9); });
-      itemBg.on('pointerout',  () => { itemBg.setFillStyle(0x1e1d2e, 0.9); });
+      itemBg.on('pointerout', () => { itemBg.setFillStyle(0x1e1d2e, 0.9); });
       itemBg.on('pointerdown', () => { destroy(); onSelect(id); });
       modal.add([itemBg, itemTxt]);
     });
@@ -245,10 +245,10 @@ export class GridMainOtherFunctions {
     const cancelTxt = this.scene.add.text(0, btnY, '取消', {
       fontSize: '15px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5);
-    cancelBg.on('pointerover',  () => cancelBg.setAlpha(0.8));
-    cancelBg.on('pointerout',   () => cancelBg.setAlpha(1));
-    cancelBg.on('pointerdown',  () => cancelBg.setAlpha(0.6));
-    cancelBg.on('pointerup',    () => { cancelBg.setAlpha(1); destroy(); });
+    cancelBg.on('pointerover', () => cancelBg.setAlpha(0.8));
+    cancelBg.on('pointerout', () => cancelBg.setAlpha(1));
+    cancelBg.on('pointerdown', () => cancelBg.setAlpha(0.6));
+    cancelBg.on('pointerup', () => { cancelBg.setAlpha(1); destroy(); });
     modal.add([cancelBg, cancelTxt]);
 
     modal.setAlpha(0); overlay.setAlpha(0);
@@ -297,8 +297,8 @@ export class GridMainOtherFunctions {
     const cy = height - H / 2 - 16;
 
     const mapGridMeta = MAPS.grids?.[gridId];
-    const terrainKey  = mapGridMeta?.type;
-    const info        = (terrainKey && typeof terrainKey === 'string') ? TERRAIN[terrainKey] : null;
+    const terrainKey = mapGridMeta?.type;
+    const info = (terrainKey && typeof terrainKey === 'string') ? TERRAIN[terrainKey] : null;
     const terrainName = info?.name ?? terrainKey ?? '未知地形';
 
     this._terrainCard = this.scene.add.container(cx, cy).setDepth(1300);
@@ -310,7 +310,7 @@ export class GridMainOtherFunctions {
     // 地形图片
     const imgKey = `terrain_${terrainKey}`;
     if (terrainKey && this.scene.textures.exists(imgKey)) {
-      const img   = this.scene.add.image(-W / 2 + 60, -10, imgKey);
+      const img = this.scene.add.image(-W / 2 + 60, -10, imgKey);
       const scale = Math.min(80 / img.width, 80 / img.height);
       img.setScale(scale).setOrigin(0.5);
       this._terrainCard.add(img);
@@ -323,15 +323,15 @@ export class GridMainOtherFunctions {
 
     // 确认按钮
     const BW = 120, BH = 38;
-    const btnBg  = this.scene.add.image(-W / 2 + 200, 22, 'common_btn_green').setDisplaySize(BW, BH)
+    const btnBg = this.scene.add.image(-W / 2 + 200, 22, 'common_btn_green').setDisplaySize(BW, BH)
       .setInteractive({ useHandCursor: true });
     const btnTxt = this.scene.add.text(-W / 2 + 200, 22, '确认', {
       fontFamily: 'sans-serif', fontSize: '17px', color: '#1a1200', padding: { top: 4 },
     }).setOrigin(0.5);
-    btnBg.on('pointerover',  () => btnBg.setAlpha(0.8));
-    btnBg.on('pointerout',   () => btnBg.setAlpha(1));
-    btnBg.on('pointerdown',  () => btnBg.setAlpha(0.6));
-    btnBg.on('pointerup',    () => {
+    btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
+    btnBg.on('pointerout', () => btnBg.setAlpha(1));
+    btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
+    btnBg.on('pointerup', () => {
       btnBg.setAlpha(1);
       if (this._terrainCard) { this._terrainCard.destroy(true); this._terrainCard = null; }
       this._doExploreConfirm(gridId, soldierId, terrainName, onClose);
@@ -367,15 +367,15 @@ export class GridMainOtherFunctions {
 
     const addBtn = (x, key, label, onClick) => {
       const BW = 110, BH = 36;
-      const bg  = this.scene.add.image(x, H / 2 - 30, key).setDisplaySize(BW, BH)
+      const bg = this.scene.add.image(x, H / 2 - 30, key).setDisplaySize(BW, BH)
         .setInteractive({ useHandCursor: true });
       const txt = this.scene.add.text(x, H / 2 - 30, label, {
         fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
       }).setOrigin(0.5);
-      bg.on('pointerover',  () => bg.setAlpha(0.8));
-      bg.on('pointerout',   () => bg.setAlpha(1));
-      bg.on('pointerdown',  () => bg.setAlpha(0.6));
-      bg.on('pointerup',    () => { bg.setAlpha(1); onClick(); });
+      bg.on('pointerover', () => bg.setAlpha(0.8));
+      bg.on('pointerout', () => bg.setAlpha(1));
+      bg.on('pointerdown', () => bg.setAlpha(0.6));
+      bg.on('pointerup', () => { bg.setAlpha(1); onClick(); });
       modal.add([bg, txt]);
     };
 
@@ -386,21 +386,24 @@ export class GridMainOtherFunctions {
       // 写入格点（野地：有存档记录，无 isMain 也无 hasMain）
       const grids = this.saveData.map.grids;
       grids[gridId] = {
-        region:    null,
+        region: null,
         buildings: {},
-        products:  {},
-        soldier:   soldierId,  // 兵组驻扎于此格点
+        products: {},
+        soldier: soldierId,  // 兵组驻扎于此格点
       };
 
-      // 兵组状态标记为行动中
+      // 兵组状态标记为行动中，初始化行驶记录
       const soldier = this.saveData.military[soldierId];
-      if (soldier) soldier.currentStatus = `explore_far_${gridId}`;
+      if (soldier) {
+        soldier.currentStatus = `explore_far_${gridId}`;
+        soldier.visitedGrids = [gridId];   // 记录已经过的格点（含当前驻扎格）
+      }
 
       // 加入军事行动（仅占位，回合结算时跳过）
       const actionKey = `explore_far_${soldierId}_${Date.now()}`;
       game.addAction('military', actionKey, {
-        type:        'explore_far',
-        soldier:     soldierId,
+        type: 'explore_far',
+        soldier: soldierId,
         gridId,
         placeholder: true,
       });

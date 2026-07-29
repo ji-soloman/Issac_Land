@@ -7,6 +7,8 @@ import { MAPS } from '../../data/map/EWland/map.js';
 import { game } from '../../system/function.js';
 import { BUILDING } from '../../data/building.js';
 import { RACES } from '../../data/race.js';
+import { MILITARY_UNIT } from '../../data/military_unit.js';
+import { saveSystem } from '../../system/saveSystem.js';
 
 const colorMap = {
   living: 0xF2D8A7,
@@ -188,6 +190,15 @@ export class GridPanel {
   }
 
   createTabs() {
+    const isWilderness = !this.gridData?.isMain && !this.gridData?.hasMain;
+
+    if (isWilderness) {
+      // 野地：不显示 tab，内容在 switchTab 里渲染（此时 contentContainer 已创建）
+      this.tabButtons = {};
+      this._isWilderness = true;
+      return;
+    }
+
     const tabNames = [
       { id: 'build', name: '建设' },
       { id: 'product', name: '物产' },
@@ -224,7 +235,219 @@ export class GridPanel {
     });
   }
 
+  // 野地内容区
+  _renderWildernessTab() {
+    this.contentContainer.removeAll(true);
+    let y = this.contentStartY + 20;
+    const centerX = this.panelStartX + this.panelWidth / 2;
+    const btnWidth = this.panelWidth * 0.8;
+    const btnHeight = 45;
+
+    // 检查是否有驻扎的 migration 兵组且本回合未行动
+    const soldierId = this.gridData?.soldier;
+    const soldier = soldierId ? this.data.military?.[soldierId] : null;
+    const template = soldier ? MILITARY_UNIT[soldier.name] : null;
+    const hasMigration = !!template?.special_ability?.migration;
+
+    // 本回合是否已使用继续开拓行动
+    const actionKey = `explore_continue_${soldierId}`;
+    const alreadyUsed = !!(this.data.actionList?.others?.[actionKey]);
+
+    // 行驶总格点数（visitedGrids 记录所有经过格点，含起始格，≥12 不可继续）
+    const visited = soldier?.visitedGrids ?? [];
+    const travelCount = visited.length;
+    const maxTravel = 12;
+    const travelFull = travelCount >= maxTravel;
+
+    if (hasMigration) {
+      const canExplore = !alreadyUsed && !travelFull;
+      this.createActionButton(
+        '继续开拓', centerX, y, btnWidth, btnHeight,
+        0x2e7d32, canExplore,
+        () => this._startContinueExplore(soldierId, actionKey),
+      );
+      y += btnHeight + 15;
+
+      if (alreadyUsed) {
+        this.contentContainer.add(this.scene.add.text(centerX, y, '本回合已行动', {
+          fontSize: '14px', color: '#666666', padding: { top: 4 },
+        }).setOrigin(0.5, 0.5));
+        y += 24;
+      } else if (travelFull) {
+        this.contentContainer.add(this.scene.add.text(centerX, y, `已行驶 ${travelCount}/${maxTravel} 格，无法继续移动`, {
+          fontSize: '13px', color: '#884444', padding: { top: 4 },
+          wordWrap: { width: btnWidth },
+        }).setOrigin(0.5, 0.5));
+        y += 28;
+      } else {
+        this.contentContainer.add(this.scene.add.text(centerX, y, `已行驶 ${travelCount}/${maxTravel} 格`, {
+          fontSize: '13px', color: '#666666', padding: { top: 4 },
+        }).setOrigin(0.5, 0.5));
+        y += 24;
+      }
+      y += 15;
+    }
+
+    // 建设新城：与所有已存在主城的最短格点距离都 > 8
+    if (this._isFarFromAllCities()) {
+      this.createActionButton(
+        '建设新城', centerX, y, btnWidth, btnHeight,
+        0x1565c0, true,
+        () => this._onBuildNewCity(),
+      );
+      y += btnHeight + 10;
+    }
+
+    if (!hasMigration && !this._isFarFromAllCities()) {
+      this.contentContainer.add(this.scene.add.text(centerX, y + 20, '空地', {
+        fontSize: '18px', color: '#666666', padding: { top: 4 },
+      }).setOrigin(0.5, 0));
+    }
+  }
+
+  /**
+   * BFS 计算当前格点到指定目标格点的最短步数（不限于已发现格点，遍历地图拓扑）。
+   * 返回步数（中间经过的格点数量，直接相邻 = 1）。
+   */
+  _bfsDistance(fromId, toId) {
+    if (fromId === toId) return 0;
+    const mapView = this.scene.mapView;
+    const visited = new Set([fromId]);
+    const queue = [[fromId, 0]];
+    while (queue.length > 0) {
+      const [cur, dist] = queue.shift();
+      const neighbors = mapView.getGridNeighbors(cur);
+      for (const nId of neighbors) {
+        if (!nId || visited.has(nId)) continue;
+        if (nId === toId) return dist + 1;
+        visited.add(nId);
+        queue.push([nId, dist + 1]);
+      }
+    }
+    return Infinity;
+  }
+
+  /**
+   * 判断当前格点与所有主城的最短路径距离是否都 > 8。
+   * 距离定义：两格点之间经过的格子数（直接相邻 = 1，中间隔 8 个格子 = 9）。
+   */
+  _isFarFromAllCities() {
+    const grids = this.data.map?.grids ?? {};
+    const mainCities = Object.keys(grids).filter(id => grids[id]?.isMain);
+    if (mainCities.length === 0) return true;
+    // 只要有一个主城距离 ≤ 8，就不满足条件
+    for (const cityId of mainCities) {
+      const dist = this._bfsDistance(this.gridId, cityId);
+      if (dist <= 8) return false;
+    }
+    return true;
+  }
+
+  _onBuildNewCity() {
+    // TODO: 建设新城逻辑（后续实装）
+    console.log('建设新城：待实装');
+  }
+
+  // 选择相邻未知格点并继续开拓
+  _startContinueExplore(soldierId, actionKey) {
+    const mapGrids = MAPS.grids ?? {};
+    const saveGrids = this.data.map?.grids ?? {};
+    const mapView = this.scene.mapView;
+
+    // 找当前格点相邻的未知格点
+    const neighbors = mapView.getGridNeighbors(this.gridId);
+    const unknownNeighbors = neighbors.filter(nId =>
+      nId && mapGrids[nId] && !saveGrids[nId]
+    );
+
+    if (unknownNeighbors.length === 0) {
+      game.showTips(this.scene, '周围没有未知格点可供探索');
+      return;
+    }
+
+    // 关闭 gridPanel，进入格点选择模式
+    if (this.scene.currentGridPanel) {
+      this.scene.currentGridPanel.destroy();
+      this.scene.currentGridPanel = null;
+      this.scene.mapView?.clearSelectedGrid?.();
+    }
+
+    // 屏蔽左侧栏和底部栏，选点期间不可操作
+    this._setUiVisible(false);
+
+    const currentGridId = this.gridId;
+
+    mapView.editMode.choosePanel((chosenId) => {
+      // 退出选点模式并恢复 bar
+      mapView.editMode.closeChoosePanel();
+      this._setUiVisible(true);
+
+      // 解锁目标格点（作为野地存入，移民星舟移动到此）
+      saveGrids[chosenId] = {
+        region: null,
+        buildings: {},
+        products: {},
+        soldier: soldierId,
+      };
+
+      // 移民星舟从当前格点移走：只清除 soldier 字段，保留格点记录（已发现的野地）
+      const currentGn = saveGrids[currentGridId];
+      if (currentGn) {
+        delete currentGn.soldier;
+        // 不删除格点本身，该格点已被发现，保持野地状态
+      }
+
+      const soldier = this.data.military?.[soldierId];
+      if (soldier) {
+        soldier.currentStatus = `explore_far_${chosenId}`;
+        // 追加本次到达的格点，记录完整行驶路径
+        if (!soldier.visitedGrids) soldier.visitedGrids = [];
+        soldier.visitedGrids.push(chosenId);
+      }
+
+      // 消耗一个"其他行动"条目（每回合每辆移民星舟限1次，key 固定）
+      game.addAction('others', actionKey, {
+        type: 'explore_continue',
+        soldier: soldierId,
+        fromGrid: currentGridId,
+        toGrid: chosenId,
+        placeholder: true,
+      }, {
+        onFail: (info) => {
+          if (info.reason === 'limit') game.showTips(this.scene, '其他行动数量超过上限');
+        },
+      });
+
+      // 保存并刷新地图
+      saveSystem.save();
+      this.scene.mapView?.refreshMap(this.data.map);
+
+    }, { devMode: false, allowedGridIds: unknownNeighbors });
+  }
+
+  /**
+   * 隐藏或还原 leftSideBar / bottomBar（复用 initGame / gridMainOtherFunctions 的同名逻辑）
+   */
+  _setUiVisible(visible) {
+    for (const key of ['leftSideBar', 'bottomBar']) {
+      const bar = this.scene[key];
+      if (!bar) continue;
+      if (typeof bar.setVisible === 'function') bar.setVisible(visible);
+      if (bar.container && typeof bar.container.setVisible === 'function') {
+        bar.container.setVisible(visible);
+      }
+      if (!visible) bar.isDisabled = true;
+      else delete bar.isDisabled;
+    }
+  }
+
   switchTab(tabId) {
+    // 野地格点没有 tab 系统，渲染野地内容
+    if (this._isWilderness) {
+      this._renderWildernessTab();
+      return;
+    }
+
     this.currentTab = tabId;
     this.contentContainer.y = 0;
     this.tooltipContainer.setVisible(false);
