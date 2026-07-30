@@ -469,9 +469,10 @@ export class GridPanel {
 
   // 选择相邻未知格点并继续开拓
   /**
-   * 城市命名输入框（纯 Phaser 实现，Canvas 内置，非 HTML DOM）
-   * 用键盘事件捕获输入，光标闪烁模拟文本框效果。
-   * @param {Function} onConfirm - 确认后回调，参数为城市名字符串
+  /**
+   * 城市命名输入框
+   * 使用透明 HTML input 叠加在 Canvas 上，确保中文 IME 正常弹出候选框。
+   * @param {Function} onConfirm
    */
   _showCityNameInput(onConfirm) {
     const { width, height } = this.scene.scale;
@@ -491,76 +492,79 @@ export class GridPanel {
       fontSize: '18px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5));
 
-    modal.add(this.scene.add.text(0, -H / 2 + 54, '输入城市名（留空则命名为"新城"）', {
+    modal.add(this.scene.add.text(0, -H / 2 + 54, '输入后不可更改，请慎重选择', {
       fontSize: '13px', color: '#888888', padding: { top: 4 },
     }).setOrigin(0.5));
 
-    // 输入框背景
     const inputBg = this.scene.add.rectangle(0, -H / 2 + 100, W - 40, 40, 0x1e1d2e, 1)
       .setStrokeStyle(1.5, 0x888888, 1);
     modal.add(inputBg);
 
-    // 输入文字显示
-    let inputValue = '';
+    // Phaser 文字：同步显示 HTML input 内容
     const inputText = this.scene.add.text(-(W - 40) / 2 + 10, -H / 2 + 100, '', {
       fontSize: '18px', color: '#ffffff', padding: { top: 4 },
     }).setOrigin(0, 0.5);
-    modal.add(inputText);
-
-    // 光标
-    const cursor = this.scene.add.text(0, -H / 2 + 100, '|', {
+    const cursor = this.scene.add.text(-(W - 40) / 2 + 10, -H / 2 + 100, '|', {
       fontSize: '18px', color: '#ffd700', padding: { top: 4 },
     }).setOrigin(0, 0.5);
-    modal.add(cursor);
+    modal.add([inputText, cursor]);
     const cursorTween = this.scene.tweens.add({
       targets: cursor, alpha: 0, duration: 500, yoyo: true, repeat: -1,
     });
 
-    // 错误提示文字
     const errText = this.scene.add.text(0, -H / 2 + 145, '', {
       fontSize: '13px', color: '#ff5555', padding: { top: 4 },
     }).setOrigin(0.5);
     modal.add(errText);
 
-    const updateDisplay = () => {
-      inputText.setText(inputValue);
-      // 光标紧跟输入文字末尾
-      cursor.setX(-(W - 40) / 2 + 10 + inputText.width);
-    };
+    // 创建透明 HTML input，定位到 Phaser 输入框背景的屏幕坐标
+    const canvasRect = this.scene.game.canvas.getBoundingClientRect();
+    const htmlInput = document.createElement('input');
+    htmlInput.type = 'text';
+    htmlInput.maxLength = 16;
+    htmlInput.style.cssText = [
+      'position:fixed',
+      `left:${canvasRect.left + cx - (W - 40) / 2}px`,
+      `top:${canvasRect.top + cy - H / 2 + 80}px`,
+      `width:${W - 40}px`,
+      'height:40px',
+      'background:transparent',
+      'border:none',
+      'outline:none',
+      'color:transparent',
+      'caret-color:transparent',
+      'font-size:18px',
+      'padding:0 8px',
+      'z-index:9999',
+      'box-sizing:border-box',
+    ].join(';');
+    document.body.appendChild(htmlInput);
+    setTimeout(() => htmlInput.focus(), 50);
 
-    // 键盘事件
-    const onKey = (event) => {
-      const key = event.key;
-      if (key === 'Backspace') {
-        inputValue = [...inputValue].slice(0, -1).join('');
-      } else if (key.length === 1) {
-        if ([...inputValue].length < 16) {
-          inputValue += key;
-        }
-      }
-      updateDisplay();
+    // input 变化时同步 Phaser 文字和光标位置
+    const syncDisplay = () => {
+      inputText.setText(htmlInput.value);
+      cursor.setX(-(W - 40) / 2 + 10 + inputText.width);
+      errText.setText('');
     };
-    window.addEventListener('keydown', onKey);
+    htmlInput.addEventListener('input', syncDisplay);
+
+    const sanitise = (raw) => {
+      const trimmed = raw.trim();
+      if (trimmed === '') return { ok: true, value: '新城' };
+      const cleaned = trimmed.replace(/[^\p{L}\p{N}\s]/gu, '');
+      if (cleaned.length === 0) return { ok: false, reason: '名字包含不合法字符，请重新输入' };
+      return { ok: true, value: cleaned };
+    };
 
     const destroyInput = () => {
       cursorTween.stop();
-      window.removeEventListener('keydown', onKey);
+      htmlInput.removeEventListener('input', syncDisplay);
+      document.body.removeChild(htmlInput);
       modal.destroy(true);
       overlay.destroy();
     };
 
-    // sanitise：只允许汉字、字母、数字、空格，长度 1~16
-    const sanitise = (raw) => {
-      const trimmed = raw.trim();
-      if (trimmed === '') return { ok: true, value: '新城' };
-      // 过滤掉不允许的字符（只保留 Unicode 字母/数字/汉字/空格）
-      const cleaned = trimmed.replace(/[^\p{L}\p{N}\s]/gu, '');
-      if (cleaned.length === 0) return { ok: false, reason: '名字包含不合法字符，请重新输入' };
-      if ([...cleaned].length > 16) return { ok: false, reason: '名字最多16个字符' };
-      return { ok: true, value: cleaned };
-    };
-
-    // 确认/取消按钮
     const btnY = H / 2 - 30;
     const addBtn = (x, key, label, onClick) => {
       const BW = 120, BH = 36;
@@ -576,21 +580,25 @@ export class GridPanel {
       modal.add([bb, bt]);
     };
 
-    addBtn(-70, 'common_btn_green', '确认', () => {
-      const result = sanitise(inputValue);
-      if (!result.ok) {
-        errText.setText(result.reason);
-        return;
-      }
+    // Enter 键确认
+    htmlInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const result = sanitise(htmlInput.value);
+      if (!result.ok) { errText.setText(result.reason); return; }
       destroyInput();
       onConfirm(result.value);
     });
 
+    addBtn(-70, 'common_btn_green', '确认', () => {
+      const result = sanitise(htmlInput.value);
+      if (!result.ok) { errText.setText(result.reason); htmlInput.focus(); return; }
+      destroyInput();
+      onConfirm(result.value);
+    });
     addBtn(70, 'common_btn', '取消', () => destroyInput());
 
     modal.setAlpha(0); overlay.setAlpha(0);
     this.scene.tweens.add({ targets: [modal, overlay], alpha: 1, duration: 160 });
-    updateDisplay();
   }
 
   /**
