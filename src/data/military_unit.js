@@ -74,7 +74,7 @@ export const MILITARY_UNIT = {
   migration_ship: {
     name: '移民星舟',
     type: 'special_type',
-    image: 'assets/military/soliders/boat.jpg',
+    image: 'assets/military/soliders/migration_ship.jpg',
     equipments: {},
     basic_stats: {},
     special_ability: {

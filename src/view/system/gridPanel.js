@@ -9,6 +9,7 @@ import { BUILDING } from '../../data/building.js';
 import { RACES } from '../../data/race.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { saveSystem } from '../../system/saveSystem.js';
+import { GRID_BTN_IMG } from '../../data/gridButtonImages.js';
 
 const colorMap = {
   living: 0xF2D8A7,
@@ -266,6 +267,7 @@ export class GridPanel {
         '继续开拓', centerX, y, btnWidth, btnHeight,
         0x2e7d32, canExplore,
         () => this._startContinueExplore(soldierId, actionKey),
+        '#ffffff', GRID_BTN_IMG.migration,
       );
       y += btnHeight + 15;
 
@@ -295,6 +297,7 @@ export class GridPanel {
         '建设新城', centerX, y, btnWidth, btnHeight,
         0x1565c0, true,
         () => this._onBuildNewCity(),
+        '#ffffff', GRID_BTN_IMG.build_new_city,
       );
       y += btnHeight + 10;
     }
@@ -398,14 +401,25 @@ export class GridPanel {
     resRow('food', COST.food, y);
     y += 36;
 
-    // 移民星舟条件
-    // 满足：当前格点没有移民星舟（已不存在），或存在有效的移民星舟
-    const shipMet = !soldierId || !!soldier;
-    const shipLabel = soldierId
-      ? (soldier ? `移民星舟：${this.data.military[soldierId] ? (MILITARY_UNIT[soldier.name]?.name ?? soldier.name) : '已不存在'}` : '移民星舟：已不存在')
-      : '移民星舟：无需要求';
+    // 移民星舟条件：找所有 visitedGrids 包含当前格点的 migration 兵组
+    const military = this.data.military ?? {};
+    const linkedShips = Object.entries(military).filter(([, s]) => {
+      const tmpl = MILITARY_UNIT[s.name];
+      return tmpl?.special_ability?.migration && s.visitedGrids?.includes(this.gridId);
+    });
+
+    let shipLabel, shipMet;
+    if (linkedShips.length === 0) {
+      shipLabel = '兵组：无';
+      shipMet = true;
+    } else {
+      const names = linkedShips.map(([, s]) => MILITARY_UNIT[s.name]?.name ?? s.name).join('、');
+      shipLabel = `兵组：${names}`;
+      shipMet = true;
+    }
     modal.add(this.scene.add.text(-W / 2 + pad, y, shipLabel, {
-      fontSize: '14px', color: shipMet ? '#88cc88' : '#ff5555', padding: { top: 4 },
+      fontSize: '14px', color: '#88cc88', padding: { top: 4 },
+      wordWrap: { width: W - pad * 2 },
     }).setOrigin(0, 0.5));
     y += 32;
 
@@ -596,9 +610,18 @@ export class GridPanel {
       placeholder: true,
     });
 
-    // 销毁移民星舟
-    if (soldierId && this.data.military?.[soldierId]) {
-      delete this.data.military[soldierId];
+    // 销毁所有曾经经过当前格点的移民星舟（visitedGrids 中包含 this.gridId）
+    // 注意：兵组可能已经不在当前格点驻扎（移走后 soldier 字段已从格点删除），
+    // 但 visitedGrids 仍记录它曾经过这里，因此需要遍历全部 military 来反查
+    const military = this.data.military ?? {};
+    for (const [sid, s] of Object.entries(military)) {
+      if (!s.visitedGrids) continue;
+      const template = MILITARY_UNIT[s.name];
+      if (!template?.special_ability?.migration) continue;
+      if (s.visitedGrids.includes(this.gridId)) {
+        delete military[sid];
+        console.log(`建城销毁移民星舟 ${sid}，曾经过 ${this.gridId}`);
+      }
     }
 
     // 将当前格点转为主城
@@ -903,8 +926,28 @@ export class GridPanel {
     this.contentMaxHeight = currentY - this.contentStartY + 20;
   }
 
-  createActionButton(textStr, x, y, width, height, color, isEnabled, callback, textColor = '#ffffff') {
-    const bg = this.scene.add.rectangle(x, y, width, height, color, 1);
+  createActionButton(textStr, x, y, width, height, color, isEnabled, callback, textColor = '#ffffff', imageKey = null) {
+    // 背景：有图片纹理则用图片（cover效果：保持比例缩放，裁剪超出部分），否则用纯色矩形
+    const useImage = imageKey && this.scene.textures.exists(imageKey);
+    let bg;
+    if (useImage) {
+      bg = this.scene.add.image(x, y, imageKey);
+      // cover：取宽/高缩放比的最大值，确保图片完全覆盖按钮区域
+      const frame = bg.frame;
+      const scaleX = width / frame.realWidth;
+      const scaleY = height / frame.realHeight;
+      const scale = Math.max(scaleX, scaleY);
+      bg.setScale(scale);
+      // 裁剪到按钮尺寸（以图片中心为基准）
+      const cropW = width / scale;
+      const cropH = height / scale;
+      const cropX = (frame.realWidth - cropW) / 2;
+      const cropY = (frame.realHeight - cropH) / 2;
+      bg.setCrop(cropX, cropY, cropW, cropH);
+    } else {
+      bg = this.scene.add.rectangle(x, y, width, height, color, 1);
+    }
+
     const text = this.scene.add.text(x, y, textStr, {
       fontSize: '20px',
       color: textColor,
@@ -915,20 +958,33 @@ export class GridPanel {
 
     if (isEnabled) {
       bg.setInteractive({ useHandCursor: true });
-      bg.setStrokeStyle(2, 0xffffff);
+      if (!useImage) bg.setStrokeStyle(2, 0xffffff);
 
       bg.on('pointerover', () => bg.setAlpha(0.8));
       bg.on('pointerout', () => bg.setAlpha(1));
       bg.on('pointerdown', () => {
         if (this.isAnimating) return;
+        const bgScaleX = bg.scaleX * 0.95;
+        const bgScaleY = bg.scaleY * 0.95;
         this.scene.tweens.add({
-          targets: [bg, text], scaleX: 0.95, scaleY: 0.95, duration: 50, yoyo: true,
-          onComplete: callback
+          targets: bg,
+          scaleX: bgScaleX, scaleY: bgScaleY,
+          duration: 50, yoyo: true,
+        });
+        this.scene.tweens.add({
+          targets: text,
+          scaleX: 0.95, scaleY: 0.95,
+          duration: 50, yoyo: true,
+          onComplete: callback,
         });
       });
     } else {
-      bg.setFillStyle(0x7f8c8d, 1);
-      bg.setStrokeStyle(2, 0x95a5a6);
+      if (useImage) {
+        bg.setAlpha(0.4);
+      } else {
+        bg.setFillStyle(0x7f8c8d, 1);
+        bg.setStrokeStyle(2, 0x95a5a6);
+      }
       text.setColor('#bdc3c7');
     }
 

@@ -31,6 +31,7 @@ import { ERA } from '../data/era.js';
 import { WONDER } from '../data/wonder.js';
 import { GREAT_PEOPLE } from '../data/great_people.js';
 import { military } from '../system/military.js';
+import { GRID_BTN_ASSETS } from '../data/gridButtonImages.js';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -65,6 +66,11 @@ export class GameScene extends Phaser.Scene {
     this.load.image('common_btn_purple', 'assets/ui/common_btn_purple.png');
     this.load.image('common_btn_light', 'assets/ui/common_btn_light.png');
     this.load.image('common_btn_dark', 'assets/ui/common_btn_dark.png');
+
+    // GridPanel 功能按钮图片（从配置表批量加载）
+    for (const [key, path] of GRID_BTN_ASSETS) {
+      this.load.image(key, path);
+    }
 
     this.load.image('settings_btn', 'assets/ui/settings_btn.png');
 
