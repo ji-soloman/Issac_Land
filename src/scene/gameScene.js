@@ -88,7 +88,30 @@ export class GameScene extends Phaser.Scene {
       if (value.image && value.image.length > 0) {
         this.load.image(`soldier_${key}`, value.image);
       }
+      // 兵组职业 type 图标
+      if (value.type) {
+        const typeKey = `soldier_type_${value.type}`;
+        if (!this.textures.exists(typeKey)) {
+          this.load.image(typeKey, `assets/military/soldier_type/${value.type}.png`);
+        }
+      }
     });
+
+    // 兵组详情页 tab 按钮图标（选中/未选中两套）
+    for (const tab of ['info', 'equip', 'train']) {
+      this.load.image(`tab_${tab}_select`, `assets/military/ui/${tab}_select.png`);
+      this.load.image(`tab_${tab}_unselect`, `assets/military/ui/${tab}_unselect.png`);
+    }
+
+    // 兵组品质边框
+    for (const q of ['normal', 'good', 'rare', 'epic', 'legend']) {
+      this.load.image(`quality_${q}`, `assets/military/ui/quality_${q}.png`);
+    }
+
+    // 六项基础属性图标
+    for (const stat of ['physical_attack', 'spell_attack', 'hp', 'armor', 'mana', 'military_order']) {
+      this.load.image(`stat_${stat}`, `assets/military/ui/${stat}.png`);
+    }
     Object.entries(WONDER).forEach(([key, value]) => {
       if (value.image) {
         this.load.image(`wonder_${key}`, value.image);

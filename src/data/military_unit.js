@@ -26,7 +26,7 @@ export const MILITARY_UNIT = {
   centaur_scout: {
     name: "半人马斥候",
     type: "scout",
-    image: "assets/military/soliders/scout.jpg",
+    image: "assets/military/soliders/centaur_scout.jpg",
     equipments: {},
     basic_stats: {
       physical_attack: 0,
@@ -50,7 +50,7 @@ export const MILITARY_UNIT = {
   devil_scout: {
     name: "魔教哨探",
     type: "scout",
-    image: "assets/military/soliders/scout.jpg",
+    image: "assets/military/soliders/devil_scout.jpg",
     equipments: {},
     basic_stats: {
       physical_attack: 0,
@@ -75,6 +75,7 @@ export const MILITARY_UNIT = {
     name: '移民星舟',
     type: 'special_type',
     image: 'assets/military/soliders/migration_ship.jpg',
+    quality: 'rare',
     equipments: {},
     basic_stats: {},
     special_ability: {
@@ -98,7 +99,8 @@ export const MILITARY_UNIT = {
   warrior: {
     name: "勇士",
     type: "fighting",
-    image: "assets/military/soliders/fighting.jpg",
+    image: "assets/military/soliders/warrior.jpg",
+    quality: 'good',
     equipments: {},
     basic_stats: {
       physical_attack: 4,
@@ -121,7 +123,8 @@ export const MILITARY_UNIT = {
   pitcher: {
     name: "投石手",
     type: "ranged",
-    image: "assets/military/soliders/ranged.jpg",
+    image: "assets/military/soliders/pitcher.jpg",
+    quality: 'good',
     equipments: {},
     basic_stats: {
       physical_attack: 4,
@@ -133,6 +136,7 @@ export const MILITARY_UNIT = {
     },
     special_ability: {
       pitch: true,
+      mutation_devil_lv3_1: true,
     },
     training: {
       cost: {
@@ -150,6 +154,7 @@ export const MILITARY_UNIT = {
     name: "划桨小船",
     type: "boat",
     image: "assets/military/soliders/boat.jpg",
+    quality: 'good',
     equipments: {},
     basic_stats: {
       physical_attack: 0,
@@ -177,5 +182,53 @@ export const MILITARY_UNIT = {
         boating_1: true,
       }
     }
+  },
+  Axeman: {
+    name: "巨斧手",
+    type: "fighting",
+    image: "assets/military/soliders/Axeman.jpg",
+    quality: 'good',
+    equipments: {},
+    basic_stats: {
+      physical_attack: 6,
+      spell_attack: 0,
+      hp: 25,
+      armor: 5,
+      mana: 3,
+      military_order: 4,
+    },
+    special_ability: {
+      nomad_fight_lv1_1: true,
+    },
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 2,
+    },
+  },
+  Inquisition: {
+    name: "宗教审判官",
+    type: "ranged",
+    image: "assets/military/soliders/Inquisition.jpg",
+    quality: 'epic',
+    equipments: {},
+    basic_stats: {
+      physical_attack: 4,
+      spell_attack: 14,
+      hp: 34,
+      armor: 4,
+      mana: 4,
+      military_order: 2,
+    },
+    special_ability: {
+      Inquisition_dark: true,
+    },
+    training: {
+      cost: {
+        population: 1,
+      },
+      round: 4,
+    },
   },
 };

@@ -42,4 +42,80 @@ export const MILITARY_SKILL = {
     convey: true,
     des: '可以运载其他单位，战斗时继承防御属性和护甲且优先被消耗'
   },
+  Inquisition_dark: {
+    name: '宗教审判',
+    level: 3,
+    des: '',
+  },
+  Ninjutsu: {
+    name: '秘术·回旋',
+    level: 4,
+    des: '',
+  },
+  magic_fire_lv1_1: {
+    name: '召唤火鸦',
+    type: 'initiative',
+    des: '',
+    level: 1,
+  },
+  magic_fire_lv2_1: {
+    name: '火墙术',
+    type: 'initiative',
+    des: '',
+    level: 2,
+  },
+  magic_fire_lv3_1: {
+    name: '流星火雨',
+    type: 'initiative',
+    des: '',
+    level: 3,
+  },
+  magic_ice_lv1_1: {
+    name: '寒冰盾',
+    type: 'initiative',
+    des: '给己方或友方1组单位增加10x单位等级的寒冰护甲',
+    level: 1,
+  },
+  magic_ice_lv2_1: {
+    name: '寒冰射线',
+    type: 'initiative',
+    des: '',
+    level: 2,
+  },
+  magic_ice_lv3_1: {
+    name: '寒冰之棺',
+    type: 'initiative',
+    des: '',
+    level: 3,
+  },
+  nomad_fight_lv1_1: {
+    name: '破甲击',
+    des: '',
+    level: 1,
+  },
+  nomad_fight_lv2_1: {
+    name: '刺击',
+    des: '',
+    level: 2,
+  },
+  nomad_fight_lv3_1: {
+    name: '半月斩',
+    des: '',
+    level: 3,
+  },
+  mutation_devil_lv1_1: {
+    name: '暗影箭',
+    des: '',
+    level: 1,
+  },
+  mutation_devil_lv2_1: {
+    name: '骸骨护盾',
+    des: '',
+    level: 2,
+  },
+  mutation_devil_lv3_1: {
+    name: '罗睺一斩',
+    des: '攻击5组敌人并额外造成15x武器等级的物理伤害，被杀死的单位自动转换为骷髅（受到召唤生物战术宽度限制）',
+    level: 3,
+  },
 }

@@ -287,7 +287,7 @@ export class MilitaryUnitViewer {
       container.setScale(1);
     });
     bg.on('pointerdown', () => {
-      new UnitDetailPage(this.scene, this.saveData, key, soldier);
+      UnitDetailPage.openWithLoader(this.scene, this.saveData, key, soldier);
     });
 
     this.contentContainer.add(container);
@@ -352,7 +352,7 @@ export class MilitaryUnitViewer {
       container.setScale(1);
     });
     bg.on('pointerdown', () => {
-      new UnitDetailPage(this.scene, this.saveData, key, unit);
+      UnitDetailPage.openWithLoader(this.scene, this.saveData, key, unit);
     });
 
     this.contentContainer.add(container);
@@ -481,6 +481,79 @@ const STAT_KEYS = [
 
 class UnitDetailPage {
   /**
+   * 静态入口：先显示加载遮罩和进度条，待所有图片加载完毕后再打开详情页。
+   * 全程屏幕不可点击。
+   */
+  static openWithLoader(scene, saveData, unitKey, unitData) {
+    const { width, height } = scene.scale;
+
+    // 遮罩
+    const loaderOverlay = scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75)
+      .setDepth(2000).setInteractive();
+
+    // 进度条背景
+    const barW = 320, barH = 16;
+    const barBg = scene.add.rectangle(width / 2, height / 2 + 20, barW, barH, 0x333333, 1).setDepth(2001);
+    const barFg = scene.add.rectangle(width / 2 - barW / 2, height / 2 + 20, 0, barH, 0xb8963e, 1)
+      .setOrigin(0, 0.5).setDepth(2002);
+    const loadTxt = scene.add.text(width / 2, height / 2 - 10, '加载中...', {
+      fontSize: '18px', color: '#f0e6cc', padding: { top: 4 },
+    }).setOrigin(0.5).setDepth(2001);
+
+    // 收集需要加载的图片 key
+    const keysToLoad = [];
+    const tmpl = MILITARY_UNIT[unitKey];
+
+    if (tmpl?.type) keysToLoad.push(`soldier_type_${tmpl.type}`);
+    for (const tab of ['info', 'equip', 'train']) {
+      keysToLoad.push(`tab_${tab}_select`, `tab_${tab}_unselect`);
+    }
+    for (const stat of STAT_KEYS) keysToLoad.push(`stat_${stat}`);
+    keysToLoad.push(`soldier_${unitKey}`);
+    keysToLoad.push('military_bg');
+
+    // 过滤出真正还没加载的
+    const toLoad = keysToLoad.filter(k => !scene.textures.exists(k));
+
+    const destroyLoader = () => {
+      loaderOverlay.destroy(); barBg.destroy(); barFg.destroy(); loadTxt.destroy();
+    };
+
+    const open = () => {
+      destroyLoader();
+      new UnitDetailPage(scene, saveData, unitKey, unitData);
+    };
+
+    if (toLoad.length === 0) { open(); return; }
+
+    let loaded = 0;
+    const onDone = () => {
+      loaded++;
+      barFg.setDisplaySize(barW * (loaded / toLoad.length), barH);
+      if (loaded >= toLoad.length) {
+        scene.load.off('filecomplete', onDone);
+        scene.load.off('loaderror', onDone);
+        open();
+      }
+    };
+    scene.load.on('filecomplete', onDone);
+    scene.load.on('loaderror', onDone);  // 加载失败也继续，不卡死
+
+    // 需要的图片逐一加入 Phaser loader（只加未加载的）
+    const pathMap = {};
+    if (tmpl?.type) pathMap[`soldier_type_${tmpl.type}`] = `assets/military/soldier_type/${tmpl.type}.png`;
+    for (const tab of ['info', 'equip', 'train']) {
+      pathMap[`tab_${tab}_select`] = `assets/military/ui/${tab}_select.png`;
+      pathMap[`tab_${tab}_unselect`] = `assets/military/ui/${tab}_unselect.png`;
+    }
+    for (const stat of STAT_KEYS) pathMap[`stat_${stat}`] = `assets/military/ui/${stat}.png`;
+    if (tmpl?.image) pathMap[`soldier_${unitKey}`] = tmpl.image;
+    pathMap['military_bg'] = 'assets/background/military_bg.jpg';
+
+    toLoad.forEach(k => { if (pathMap[k]) scene.load.image(k, pathMap[k]); });
+    scene.load.start();
+  }
+  /**
    * @param {Phaser.Scene} scene
    * @param {Object}       saveData
    * @param {string}       unitKey   — MILITARY_UNIT 里的 key
@@ -510,9 +583,19 @@ class UnitDetailPage {
     // 根容器
     this.root = this.scene.add.container(width / 2, height / 2).setDepth(DETAIL_DEPTH + 1);
 
-    // 全屏背景
-    const bg = this.scene.add.rectangle(0, 0, width, height, DETAIL_BG, 0.97);
+    // 全屏背景（参考图羊皮纸色调）
+    const bg = this.scene.add.rectangle(0, 0, width, height, 0xf0e6cc, 0.97);
     this.root.add(bg);
+
+    // 背景图片（Phaser image，cover居中，不遮挡Canvas内容）
+    // 需要在 gameScene.preload 中加载 'military_bg'
+    if (this.scene.textures.exists('military_bg')) {
+      const bgImg = this.scene.add.image(0, 0, 'military_bg');
+      const scaleX = width / bgImg.width;
+      const scaleY = height / bgImg.height;
+      bgImg.setScale(Math.max(scaleX, scaleY)).setOrigin(0.5);
+      this.root.add(bgImg);
+    }
 
     // 布局常量
     const IMG_W = width * 0.30;
@@ -545,56 +628,115 @@ class UnitDetailPage {
   // ── 左侧图片区 ─────────────────────────────────
   _buildImagePanel(imgW, H) {
     const x = -this._w / 2 + imgW / 2;
-    const imgKey = `soldier_${this.unitKey}`;
+    const absx = this._w / 2 - this._TAB_W - this._INFO_W + imgW / 2;  // canvas绝对x（从center）
+    // Phaser dom坐标是相对于scene中心，convert to canvas-space
+    const canvasW = this._w, canvasH = this._h;
 
     // 分隔线
-    const sep = this.scene.add.rectangle(x + imgW / 2, 0, 1, H, DETAIL_THEME, 0.25);
-    this.root.add(sep);
+    this.root.add(this.scene.add.rectangle(x + imgW / 2, 0, 1, H, 0xb8963e, 0.3));
 
-    if (this.scene.textures.exists(imgKey)) {
-      const img = this.scene.add.image(x, 0, imgKey);
-      const scale = Math.min((imgW - 20) / img.width, (H - 20) / img.height);
-      img.setScale(scale).setOrigin(0.5);
-      this.root.add(img);
+    // 兵组图片（HTML img，object-fit:contain，等比例缩小，在边框内居中）
+    const imgSrc = this.template?.image;
+
+    // ── 固定 4:3 宽高比（宽优先，高度由比例推算，不受屏幕高度影响）──
+    const RATIO = 4 / 3;          // 高/宽 比例（宽3:高4 → ratio≈1.33）
+    const MARGIN = 40;              // 左右边距留白
+    const qMaxW = imgW - MARGIN;   // 边框宽度（以左侧面板宽为基准）
+    const qMaxH = Math.round(qMaxW * RATIO);  // 高度由比例推算，固定不变
+
+    // 确保不超出屏幕可用高度（type图标 + 边距）
+    const maxAllowedH = H - 80;
+    const finalW = qMaxH > maxAllowedH
+      ? Math.round(maxAllowedH / RATIO)
+      : qMaxW;
+    const finalH = Math.round(finalW * RATIO);
+
+    // ── 距屏幕顶端的百分比（调整这个值改变整体垂直位置）──
+    const topRatio = 0.03;   // 整体顶边距屏幕顶端的比例（0.08 = 8%）
+    // imgY 是相对于屏幕中心的坐标，由百分比推算
+    const imgY = H * topRatio + finalH / 2 - H / 2;
+    // ── 图片相对边框的缩放比例（保持等比例） ──
+    const scale = 0.9;
+    const picW = Math.round(finalW * scale);
+    const picH = Math.round(finalH * scale);
+
+    if (imgSrc) {
+      const el2 = document.createElement('img');
+      el2.src = imgSrc;
+      el2.style.cssText = `width:${picW}px;height:${picH}px;object-fit:contain;display:block;`;
+      const dom2 = this.scene.add.dom(x, imgY, el2).setDepth(DETAIL_DEPTH + 2);
+      this.root.add(dom2);
     } else {
-      const ph = this.scene.add.text(x, 0, this.template?.name ?? '?', {
-        fontSize: '22px', color: '#555555', align: 'center',
-        padding: { top: 4 },
-      }).setOrigin(0.5);
-      this.root.add(ph);
+      this.root.add(this.scene.add.text(x, imgY, this.template?.name ?? '?', {
+        fontSize: '20px', color: '#8a7a5a', align: 'center', padding: { top: 4 },
+      }).setOrigin(0.5));
+    }
+
+    // 品质边框（固定比例，和图片同中心点）
+    const quality = this.template?.quality ?? 'normal';
+    const qEl = document.createElement('img');
+    qEl.src = `assets/military/ui/quality_${quality}.png`;
+    qEl.style.cssText = `width:${finalW}px;height:${finalH}px;object-fit:fill;display:block;pointer-events:none;`;
+    qEl.onerror = () => { qEl.style.display = 'none'; };
+    const qDom = this.scene.add.dom(x, imgY, qEl).setDepth(DETAIL_DEPTH + 3);
+    this.root.add(qDom);
+
+    // 职业 type 图标：下方60%在边框内，上方40%露在边框外
+    // iconY是图标视觉中心Y（Phaser dom左上角锚点需补偿半高）
+    const iconSize = 90;
+    const borderTopY = imgY - finalH / 2;
+    const iconCenterY = borderTopY + iconSize * 0.29;
+    if (this.template?.type) {
+      const src = `assets/military/soldier_type/${this.template.type}.png`;
+      const el = document.createElement('img');
+      el.src = src;
+      el.style.cssText = `width:${iconSize}px;height:${iconSize}px;object-fit:contain;display:block;cursor:pointer;`;
+      const dom = this.scene.add.dom(x, iconCenterY, el).setDepth(DETAIL_DEPTH + 4);
+      this.root.add(dom);
     }
   }
 
-  // ── 右侧 Tab 条 ────────────────────────────────
+  // ── 右侧 Tab 条（上图标下文字）────────────────
   _buildTabBar(imgW, tabW, H) {
     const rx = this._w / 2 - tabW / 2;
-    // 图鉴才有训练 tab，兵力表没有
     const tabs = this.unitData.fromArmy ? ['info', 'equip'] : ['info', 'equip', 'train'];
     const labels = { info: '信息', equip: '装备', train: '训练' };
-    const tabH = 72;
-    const startY = -H / 2 + 100;
+    const tabH = 76;
+    const startY = -H / 2 + 120;   // 从120开始，避开右上角关闭按钮
 
     this._tabObjects = {};
 
     tabs.forEach((tab, i) => {
-      const ty = startY + i * (tabH + 8);
+      const ty = startY + i * (tabH + 6);
       const active = tab === this.currentTab;
 
-      const tbg = this.scene.add.rectangle(rx, ty, tabW - 6, tabH, active ? 0x2a2960 : DETAIL_PANEL, 0.95)
-        .setStrokeStyle(1.5, active ? DETAIL_THEME : 0x444444, 1)
+      const tbg = this.scene.add.rectangle(rx, ty, tabW - 4, tabH, active ? 0x2a1a00 : 0xf0e6cc, 0.95)
+        .setStrokeStyle(1.5, active ? 0xb8963e : 0xc8a86e, 1)
         .setInteractive({ useHandCursor: true });
 
-      const tlbl = this.scene.add.text(rx, ty, labels[tab], {
-        fontSize: '16px', color: active ? '#ffd700' : '#888888', fontStyle: 'bold',
-        padding: { top: 4 },
+      // 图标（上方，HTML img object-fit:contain 28px）
+      const iconKey = `tab_${tab}_${active ? 'select' : 'unselect'}`;
+      const iconSrc = `assets/military/ui/${tab}_${active ? 'select' : 'unselect'}.png`;
+      const iconEl = document.createElement('img');
+      iconEl.src = iconSrc;
+      iconEl.style.cssText = 'width:28px;height:28px;object-fit:contain;display:block;pointer-events:none;cursor:pointer;';
+      const iconDom = this.scene.add.dom(rx, ty - 18, iconEl).setDepth(DETAIL_DEPTH + 2);
+      let iconObj = iconDom;
+
+      // 文字（下方）
+      const tlbl = this.scene.add.text(rx, ty + 18, labels[tab], {
+        fontSize: '13px', color: active ? '#f0e6cc' : '#6b4c1e',
+        fontStyle: active ? 'bold' : 'normal', padding: { top: 4 },
       }).setOrigin(0.5);
 
-      tbg.on('pointerover', () => tbg.setAlpha(0.75));
+      tbg.on('pointerover', () => tbg.setAlpha(0.8));
       tbg.on('pointerout', () => tbg.setAlpha(1));
       tbg.on('pointerdown', () => { if (tab !== this.currentTab) this._switchTab(tab); });
 
-      this.root.add([tbg, tlbl]);
-      this._tabObjects[tab] = { tbg, tlbl };
+      const objects = [tbg, tlbl];
+      if (iconObj) objects.push(iconObj);
+      this.root.add(objects);
+      this._tabObjects[tab] = { tbg, tlbl, iconObj, tab };
     });
   }
 
@@ -617,11 +759,16 @@ class UnitDetailPage {
   // ── Tab 切换 ───────────────────────────────────
   _switchTab(tab) {
     this.currentTab = tab;
-    for (const [t, { tbg, tlbl }] of Object.entries(this._tabObjects)) {
+    for (const [t, obj] of Object.entries(this._tabObjects)) {
       const active = t === tab;
-      tbg.setFillStyle(active ? 0x2a2960 : DETAIL_PANEL, 0.95);
-      tbg.setStrokeStyle(1.5, active ? DETAIL_THEME : 0x444444, 1);
-      tlbl.setColor(active ? '#ffd700' : '#888888');
+      obj.tbg.setFillStyle(active ? 0x2a1a00 : 0xf0e6cc, 0.95);
+      obj.tbg.setStrokeStyle(1.5, active ? 0xb8963e : 0xc8a86e, 1);
+      obj.tlbl.setColor(active ? '#f0e6cc' : '#6b4c1e');
+      obj.tlbl.setFontStyle(active ? 'bold' : 'normal');
+      // 切换图标纹理（直接修改 img src）
+      if (obj.iconObj?.node) {
+        obj.iconObj.node.src = `assets/military/ui/${t}_${active ? 'select' : 'unselect'}.png`;
+      }
     }
     this._infoContainer.removeAll(true);
     if (tab === 'info') this._renderInfoTab();
@@ -632,9 +779,9 @@ class UnitDetailPage {
   // ── 信息 Tab ───────────────────────────────────
   _renderInfoTab() {
     const c = this._infoContainer;
-    const W = this._INFO_W - 24;
+    const W = this._INFO_W - 16;
     const H = this._h;
-    const pad = 16;
+    const pad = 20;
     let y = -H / 2 + pad;
     const t = this.template;
 
@@ -643,67 +790,84 @@ class UnitDetailPage {
       return;
     }
 
-    // ── 兵力名（confirm 底图，最上方）────────────
-    const nameImgW = Math.min(W * 0.7, 340);
-    const nameImgH = 44;
-    const nameY = y + nameImgH / 2;
-    // 底图先 add（在下层），文字后 add（在上层），Phaser 后 add 的在前面渲染
-    if (this.scene.textures.exists('confirm')) {
-      c.add(this.scene.add.image(0, nameY, 'confirm').setDisplaySize(nameImgW, nameImgH));
-    }
+    // ── 兵力名 ──────────────────────────────────
     const unitName = t.name ?? this.unitData?.name ?? '未知';
-    c.add(this.scene.add.text(0, nameY, unitName, {
-      fontSize: '22px',
-      // confirm 是金色底图时用深色；无底图时用白色
-      color: this.scene.textures.exists('confirm') ? '#1a1200' : '#ffffff',
-      fontStyle: 'bold',
-      padding: { top: 4 },
-    }).setOrigin(0.5));
-    y += nameImgH + 10;
-
-    // ── 兵种 ─────────────────────────────────────
-    const typeName = MILITARY_TRANSLATE[t.type ?? this.unitData.type] ?? t.type ?? '';
-    c.add(this.scene.add.text(-W / 2, y, `兵种：${typeName}`, {
-      fontSize: '15px', color: '#aaaaaa', padding: { top: 4 },
+    c.add(this.scene.add.text(-W / 2, y, unitName, {
+      fontSize: '32px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0, 0));
+    y += 46;
+
+    // ── 分隔线 ───────────────────────────────────
+    const divider = (dy) => {
+      c.add(this.scene.add.rectangle(0, dy, W, 1, 0xb8963e, 0.4));
+    };
+    divider(y); y += 14;
+
+    // ── 基础属性 ─────────────────────────────────
+    c.add(this._sectionTitle('基础属性', y));
     y += 28;
 
-    // ── 等级（仅兵力表）─────────────────────────
-    if (this.unitData.fromArmy) {
-      const lv = this.unitData.level ?? 1;
-      c.add(this.scene.add.text(-W / 2, y, `等级：${lv}`, {
-        fontSize: '15px', color: '#aaaaaa', padding: { top: 4 },
-      }).setOrigin(0, 0));
-      y += 28;
-    } else {
-      // ── 科技要求（仅图鉴）─────────────────────
-      const filter = this.template?.filter;
-      const techKeys = filter?.tech ? Object.keys(filter.tech) : [];
-      const techStr = techKeys.length > 0
-        ? techKeys.map(k => TECH_TREE[k]?.name ?? k).join('，')
-        : '无';
-      c.add(this.scene.add.text(-W / 2, y, `科技要求：${techStr}`, {
-        fontSize: '15px', color: '#aaaaaa', padding: { top: 4 },
-      }).setOrigin(0, 0));
-      y += 28;
-    }
-
-    // ── 属性区（固定6项 + 额外，超高可滚动）─────
-    const statH = Math.round(H * 0.28);
+    const stats = t.basic_stats ?? {};
+    const extra = Object.keys(stats).filter(k => !STAT_KEYS.includes(k));
+    const allStatKeys = [...STAT_KEYS, ...extra];
+    const ROW_H = 42;
+    const statRows = Math.ceil(allStatKeys.length / 2);
+    const statH = statRows * ROW_H + 8;   // 按实际行数计算，不占用固定比例
     this._buildStatArea(c, t, -W / 2, y, W, statH);
-    y += statH + 12;
+    y += statH + 14;
+    divider(y); y += 14;
 
-    // ── 被动技能区 ───────────────────────────────
-    const passiveH = 52;
-    const passive = this._getSkillsByType('passive')[0] ?? null;
+    // ── 被动技能 ─────────────────────────────────
+    c.add(this._sectionTitle('被动技能', y));
+    y += 28;
+
+    const passiveH = 56;
+    const passive = (this._getSkillsByType('passive')[0] ?? null)?.skill ?? null;
     this._buildPassiveArea(c, passive, -W / 2, y, W, passiveH);
-    y += passiveH + 12;
+    y += passiveH + 14;
+    divider(y); y += 14;
 
-    // ── 主动技能四宫格 + tag 标签 ─────────────────
+    // ── 主动技能四宫格 ────────────────────────────
+    // 无 type 的技能默认视为主动技能（initiative）
+    c.add(this._sectionTitle('主动技能', y));
+    y += 28;
+
     const actives = this._getSkillsByType('initiative').slice(0, 4);
-    const tags = this._getSkillsByType('tag');
-    const gridH = Math.round(H * 0.22);
-    this._buildSkillGrid(c, actives, tags, -W / 2, y, W, gridH);
+    const gridH = 100;
+    const actualGridH = this._buildSkillGrid(c, actives, -W / 2, y, W, gridH);
+    y += actualGridH + 14;
+
+    // ── tag 标签技能（四宫格下方，第三类技能） ────────────────
+    const tagSkills = this._getSkillsByType('tag');
+    if (tagSkills.length > 0) {
+      let tx = -W / 2;
+      tagSkills.forEach(({ key, skill }) => {
+        const lbl = this.scene.add.text(0, 0, skill.name, {
+          fontSize: '13px', color: '#88ee88', padding: { top: 4 },
+        }).setOrigin(0.5);
+        const tw = lbl.width + 18;
+        const tbg = this.scene.add.rectangle(tx + tw / 2, y + 13, tw, 26, 0x1a3020, 0.9)
+          .setStrokeStyle(1, 0x55aa55, 0.8);
+        lbl.setPosition(tx + tw / 2, y + 13);
+        c.add([tbg, lbl]);
+        if (skill.des) {
+          tbg.setInteractive({ useHandCursor: false });
+          tbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
+          tbg.on('pointermove', (ptr) => this._moveTip(ptr));
+          tbg.on('pointerout', () => this._hideTip());
+        }
+        tx += tw + 6;
+      });
+    }
+  }
+
+  /** 居中分区标题（参考图样式：菱形装饰 + 文字） */
+  _sectionTitle(text, y) {
+    const ct = this.scene.add.container(0, y + 12);
+    ct.add(this.scene.add.text(0, 0, `◆ ${text} ◆`, {
+      fontSize: '15px', color: '#b8963e', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5, 0.5));
+    return ct;
   }
 
   // ── 属性区 ─────────────────────────────────────
@@ -712,130 +876,167 @@ class UnitDetailPage {
     const extra = Object.keys(stats).filter(k => !STAT_KEYS.includes(k));
     const all = [...STAT_KEYS, ...extra];
 
-    const PAD = 12;   // 增大内边距，确保第一行顶部完整显示
-    const COL_W = (w - PAD) / 2;
-    const ROW_H = 30;
-    const contentH = Math.ceil(all.length / 2) * ROW_H + PAD * 2;
+    const GAP = 8;    // 两框之间的间距
+    const COL_W = (w - GAP) / 2;
+    const ROW_H = 44;
+    const rows = Math.ceil(all.length / 2);
+    const contentH = rows * ROW_H;
 
-    const frame = this.scene.add.rectangle(x + w / 2, y + h / 2, w, h, DETAIL_PANEL, 0.85)
-      .setStrokeStyle(1, DETAIL_THEME, 0.25);
-    ct.add(frame);
+    // 左框、右框各自的背景
+    const leftBg = this.scene.add.rectangle(x + COL_W / 2, y + contentH / 2, COL_W, contentH, 0xf5e8c8, 0.08).setStrokeStyle(1, 0xb8963e, 0.3);
+    const rightBg = this.scene.add.rectangle(x + COL_W + GAP + COL_W / 2, y + contentH / 2, COL_W, contentH, 0xf5e8c8, 0.08).setStrokeStyle(1, 0xb8963e, 0.3);
+    ct.add([leftBg, rightBg]);
 
-    const inner = this.scene.add.container(x + PAD, y + PAD);
+    // 行分隔横线（从第1行之后开始，最后一行不加）
+    for (let r = 1; r < rows; r++) {
+      const lineY = y + r * ROW_H;
+      ct.add(this.scene.add.rectangle(x + COL_W / 2, y + lineY - y, COL_W - 16, 1, 0xb8963e, 0.3));
+      ct.add(this.scene.add.rectangle(x + COL_W + GAP + COL_W / 2, y + lineY - y, COL_W - 16, 1, 0xb8963e, 0.3));
+    }
+
+    const inner = this.scene.add.container(x, y);
     ct.add(inner);
 
     all.forEach((key, i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
-      const ix = col * COL_W;
+      // 左列从x开始，右列从x+COL_W+GAP开始
+      const ix = col === 0 ? 0 : COL_W + GAP;
       const iy = row * ROW_H;
       const val = stats[key] ?? 0;
       const label = MILITARY_TRANSLATE[key] ?? key;
-      inner.add(this.scene.add.text(ix, iy, `${label}：${val}`, {
-        fontSize: '15px', color: '#dddddd', padding: { top: 4 },
-      }).setOrigin(0, 0));
-    });
 
-    // 滚动支持
-    if (contentH > h) {
-      let sy = 0;
-      frame.setInteractive();
-      frame.on('wheel', (p, dx, dy) => {
-        sy = Phaser.Math.Clamp(sy - dy * 0.5, -(contentH - h + PAD), 0);
-        inner.setY(y + PAD + sy);
-      });
-    }
+      // stat 图标（DOM img, 24px contain）
+      const iconSrc = `assets/military/ui/${key}.png`;
+      const icEl = document.createElement('img');
+      icEl.src = iconSrc;
+      icEl.style.cssText = 'width:24px;height:24px;object-fit:contain;display:block;pointer-events:none;';
+      const domX = x + ix + 16;
+      const domY = y + iy + ROW_H / 2;
+      ct.add(ct.scene.add.dom(domX, domY, icEl).setDepth(DETAIL_DEPTH + 2));
+
+      // 属性名（小字金棕，图标右侧）
+      inner.add(this.scene.add.text(ix + 32, iy + ROW_H / 2, label, {
+        fontSize: '14px', color: '#b8963e', padding: { top: 4 },
+      }).setOrigin(0, 0.5));
+
+      // 数值（大字深棕，右对齐）
+      inner.add(this.scene.add.text(ix + COL_W - 8, iy + ROW_H / 2, String(val), {
+        fontSize: '22px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(1, 0.5));
+    });
   }
 
-  // ── 被动技能（专属特性）────────────────────────
+  // ── 被动技能区 ─────────────────────────────────
   _buildPassiveArea(ct, skill, x, y, w, h) {
-    const bg = this.scene.add.rectangle(x + w / 2, y + h / 2, w, h, DETAIL_PANEL, 0.85)
-      .setStrokeStyle(1, 0x7766cc, 0.5);
+    const bg = this.scene.add.rectangle(x + w / 2, y + h / 2, w, h, 0xf5e8c8, 0.06)
+      .setStrokeStyle(1, 0xb8963e, 0.2);
     ct.add(bg);
 
     if (!skill) {
-      ct.add(this.scene.add.text(x + w / 2, y + h / 2, '被动技能：无', {
-        fontSize: '14px', color: '#444444', padding: { top: 4 },
+      ct.add(this.scene.add.text(x + w / 2, y + h / 2, '暂无被动技能', {
+        fontSize: '14px', color: '#8a7a5a', padding: { top: 4 },
       }).setOrigin(0.5));
       return;
     }
 
-    ct.add(this.scene.add.text(x + 10, y + 6, '被动技能', {
-      fontSize: '12px', color: '#9988ff', padding: { top: 4 },
-    }).setOrigin(0, 0));
-    const passiveLv = skill.level != null ? `${skill.name}  Lv${skill.level}` : skill.name;
-    ct.add(this.scene.add.text(x + 10, y + 24, passiveLv, {
-      fontSize: '17px', color: '#ffffff', fontStyle: 'bold', padding: { top: 4 },
-    }).setOrigin(0, 0));
+    const passiveLv = skill.level != null ? `${skill.name}   Lv.${skill.level}` : skill.name;
+    ct.add(this.scene.add.text(x + 12, y + h / 2 - 10, passiveLv, {
+      fontSize: '16px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0, 0.5));
 
     if (skill.des) {
-      bg.setInteractive({ useHandCursor: true });
+      ct.add(this.scene.add.text(x + 12, y + h / 2 + 12, skill.des, {
+        fontSize: '13px', color: '#6b4c1e', padding: { top: 4 },
+        wordWrap: { width: w - 24, useAdvancedWrap: true },
+      }).setOrigin(0, 0.5));
+      bg.setInteractive({ useHandCursor: false });
       bg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
       bg.on('pointermove', (ptr) => this._moveTip(ptr));
       bg.on('pointerout', () => this._hideTip());
     }
   }
 
-  // ── 主动技能四宫格 + tag 标签 ──────────────────
-  _buildSkillGrid(ct, actives, tags, x, y, w, gridH) {
-    const CELL_W = (w - 4) / 2;
-    const CELL_H = (gridH - 4) / 2;
+  // ── 技能与升级 2列网格 ──────────────────────────
+  _buildSkillGrid(ct, actives, x, y, w, gridH) {
+    const CELL_W = (w - 8) / 2;
+    const CELL_H = Math.max(90, gridH / 2 - 6);
+    const ICON_SZ = 58;
+    const actualH = 2 * CELL_H + 8;   // 四宫格实际总高（供调用方使用）
     const pos = [
       [x, y],
-      [x + CELL_W + 4, y],
-      [x, y + CELL_H + 4],
-      [x + CELL_W + 4, y + CELL_H + 4],
+      [x + CELL_W + 8, y],
+      [x, y + CELL_H + 8],
+      [x + CELL_W + 8, y + CELL_H + 8],
     ];
 
     pos.forEach(([cx, cy], i) => {
-      const skill = actives[i] ?? null;
-      const sbg = this.scene.add.rectangle(cx + CELL_W / 2, cy + CELL_H / 2, CELL_W, CELL_H, DETAIL_PANEL, 0.85)
-        .setStrokeStyle(1, skill ? 0xffcc44 : 0x333333, skill ? 0.7 : 0.3);
+      const entry = actives[i] ?? null;
+      const skill = entry?.skill ?? null;
+      const key = entry?.key ?? null;
+
+      const sbg = this.scene.add.rectangle(cx + CELL_W / 2, cy + CELL_H / 2, CELL_W, CELL_H, 0xf5e8c8, 0.08)
+        .setStrokeStyle(1, skill ? 0xb8963e : 0x555544, skill ? 0.7 : 0.3);
       ct.add(sbg);
 
       if (skill) {
-        const activeLv = skill.level != null ? `${skill.name}\nLv${skill.level}` : skill.name;
-        ct.add(this.scene.add.text(cx + CELL_W / 2, cy + CELL_H / 2, activeLv, {
-          fontSize: '15px', color: '#ffcc44', fontStyle: 'bold',
-          align: 'center', wordWrap: { width: CELL_W - 10 },
-          padding: { top: 4 },
-        }).setOrigin(0.5));
+        // ── 技能图标（左侧，dom img，object-fit:contain）──
+        const iconSrc = `assets/military/skill/${key}.png`;
+        const icEl = document.createElement('img');
+        icEl.src = iconSrc;
+        icEl.style.cssText = `width:${ICON_SZ}px;height:${ICON_SZ}px;object-fit:contain;display:block;pointer-events:none;`;
+        icEl.onerror = () => { icEl.style.display = 'none'; };  // 没有图片静默隐藏
+        const icDom = this.scene.add.dom(cx + 4 + ICON_SZ / 2, cy + CELL_H / 2, icEl).setDepth(DETAIL_DEPTH + 2);
+        ct.add(icDom);
+
+        const textX = cx + ICON_SZ + 10;  // 文字在图标右侧
+        const lv = skill.level != null ? `Lv.${skill.level}` : '';
+
+        // 技能名
+        ct.add(this.scene.add.text(textX, cy + 10, skill.name, {
+          fontSize: '15px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 4 },
+          wordWrap: { width: CELL_W - ICON_SZ - 60 },
+        }).setOrigin(0, 0));
+
+        // 等级（右上角）
+        if (lv) {
+          ct.add(this.scene.add.text(cx + CELL_W - 6, cy + 10, lv, {
+            fontSize: '13px', color: '#8a7a5a', padding: { top: 4 },
+          }).setOrigin(1, 0));
+        }
+
+        // 描述
         if (skill.des) {
-          sbg.setInteractive({ useHandCursor: true });
+          ct.add(this.scene.add.text(textX, cy + 34, skill.des, {
+            fontSize: '12px', color: '#6b4c1e', padding: { top: 4 },
+            wordWrap: { width: CELL_W - ICON_SZ - 16, useAdvancedWrap: true },
+          }).setOrigin(0, 0));
+        }
+
+        // 状态标签（右下角）
+        const statusLabel = '已解锁';
+        const sl = this.scene.add.text(cx + CELL_W - 6, cy + CELL_H - 10, statusLabel, {
+          fontSize: '12px', color: '#ffffff', padding: { top: 3, bottom: 3, left: 6, right: 6 },
+        }).setOrigin(1, 1);
+        const slBg = this.scene.add.rectangle(
+          cx + CELL_W - 6 - sl.width / 2 - 6, cy + CELL_H - 10 - 10,
+          sl.width + 12, 22, 0x3a7a3a, 1
+        );
+        ct.add([slBg, sl]);
+
+        if (skill.des) {
+          sbg.setInteractive({ useHandCursor: false });
           sbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
           sbg.on('pointermove', (ptr) => this._moveTip(ptr));
           sbg.on('pointerout', () => this._hideTip());
         }
       } else {
         ct.add(this.scene.add.text(cx + CELL_W / 2, cy + CELL_H / 2, '—', {
-          fontSize: '20px', color: '#2a2a2a',
-          padding: { top: 4 },
+          fontSize: '18px', color: '#3a3a2a', padding: { top: 4 },
         }).setOrigin(0.5));
       }
     });
-
-    // Tag 标签
-    if (tags.length > 0) {
-      let tx = x;
-      const ty = y + gridH + 8;
-      tags.forEach(skill => {
-        const lbl = this.scene.add.text(0, 0, skill.name, { fontSize: '13px', color: '#88ee88', padding: { top: 4 } }).setOrigin(0.5);
-        const tw = lbl.width + 18;
-        const tby = ty + 14;
-        const tbx = tx + tw / 2;
-        const tbg = this.scene.add.rectangle(tbx, tby, tw, 26, 0x1a3020, 0.9)
-          .setStrokeStyle(1, 0x55aa55, 0.8);
-        lbl.setPosition(tbx, tby);
-        ct.add([tbg, lbl]);
-        if (skill.des) {
-          tbg.setInteractive({ useHandCursor: true });
-          tbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
-          tbg.on('pointermove', (ptr) => this._moveTip(ptr));
-          tbg.on('pointerout', () => this._hideTip());
-        }
-        tx += tw + 6;
-      });
-    }
+    return actualH;
   }
 
   // ── 装备 Tab ───────────────────────────────────
@@ -864,13 +1065,13 @@ class UnitDetailPage {
     const filterTech = t?.filter?.tech ?? {};
     const unlocked = saveData.tech_tree?.unlocked ?? {};
     c.add(this.scene.add.text(-W / 2, y, '科技要求：', {
-      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+      fontSize: '14px', color: '#b8963e', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0, 0));
     y += 24;
 
     if (Object.keys(filterTech).length === 0) {
       c.add(this.scene.add.text(-W / 2 + pad, y, '无', {
-        fontSize: '14px', color: '#888888', padding: { top: 4 },
+        fontSize: '14px', color: '#8a7a5a', padding: { top: 4 },
       }).setOrigin(0, 0));
       y += 22;
     } else {
@@ -878,7 +1079,7 @@ class UnitDetailPage {
         const techName = TECH_TREE[techKey]?.name ?? techKey;
         const met = !!unlocked[techKey];
         c.add(this.scene.add.text(-W / 2 + pad, y, `• ${techName}`, {
-          fontSize: '14px', color: met ? '#88cc88' : '#ff5555', padding: { top: 4 },
+          fontSize: '14px', color: met ? '#3a7a3a' : '#c0392b', padding: { top: 4 },
         }).setOrigin(0, 0));
         y += 22;
       }
@@ -889,7 +1090,7 @@ class UnitDetailPage {
     const cost = training.cost ?? {};
     const resource = saveData.resource ?? {};
     c.add(this.scene.add.text(-W / 2, y, '资源要求：', {
-      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+      fontSize: '14px', color: '#b8963e', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0, 0));
     y += 24;
 
@@ -913,7 +1114,7 @@ class UnitDetailPage {
       }
       // 数量文字（颜色动态更新）
       popText = this.scene.add.text(ix, y, `人口 ×${popAmount}`, {
-        fontSize: '15px', color: '#ff5555', fontStyle: 'bold', padding: { top: 4 },
+        fontSize: '15px', color: '#c0392b', fontStyle: 'bold', padding: { top: 4 },
       }).setOrigin(0, 0);
       c.add(popText);
 
@@ -945,7 +1146,7 @@ class UnitDetailPage {
 
           // 重新判断人口是否足够
           popEnough = (grids[gnId]?.population ?? 0) >= popAmount;
-          popText.setColor(popEnough ? '#dddddd' : '#ff5555');
+          popText.setColor(popEnough ? '#2c1a00' : '#c0392b');
 
           // 更新训练按钮状态
           refreshTrainBtn();
@@ -959,7 +1160,7 @@ class UnitDetailPage {
     let nonPopAfford = true;
     if (otherCost.length === 0 && popAmount === 0) {
       c.add(this.scene.add.text(-W / 2 + pad, y, '无', {
-        fontSize: '14px', color: '#888888', padding: { top: 4 },
+        fontSize: '14px', color: '#8a7a5a', padding: { top: 4 },
       }).setOrigin(0, 0));
       y += 28;
     } else if (otherCost.length > 0) {
@@ -975,7 +1176,7 @@ class UnitDetailPage {
           tx += 26;
         }
         const resText = this.scene.add.text(tx, y, `×${amount}`, {
-          fontSize: '15px', color: enough ? '#dddddd' : '#ff5555', fontStyle: 'bold', padding: { top: 4 },
+          fontSize: '15px', color: enough ? '#2c1a00' : '#c0392b', fontStyle: 'bold', padding: { top: 4 },
         }).setOrigin(0, 0);
         c.add(resText);
         tx += resText.width + 14;
@@ -986,7 +1187,7 @@ class UnitDetailPage {
     // ── 回合数 ───────────────────────────────────
     const round = training.round ?? 1;
     c.add(this.scene.add.text(-W / 2, y, `训练时间：${round} 回合`, {
-      fontSize: '14px', color: '#aaaaaa', padding: { top: 4 },
+      fontSize: '14px', color: '#6b4c1e', padding: { top: 4 },
     }).setOrigin(0, 0));
     y += 36;
 
@@ -1207,45 +1408,103 @@ class UnitDetailPage {
   _getSkillsByType(type) {
     const t = this.template;
     return Object.keys(t?.special_ability ?? {})
-      .filter(k => t.special_ability[k] && MILITARY_SKILL[k]?.type === type)
-      .map(k => MILITARY_SKILL[k]);
+      .filter(k => {
+        if (!t.special_ability[k]) return false;
+        const skillType = MILITARY_SKILL[k]?.type;
+        const effective = skillType ?? 'initiative';
+        return effective === type;
+      })
+      .map(k => ({
+        key: k,
+        skill: MILITARY_SKILL[k] ?? { name: k, type: 'initiative' },
+      }));
   }
 
   // ── 技能浮窗 ───────────────────────────────────
   _showTip(title, des, ptr) {
     this._hideTip();
+
     const TIP_W = 220;
-    const PAD = 10;
-    const ct = this.scene.add.container(ptr.x + 18, ptr.y + 18).setDepth(DETAIL_DEPTH + 20);
 
-    const t1 = this.scene.add.text(PAD, PAD, title, {
-      fontSize: '14px', color: '#ffcc44', fontStyle: 'bold',
-      padding: { top: 4 },
-      wordWrap: { width: TIP_W - PAD * 2, useAdvancedWrap: true },
-    }).setOrigin(0, 0);
-    const t2 = this.scene.add.text(PAD, PAD + t1.height + 4, des, {
-      fontSize: '13px', color: '#cccccc',
-      padding: { top: 4 },
-      wordWrap: { width: TIP_W - PAD * 2, useAdvancedWrap: true },
-    }).setOrigin(0, 0);
+    const div = document.createElement('div');
+    div.style.cssText = [
+      `width:${TIP_W}px`,
+      'background:rgba(17,17,34,0.95)',
+      'border:1px solid #b8963e',
+      'border-radius:4px',
+      'padding:10px',
+      'pointer-events:none',
+      'box-sizing:border-box',
+      'font-family:sans-serif',
+    ].join(';');
 
-    const bgH = PAD * 2 + t1.height + 4 + t2.height;
-    const bg = this.scene.add.rectangle(TIP_W / 2, bgH / 2, TIP_W, bgH, 0x111122, 0.95)
-      .setStrokeStyle(1, DETAIL_THEME, 0.5);
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'color:#ffcc44;font-size:14px;font-weight:bold;margin-bottom:6px;word-break:break-all;';
+    titleEl.textContent = title;
 
-    // 确保浮窗不超出屏幕边缘
-    const { width, height } = this.scene.scale;
-    let tx = ptr.x + 18;
-    let ty = ptr.y + 18;
-    if (tx + TIP_W > width - 8) tx = ptr.x - TIP_W - 8;
-    if (ty + bgH > height - 8) ty = ptr.y - bgH - 8;
-    ct.setPosition(tx, ty);
+    const desEl = document.createElement('div');
+    desEl.style.cssText = 'color:#cccccc;font-size:13px;word-break:break-all;line-height:1.5;';
+    desEl.textContent = des;
 
-    ct.add([bg, t1, t2]);
-    this.tooltip = ct;
+    div.appendChild(titleEl);
+    div.appendChild(desEl);
+
+    const dom = this.scene.add.dom(0, 0, div).setDepth(DETAIL_DEPTH + 50);
+    this.tooltip = dom;
+
+    // 用全局 mousemove 驱动浮窗，即使鼠标进入 DOM img 元素也不会停
+    this._tipMouseMove = (e) => {
+      // 浏览器屏幕坐标 → Phaser canvas 坐标
+      const canvas = this.scene.game.canvas;
+      const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      this._positionTipDom(px, py);
+    };
+    document.addEventListener('mousemove', this._tipMouseMove);
+
+    // 初始定位
+    this._positionTipDom(ptr.x, ptr.y);
   }
-  _moveTip(ptr) { if (this.tooltip) this.tooltip.setPosition(ptr.x + 18, ptr.y + 18); }
-  _hideTip() { if (this.tooltip) { this.tooltip.destroy(true); this.tooltip = null; } }
+
+  _positionTipDom(px, py) {
+    if (!this.tooltip) return;
+    const div = this.tooltip.node;
+    const { width, height } = this.scene.scale;
+    const TIP_W = 220;
+
+    // 先放到右下测量高度
+    this.tooltip.setPosition(px + 16 + TIP_W / 2, py + 16);
+    const divH = div.offsetHeight || 80;
+
+    let tx = px + 16 + TIP_W / 2;
+    let ty = py + 16 + divH / 2;
+
+    // 右边超出：翻到左边
+    if (tx + TIP_W / 2 > width - 8) tx = px - 16 - TIP_W / 2;
+    // 下边超出：翻到上边
+    if (ty + divH / 2 > height - 8) ty = py - 16 - divH / 2;
+    // 左边/上边兜底
+    if (tx - TIP_W / 2 < 8) tx = 8 + TIP_W / 2;
+    if (ty - divH / 2 < 8) ty = 8 + divH / 2;
+
+    this.tooltip.setPosition(tx, ty);
+  }
+
+  _moveTip(ptr) {
+    // 由全局 mousemove 驱动，此方法保留兼容旧调用但无需额外操作
+  }
+
+  _hideTip() {
+    if (this._tipMouseMove) {
+      document.removeEventListener('mousemove', this._tipMouseMove);
+      this._tipMouseMove = null;
+    }
+    if (this.tooltip) {
+      this.tooltip.destroy();
+      this.tooltip = null;
+    }
+  }
 
   // ── 销毁 ───────────────────────────────────────
   destroy() {
