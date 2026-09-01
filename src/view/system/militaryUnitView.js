@@ -7,6 +7,7 @@ import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { MILITARY_TRANSLATE } from '../../data/military_translate.js';
+import { MILITARY_TERM } from '../../data/military_term.js';
 import { get } from '../../system/i18n.js';
 import { TECH_TREE } from '../../data/tech_tree.js';
 
@@ -681,19 +682,6 @@ class UnitDetailPage {
     const qDom = this.scene.add.dom(x, imgY, qEl).setDepth(DETAIL_DEPTH + 3);
     this.root.add(qDom);
 
-    // 职业 type 图标：下方60%在边框内，上方40%露在边框外
-    // iconY是图标视觉中心Y（Phaser dom左上角锚点需补偿半高）
-    const iconSize = 90;
-    const borderTopY = imgY - finalH / 2;
-    const iconCenterY = borderTopY + iconSize * 0.29;
-    if (this.template?.type) {
-      const src = `assets/military/soldier_type/${this.template.type}.png`;
-      const el = document.createElement('img');
-      el.src = src;
-      el.style.cssText = `width:${iconSize}px;height:${iconSize}px;object-fit:contain;display:block;cursor:pointer;`;
-      const dom = this.scene.add.dom(x, iconCenterY, el).setDepth(DETAIL_DEPTH + 4);
-      this.root.add(dom);
-    }
   }
 
   // ── 右侧 Tab 条（上图标下文字）────────────────
@@ -790,9 +778,21 @@ class UnitDetailPage {
       return;
     }
 
-    // ── 兵力名 ──────────────────────────────────
+    // ── 兵力名（左侧type图标 + 名字）────────────
     const unitName = t.name ?? this.unitData?.name ?? '未知';
-    c.add(this.scene.add.text(-W / 2, y, unitName, {
+    const nameIconSize = 40;
+    const nameY = y + nameIconSize / 2;
+
+    // type 图标（DOM img，名字左侧，坐标相对_infoContainer）
+    if (t.type) {
+      const icEl = document.createElement('img');
+      icEl.src = `assets/military/soldier_type/${t.type}.png`;
+      icEl.style.cssText = `width:${nameIconSize}px;height:${nameIconSize}px;object-fit:contain;display:block;pointer-events:none;`;
+      c.add(this.scene.add.dom(-W / 2 + nameIconSize / 2, nameY, icEl).setDepth(DETAIL_DEPTH + 2));
+    }
+
+    const nameOffsetX = t.type ? nameIconSize + 8 : 0;
+    c.add(this.scene.add.text(-W / 2 + nameOffsetX, y, unitName, {
       fontSize: '32px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0, 0));
     y += 46;
@@ -905,6 +905,7 @@ class UnitDetailPage {
       const iy = row * ROW_H;
       const val = stats[key] ?? 0;
       const label = MILITARY_TRANSLATE[key] ?? key;
+      const term = MILITARY_TERM[key];
 
       // stat 图标（DOM img, 24px contain）
       const iconSrc = `assets/military/ui/${key}.png`;
@@ -924,6 +925,19 @@ class UnitDetailPage {
       inner.add(this.scene.add.text(ix + COL_W - 8, iy + ROW_H / 2, String(val), {
         fontSize: '22px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 4 },
       }).setOrigin(1, 0.5));
+
+      // 有术语解释：透明 hitbox 覆盖图标+属性名区域，hover 显示浮窗
+      if (term) {
+        const hitW = COL_W * 0.65;  // 覆盖图标+属性名，不含数值
+        const hitBg = this.scene.add.rectangle(
+          x + ix + hitW / 2, y + iy + ROW_H / 2,
+          hitW, ROW_H - 4, 0xffffff, 0
+        ).setInteractive({ useHandCursor: true });
+        ct.add(hitBg);
+        hitBg.on('pointerover', (ptr) => this._showTip(label, term.des, ptr));
+        hitBg.on('pointermove', (ptr) => this._moveTip(ptr));
+        hitBg.on('pointerout', () => this._hideTip());
+      }
     });
   }
 
@@ -1026,7 +1040,7 @@ class UnitDetailPage {
 
         if (skill.des) {
           sbg.setInteractive({ useHandCursor: false });
-          sbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
+          sbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr, skill.term));
           sbg.on('pointermove', (ptr) => this._moveTip(ptr));
           sbg.on('pointerout', () => this._hideTip());
         }
@@ -1041,7 +1055,7 @@ class UnitDetailPage {
 
   // ── 装备 Tab ───────────────────────────────────
   _renderEquipTab() {
-    this._infoContainer.add(this.scene.add.text(0, 0, '装备（暂未实装）', {
+    this._infoContainer.add(this.scene.add.text(0, 0, '装备', {
       fontSize: '18px', color: '#555555', padding: { top: 4 },
     }).setOrigin(0.5));
   }
@@ -1059,7 +1073,8 @@ class UnitDetailPage {
     const grids = saveData.map?.grids ?? {};
 
     // 当前选中的主城 gridId（用于人口消耗判断）
-    let selectedMainGn = null;
+    // 存到实例字段，避免每次重新渲染训练 tab（如确认训练后刷新）时被重置
+    let selectedMainGn = this._trainSelectedMainGn ?? null;
 
     // ── 科技要求 ──────────────────────────────────
     const filterTech = t?.filter?.tech ?? {};
@@ -1098,8 +1113,10 @@ class UnitDetailPage {
     const popAmount = cost.population ?? 0;
     const otherCost = Object.entries(cost).filter(([k]) => k !== 'population');
 
-    // population 是否满足（初始未选主城视为不满足）
-    let popEnough = false;
+    // population 是否满足：若已有恢复的选中主城，直接计算；否则视为不满足
+    let popEnough = selectedMainGn
+      ? (grids[selectedMainGn]?.population ?? 0) >= popAmount
+      : false;
 
     // population 行（如果有）
     let popText = null;
@@ -1112,9 +1129,9 @@ class UnitDetailPage {
         c.add(this.scene.add.image(ix + 11, y + 11, iconKey).setDisplaySize(22, 22));
         ix += 26;
       }
-      // 数量文字（颜色动态更新）
+      // 数量文字（颜色动态更新，初始颜色根据已恢复的选中状态计算）
       popText = this.scene.add.text(ix, y, `人口 ×${popAmount}`, {
-        fontSize: '15px', color: '#c0392b', fontStyle: 'bold', padding: { top: 4 },
+        fontSize: '15px', color: popEnough ? '#3a7a3a' : '#c0392b', fontStyle: 'bold', padding: { top: 4 },
       }).setOrigin(0, 0);
       c.add(popText);
 
@@ -1128,8 +1145,9 @@ class UnitDetailPage {
       }).setOrigin(0.5);
       c.add([selBg, selTxt]);
 
-      // 选择后显示已选主城名的文字（占位，初始空）
-      const selLabel = this.scene.add.text(selX - selBW / 2 - 8, y + 11, '', {
+      // 选择后显示已选主城名的文字（若已恢复选中状态，初始就显示名字）
+      const initialGnName = selectedMainGn ? (grids[selectedMainGn]?.name ?? selectedMainGn) : '';
+      const selLabel = this.scene.add.text(selX - selBW / 2 - 8, y + 11, initialGnName, {
         fontSize: '13px', color: '#ffd700', padding: { top: 4 },
       }).setOrigin(1, 0.5);
       c.add(selLabel);
@@ -1141,12 +1159,13 @@ class UnitDetailPage {
         selBg.setAlpha(1);
         this._showCitySelector(popAmount, grids, selectedMainGn, (gnId) => {
           selectedMainGn = gnId;
+          this._trainSelectedMainGn = gnId;  // 同步到实例字段，跨渲染保持
           const gnName = grids[gnId]?.name ?? gnId;
           selLabel.setText(gnName);
 
           // 重新判断人口是否足够
           popEnough = (grids[gnId]?.population ?? 0) >= popAmount;
-          popText.setColor(popEnough ? '#2c1a00' : '#c0392b');
+          popText.setColor(popEnough ? '#3a7a3a' : '#c0392b');
 
           // 更新训练按钮状态
           refreshTrainBtn();
@@ -1396,7 +1415,17 @@ class UnitDetailPage {
         unitName: t.name,
         selectedMainGn, // 用于人口扣除
       });
+      // 确认后立刻清空选中的主城，避免下次打开训练页沿用旧选择
+      // （旧主城人口可能已被消耗，若不清空会导致训练按钮误判为可点击）
+      this._trainSelectedMainGn = null;
       destroy();
+
+      // 立即重新渲染训练 tab，确保按钮/人口颜色/选择标签都基于清空后的状态刷新
+      // （避免旧渲染里的闭包变量仍持有过期的 selectedMainGn/popEnough，导致按钮误判可点）
+      if (this.currentTab === 'train') {
+        this._infoContainer.removeAll(true);
+        this._renderTrainTab();
+      }
     });
     addBtn(65, 'common_btn', '取消', () => destroy());
 
@@ -1421,72 +1450,110 @@ class UnitDetailPage {
   }
 
   // ── 技能浮窗 ───────────────────────────────────
-  _showTip(title, des, ptr) {
+  _showTip(title, des, ptr, terms) {
     this._hideTip();
 
     const TIP_W = 220;
+    const GAP = 8;
 
-    const div = document.createElement('div');
-    div.style.cssText = [
-      `width:${TIP_W}px`,
-      'background:rgba(17,17,34,0.95)',
-      'border:1px solid #b8963e',
-      'border-radius:4px',
-      'padding:10px',
-      'pointer-events:none',
-      'box-sizing:border-box',
-      'font-family:sans-serif',
+    const makeBox = (t, d, w) => {
+      const div = document.createElement('div');
+      div.style.cssText = [
+        `width:${w}px`,
+        'background:rgba(17,17,34,0.95)',
+        'border:1px solid #b8963e',
+        'border-radius:4px',
+        'padding:10px',
+        'box-sizing:border-box',
+        'font-family:sans-serif',
+      ].join(';');
+      const titleEl = document.createElement('div');
+      titleEl.style.cssText = 'color:#ffcc44;font-size:14px;font-weight:bold;margin-bottom:6px;word-break:break-all;';
+      titleEl.textContent = t;
+      const desEl = document.createElement('div');
+      desEl.style.cssText = 'color:#cccccc;font-size:13px;word-break:break-all;line-height:1.5;';
+      desEl.textContent = d;
+      div.appendChild(titleEl);
+      div.appendChild(desEl);
+      return div;
+    };
+
+    // ── 内层 flex 容器：主浮窗 + term 堆叠，浏览器自动顶边对齐 ──
+    // 不放在 Phaser add.dom 的根节点上，因为 Phaser 会覆写根节点的部分内联样式
+    // （如 position/display），导致 flex 布局失效退化为普通块级堆叠。
+    // 所以用一个纯定位用的 root 包裹一层真正做 flex 布局的 inner。
+    const root = document.createElement('div');
+    root.style.cssText = 'pointer-events:none;';
+
+    const inner = document.createElement('div');
+    inner.style.cssText = [
+      'display:flex',
+      'flex-direction:row',
+      'align-items:stretch',
+      `gap:${GAP}px`,
     ].join(';');
+    root.appendChild(inner);
 
-    const titleEl = document.createElement('div');
-    titleEl.style.cssText = 'color:#ffcc44;font-size:14px;font-weight:bold;margin-bottom:6px;word-break:break-all;';
-    titleEl.textContent = title;
+    const mainDiv = makeBox(title, des, TIP_W);
+    inner.appendChild(mainDiv);
 
-    const desEl = document.createElement('div');
-    desEl.style.cssText = 'color:#cccccc;font-size:13px;word-break:break-all;line-height:1.5;';
-    desEl.textContent = des;
+    if (terms) {
+      const TERM_W = 160;
+      const termCol = document.createElement('div');
+      termCol.style.cssText = [
+        'display:flex',
+        'flex-direction:column',
+        `gap:${GAP}px`,
+      ].join(';');
+      for (const termKey of Object.keys(terms)) {
+        const td = MILITARY_TERM[termKey];
+        if (!td) continue;
+        termCol.appendChild(makeBox(td.name ?? termKey, td.des ?? '', TERM_W));
+      }
+      if (termCol.children.length > 0) inner.appendChild(termCol);
+    }
 
-    div.appendChild(titleEl);
-    div.appendChild(desEl);
+    this.tooltip = this.scene.add.dom(0, 0, root).setDepth(DETAIL_DEPTH + 50);
 
-    const dom = this.scene.add.dom(0, 0, div).setDepth(DETAIL_DEPTH + 50);
-    this.tooltip = dom;
-
-    // 用全局 mousemove 驱动浮窗，即使鼠标进入 DOM img 元素也不会停
+    // 全局 mousemove 驱动，用 rAF 节流到每帧最多更新一次位置，避免高频重绘闪烁
+    let pendingX = ptr.x, pendingY = ptr.y;
+    let rafScheduled = false;
+    const applyPosition = () => {
+      rafScheduled = false;
+      if (!this.tooltip) return;
+      this._positionTipDom(pendingX, pendingY);
+    };
     this._tipMouseMove = (e) => {
-      // 浏览器屏幕坐标 → Phaser canvas 坐标
       const canvas = this.scene.game.canvas;
       const rect = canvas.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      this._positionTipDom(px, py);
+      pendingX = e.clientX - rect.left;
+      pendingY = e.clientY - rect.top;
+      if (!rafScheduled) {
+        rafScheduled = true;
+        requestAnimationFrame(applyPosition);
+      }
     };
     document.addEventListener('mousemove', this._tipMouseMove);
 
-    // 初始定位
     this._positionTipDom(ptr.x, ptr.y);
   }
 
   _positionTipDom(px, py) {
     if (!this.tooltip) return;
-    const div = this.tooltip.node;
     const { width, height } = this.scene.scale;
-    const TIP_W = 220;
+    const node = this.tooltip.node;
 
-    // 先放到右下测量高度
-    this.tooltip.setPosition(px + 16 + TIP_W / 2, py + 16);
-    const divH = div.offsetHeight || 80;
+    // 直接读取整个 flex 容器的真实渲染尺寸（浏览器已自动布局对齐好）
+    const w = node.offsetWidth || 220;
+    const h = node.offsetHeight || 80;
 
-    let tx = px + 16 + TIP_W / 2;
-    let ty = py + 16 + divH / 2;
+    let tx = px + 16 + w / 2;
+    let ty = py + 16 + h / 2;
 
-    // 右边超出：翻到左边
-    if (tx + TIP_W / 2 > width - 8) tx = px - 16 - TIP_W / 2;
-    // 下边超出：翻到上边
-    if (ty + divH / 2 > height - 8) ty = py - 16 - divH / 2;
-    // 左边/上边兜底
-    if (tx - TIP_W / 2 < 8) tx = 8 + TIP_W / 2;
-    if (ty - divH / 2 < 8) ty = 8 + divH / 2;
+    if (tx + w / 2 > width - 8) tx = px - 16 - w / 2;
+    if (ty + h / 2 > height - 8) ty = py - 16 - h / 2;
+    if (tx - w / 2 < 8) tx = 8 + w / 2;
+    if (ty - h / 2 < 8) ty = 8 + h / 2;
 
     this.tooltip.setPosition(tx, ty);
   }

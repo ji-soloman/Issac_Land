@@ -45,12 +45,21 @@ export const MILITARY_SKILL = {
   Inquisition_dark: {
     name: '宗教审判',
     level: 3,
-    des: '',
+    des: '瞬移到目标身后，对目标进行一次无视护盾的攻击，额外造成4×魔法攻击的魔法伤害并对目标施加4轮诅咒，对目标周围至多4个其他角色造成2×魔法攻击的溅射伤害。',
+    term: {
+      buff_2: true,
+      dam_3: true,
+    }
   },
   Ninjutsu: {
     name: '秘术·回旋',
     level: 4,
-    des: '',
+    des: '向前方投掷回旋镖并收回，回旋镖至多穿过3名敌方目标，对路径上的目标造成20点折返的物理伤害，并对终点的目标造成30点物理伤害，同时造成12点溅射的魔法伤害。',
+    term: {
+      buff_1: true,
+      dam_3: true,
+      dam_4: true,
+    }
   },
   magic_fire_lv1_1: {
     name: '召唤火鸦',
@@ -73,8 +82,11 @@ export const MILITARY_SKILL = {
   magic_ice_lv1_1: {
     name: '寒冰盾',
     type: 'initiative',
-    des: '给己方或友方1组单位增加10x单位等级的寒冰护甲',
+    des: '给己方或友方1组单位增加10×单位等级的寒冰护甲',
     level: 1,
+    term: {
+      armor_1: true,
+    }
   },
   magic_ice_lv2_1: {
     name: '寒冰射线',
@@ -90,7 +102,7 @@ export const MILITARY_SKILL = {
   },
   nomad_fight_lv1_1: {
     name: '破甲击',
-    des: '',
+    des: '对目标造成6×武器等级的无视护甲的物理伤害',
     level: 1,
   },
   nomad_fight_lv2_1: {
@@ -115,7 +127,10 @@ export const MILITARY_SKILL = {
   },
   mutation_devil_lv3_1: {
     name: '罗睺一斩',
-    des: '攻击5组敌人并额外造成15x武器等级的物理伤害，被杀死的单位自动转换为骷髅（受到召唤生物战术宽度限制）',
+    des: '攻击5组敌人并额外造成15×武器等级的物理伤害，被杀死的单位自动转换为骷髅（受到召唤生物战术宽度限制）',
     level: 3,
+    term: {
+      summon_1: true,
+    }
   },
 }
