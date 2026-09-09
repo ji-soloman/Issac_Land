@@ -4,8 +4,31 @@ import { game } from '../../system/function.js';
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { get } from '../../system/i18n.js';
-import { MilitaryUnitViewer } from './militaryUnitView.js';
+import { MilitaryUnitViewer, MilitarySkillViewer } from './militaryUnitView.js';
+import { AcademyViewer, countAcademyDistricts } from './academyView.js';
 import { MAPS } from '../../data/map/EWland/map.js';
+import { SimBattleSelector } from './simBattleSelector.js';
+
+// "技能图鉴""学派"菜单项：运行时补进 MILITARY 注册表，而不是直接改 data/military.js——
+// 项目里存在两份同名的 military.js 文档（system/military.js 工具类 和 data/military.js
+// 数据表撞了路径），直接按路径写文件有误伤覆盖到另一份文件的风险，所以改成在这里
+// （对 MILITARY 这个已导入的对象引用）运行时挂一个新 key，效果等价、但更安全。
+// 加个存在性判断，避免 MilitarySystem 被多次 new 时重复赋值（无副作用，但没必要）。
+if (!MILITARY.skill_list) {
+  MILITARY.skill_list = { name: '技能图鉴' };
+}
+if (!MILITARY.academy_school) {
+  MILITARY.academy_school = {
+    name: '学派',
+    // 严格按"当前"是否存在已完工的学院区/特区解锁——哪怕之前已经选过学派/分支，
+    // 一旦学院区被拆到 0 个，入口也要立刻锁住，学派下所有功能（选分支/升级）都不能用。
+    // 这是故意的：如果"选过学派后就永久解锁入口"，玩家可以先临时多建几个学院区，
+    // 一口气选满分支甚至升好几级，再把学院区全部拆掉回收资源——用建造/拆除区域
+    // 的时间差把本该和学院区数量挂钩的限制骗过去。见 academyView.js 里
+    // renderBranches/createBranchCard 对 districtCount 的判断，双重把关。
+    filter: ({ saveGrids }) => countAcademyDistricts(saveGrids) > 0,
+  };
+}
 
 export class MilitarySystem {
   constructor(scene, saveData) {
@@ -50,6 +73,9 @@ export class MilitarySystem {
 
     // 2. 初始化滚动区域
     this.createScrollableContent();
+
+    // 2.5 模拟战斗按钮
+    this.createSimBattleButton();
 
     // 3. 创建关闭按钮
     this.createCloseButton();
@@ -163,13 +189,15 @@ export class MilitarySystem {
   }
 
   checkActionAvailable(action, mapGrids, saveGrids) {
-    // action.filter 接收 { saveGrids, mapGrids, mapView }：
+    // action.filter 接收 { saveGrids, mapGrids, mapView, saveData }：
     //   saveGrids — 存档格点，gn.isMain / gn.hasMain 判断主城/附属关系
     //   mapGrids  — MAP 配置表格点，gn.type 为地形类型
     //   mapView   — MapView 实例，可调用 getGridNeighbors 获取邻格
+    //   saveData  — 完整存档（比如"学派"要判断 saveData.academy 里是否已经选过学派，
+    //                这个信息不在 saveGrids/mapGrids 里，所以额外补一个完整存档引用）
     if (!action.filter || typeof action.filter !== 'function') return true;
     try {
-      return action.filter({ saveGrids, mapGrids, mapView: this.scene?.mapView });
+      return action.filter({ saveGrids, mapGrids, mapView: this.scene?.mapView, saveData: this.saveData });
     } catch (error) {
       return false;
     }
@@ -263,6 +291,18 @@ export class MilitarySystem {
       return;
     }
 
+    // 技能图鉴：查看所有主动技能，显示方式和"查看兵力"（MilitaryUnitViewer）一致
+    else if (actionId === 'skill_list') {
+      new MilitarySkillViewer(this.scene, this.saveData, action.name);
+      return;
+    }
+
+    // 学派：选择学派 / 选择分支 / 升级分支
+    else if (actionId === 'academy_school') {
+      new AcademyViewer(this.scene, this.saveData, action.name);
+      return;
+    }
+
     // 征集物资
     else if (actionId === 'get_resource') {
       new SoldierSelector(this.scene, this.saveData, {
@@ -323,6 +363,27 @@ export class MilitarySystem {
       });
       return;
     }
+  }
+
+  createSimBattleButton() {
+    const { width } = this.scene.scale;
+    const btnW = 140, btnH = 44;
+    const btnX = width - 50 - 70 - 140; // 关闭按钮左侧留出空间
+
+    const btnBg = this.scene.add.rectangle(btnX, 50, btnW, btnH, 0x7a3a3a, 0.95)
+      .setStrokeStyle(2, 0xff8888, 0.8)
+      .setInteractive({ useHandCursor: true });
+    const btnTxt = this.scene.add.text(btnX, 50, '模拟战斗', {
+      fontSize: '18px', color: '#ffffff', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5);
+
+    btnBg.on('pointerover', () => btnBg.setFillStyle(0x9a4a4a, 1));
+    btnBg.on('pointerout', () => btnBg.setFillStyle(0x7a3a3a, 0.95));
+    btnBg.on('pointerdown', () => {
+      new SimBattleSelector(this.scene, this.saveData);
+    });
+
+    this.mainContainer.add([btnBg, btnTxt]);
   }
 
   createCloseButton() {
@@ -423,7 +484,7 @@ export class SoldierSelector {
     // 放在最底层 (depth 1199)，颜色黑色半透明
     this.overlay = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7);
     this.overlay.setDepth(1199);
-    // 关键：设置为可交互，这样点击事件会被它“吃掉”，不会传给游戏底层的地图
+    // 关键：设置为可交互，这样点击事件会被它"吃掉"，不会传给游戏底层的地图
     this.overlay.setInteractive();
 
     // --- 2. 主容器 ---

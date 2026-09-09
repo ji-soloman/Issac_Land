@@ -8,6 +8,7 @@ import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { MILITARY_TRANSLATE } from '../../data/military_translate.js';
 import { MILITARY_TERM } from '../../data/military_term.js';
+import { MILITARY_BUFF } from '../../data/military_buff.js';
 import { get } from '../../system/i18n.js';
 import { TECH_TREE } from '../../data/tech_tree.js';
 
@@ -180,6 +181,7 @@ export class MilitaryUnitViewer {
           current_stats: soldier.stats,
           current_equipments: soldier.equipments,
           current_ability: soldier.ability,
+          current_learned_skills: soldier.learnedSkills ?? {}, // 已学习技能池（含未携带的），供详情页展示
           level: soldier.level ?? 1,   // 士兵等级，默认1
           fromArmy: true,              // 区分兵力表和图鉴
         };
@@ -458,6 +460,482 @@ export class MilitaryUnitViewer {
   destroy() {
     if (this.mainContainer) this.mainContainer.destroy();
     if (this.tooltip) this.tooltip.destroy();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MilitarySkillViewer — 技能图鉴：展示所有主动技能。
+// 显示方式和 MilitaryUnitViewer 保持一致：同样的标题/退出按钮样式、同样的卡片网格布局
+// （cardWidth/cardHeight/spacing/margin 完全复用同一份 config），卡片本身也是
+// "背景+边框+底部名字条+图片区"的同一套视觉语言，悬浮同样是描边变黄+放大。
+// 差异只在于：技能图标没有像兵组图片那样预先加载成 Phaser 纹理，所以用 DOM <img>
+// 展示（做法和战斗界面 battleSystem.js、UnitDetailPage._buildSkillGrid 里的技能图标一致）；
+// 悬浮卡片时额外弹出一个描述浮窗，方便"查看"技能效果。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class MilitarySkillViewer {
+  constructor(scene, saveData, name) {
+    this.scene = scene;
+    this.saveData = saveData;
+    this.mainContainer = null;
+    this.tooltip = null;
+    this.title = name;
+
+    // 配置参数（和 MilitaryUnitViewer 保持一致的卡片尺寸/间距，视觉上是同一套列表）
+    this.config = {
+      cardWidth: 150,
+      cardHeight: 200,
+      spacing: 20,
+      sideMargin: 80,
+      topMargin: 120,
+      bottomMargin: 40,
+      scrollBarWidth: 10,
+    };
+
+    // 滚动状态（技能数量超出一屏时用，见 showSkillList/_createScrollBar/onMouseWheel）
+    this.maxScroll = 0;
+    this.currentScrollY = 0;
+
+    this.create();
+  }
+
+  create() {
+    const { width, height } = this.scene.scale;
+
+    // 1. 主容器
+    this.mainContainer = this.scene.add.container(0, 0).setDepth(1100);
+
+    // 背景
+    const bg = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x1a1a1a, 0.98);
+    bg.setInteractive(); // 阻挡穿透
+    this.mainContainer.add(bg);
+
+    // 标题
+    this.titleText = this.scene.add.text(width / 2, 40, this.title, {
+      fontSize: '32px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 5 },
+    }).setOrigin(0.5);
+    this.mainContainer.add(this.titleText);
+
+    // 关闭按钮
+    this.createCloseButton();
+
+    // 内容容器
+    this.contentContainer = this.scene.add.container(0, 0);
+    this.mainContainer.add(this.contentContainer);
+
+    // 直接展示全部主动技能（不像兵力表/图鉴那样需要切换 Tab——只有一类内容）
+    this.showSkillList();
+
+    // 注册全局滚轮事件（技能数量超出一屏时支持上下滚动，和 MilitarySystem 的做法一致）
+    this.scene.input.on('wheel', this.onMouseWheel, this);
+  }
+
+  createCloseButton() {
+    const { width } = this.scene.scale;
+    const closeBtn = this.scene.add.text(width - 50, 40, '退出', {
+      fontSize: '20px', backgroundColor: '#cc0000', padding: { x: 10, y: 5 }
+    })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        this.destroy();
+      });
+
+    this.mainContainer.add(closeBtn);
+  }
+
+  /**
+   * 展示所有"主动技能"。判定逻辑和 UnitDetailPage._getSkillsByType('initiative') /
+   * battleSystem.js 里挑选技能的逻辑保持一致：type 为 'initiative'，或者没有标注
+   * type 字段的技能（默认视为主动技能）。
+   * 技能数量超出一屏高度时支持上下滚动（遮罩 + 滚轮 + 可拖拽滚动条），做法和
+   * military_ui.js 里 MilitarySystem.createScrollableContent 完全一致。
+   */
+  showSkillList() {
+    this.contentContainer.removeAll(true);
+    this._destroyScrollBar();
+    if (this._maskShape) { this._maskShape.destroy(); this._maskShape = null; }
+    // 技能图标是 DOM 元素，Phaser 的遮罩/setMask 对 DOM 元素完全无效（遮罩只裁剪
+    // WebGL/Canvas 渲染的内容，DOM 元素是浏览器原生节点、叠在 canvas 上层，不受
+    // Phaser 渲染管线控制），所以滚动时图标会"穿透"遮罩、飘在标题栏之类的区域上。
+    // 这里改成手动裁剪：记录每张图标自身（不是整张卡片）的可视范围，滚动时用
+    // _updateIconClipping 根据是否落在遮罩范围内手动显隐/裁剪，模拟出裁剪效果，
+    // 具体做法见 _updateIconClipping 的注释。
+    this._skillIconDoms = [];
+
+    const { width, height } = this.scene.scale;
+    const { cardWidth, cardHeight, spacing, sideMargin, topMargin, bottomMargin } = this.config;
+
+    const skills = Object.entries(MILITARY_SKILL).filter(
+      ([, skill]) => (skill.type ?? 'initiative') === 'initiative'
+    );
+
+    if (skills.length === 0) {
+      const noDataText = this.scene.add.text(width / 2, topMargin + 100, '暂无主动技能', {
+        fontSize: '24px', color: '#999999'
+      }).setOrigin(0.5);
+      this.contentContainer.add(noDataText);
+      this.maxScroll = 0;
+      return;
+    }
+
+    // 计算网格布局（和 MilitaryUnitViewer.showGlossary 完全一样的算法）
+    const availableWidth = width - sideMargin * 2;
+    let cols = Math.floor((availableWidth + spacing) / (cardWidth + spacing));
+    if (cols < 1) cols = 1;
+
+    const totalRowWidth = cols * cardWidth + (cols - 1) * spacing;
+    const startX = sideMargin + (availableWidth - totalRowWidth) / 2 + cardWidth / 2;
+    const startY = topMargin + cardHeight / 2;
+
+    let lastY = startY;
+    skills.forEach(([key, skill], index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+
+      const x = startX + col * (cardWidth + spacing);
+      const y = startY + row * (cardHeight + spacing);
+
+      this.createSkillCard(key, skill, x, y);
+      lastY = y + cardHeight / 2;
+    });
+
+    // ── 滚动支持：内容超出一屏高度时，遮罩只显示 topMargin 以下区域，
+    //    并根据内容总高度算出最大可滚动距离，配合滚轮/滚动条使用 ──
+    this.contentHeight = lastY + bottomMargin;
+    this.viewportHeight = height;
+    this.maxScroll = Math.max(0, this.contentHeight - this.viewportHeight);
+    this.currentScrollY = 0;
+    this.contentContainer.setY(0);
+
+    const maskShape = this.scene.make.graphics();
+    maskShape.fillStyle(0xffffff);
+    maskShape.fillRect(0, topMargin - 10, width, height - topMargin + 10);
+    this.contentContainer.setMask(maskShape.createGeometryMask());
+    this._maskShape = maskShape;
+
+    if (this.maxScroll > 0) {
+      this._createScrollBar();
+    }
+
+    // 初始状态（scrollY=0）也要跑一次，处理卡片本来就有一部分超出可视区域的情况
+    this._updateIconClipping();
+  }
+
+  /**
+   * 手动裁剪技能图标（DOM 元素不受 Phaser 遮罩影响，见 showSkillList 里的说明）。
+   *
+   * 完全滚出可视范围的图标用 dom.setVisible(false) 整体隐藏——这里必须用 Phaser
+   * GameObject 自己的 setVisible，而不是直接改 dom.node.style.display：Phaser 每帧
+   * 渲染 DOM 元素时都会用 GameObject.visible 重新同步一次 style.display，直接改
+   * style.display 下一帧就会被覆盖回来（实测验证过，和之前透明度那个坑同一个原因）。
+   *
+   * 但 setVisible 只能整体显隐一整张图标，没法只裁掉超出遮罩的那一部分像素——当某张
+   * 图标刚好卡在遮罩边缘、只有一半在可视范围内时，如果只做整体显隐，那张图标会整个
+   * 显示出来，超出遮罩的那部分就会"糊"到标题栏之类的区域上，看起来像遮罩完全没生效。
+   * 所以边缘位置的图标额外用 clip-path 精确裁掉超出部分——Phaser 每帧只会同步
+   * display/opacity/zIndex/pointerEvents/transform 等属性，不会碰 clip-path，可以放心
+   * 手动控制，不会被覆盖。
+   */
+  _updateIconClipping() {
+    if (!this._skillIconDoms || this._skillIconDoms.length === 0) return;
+
+    const { topMargin } = this.config;
+    const { height } = this.scene.scale;
+    const maskTop = topMargin - 10;   // 和 showSkillList 里遮罩矩形的起始 y 保持一致
+    const maskBottom = height;
+    const offset = this.currentScrollY;
+
+    this._skillIconDoms.forEach(({ dom, el, top, bottom, state }) => {
+      if (state?.failed) return; // 素材加载失败的图标一直保持隐藏，不参与裁剪逻辑
+
+      const screenTop = top - offset;
+      const screenBottom = bottom - offset;
+      const fullyOutside = screenBottom <= maskTop || screenTop >= maskBottom;
+
+      if (fullyOutside) {
+        dom.setVisible(false);
+        return;
+      }
+
+      dom.setVisible(true);
+      const clipTop = Math.max(0, maskTop - screenTop);
+      const clipBottom = Math.max(0, screenBottom - maskBottom);
+      el.style.clipPath = (clipTop > 0 || clipBottom > 0)
+        ? `inset(${clipTop}px 0px ${clipBottom}px 0px)`
+        : '';
+    });
+  }
+
+  /**
+   * 创建右侧可拖拽滚动条（轨道+滑块），和 MilitarySystem.createScrollBar 做法一致。
+   */
+  _createScrollBar() {
+    const { width, height } = this.scene.scale;
+    const { topMargin, bottomMargin, scrollBarWidth } = this.config;
+
+    const trackHeight = height - topMargin - bottomMargin;
+    const trackX = width - 20;
+    const trackY = topMargin;
+
+    this.scrollTrack = this.scene.add.rectangle(trackX, trackY + trackHeight / 2, scrollBarWidth, trackHeight, 0x000000, 0.3);
+    this.mainContainer.add(this.scrollTrack);
+
+    let thumbHeight = (this.viewportHeight / this.contentHeight) * trackHeight;
+    thumbHeight = Math.max(thumbHeight, 50);
+
+    this.scrollThumbHeight = thumbHeight;
+    this.scrollTrackHeight = trackHeight;
+    this.scrollTrackY = trackY;
+
+    this.scrollThumb = this.scene.add.rectangle(trackX, trackY + thumbHeight / 2, scrollBarWidth, thumbHeight, 0x888888, 1);
+    this.scrollThumb.setInteractive({ useHandCursor: true, draggable: true });
+    this.mainContainer.add(this.scrollThumb);
+
+    this.scene.input.setDraggable(this.scrollThumb);
+    this.scrollThumb.on('drag', (pointer, dragX, dragY) => {
+      const minY = this.scrollTrackY + this.scrollThumbHeight / 2;
+      const maxY = this.scrollTrackY + this.scrollTrackHeight - this.scrollThumbHeight / 2;
+      const clampedY = Phaser.Math.Clamp(dragY, minY, maxY);
+
+      this.scrollThumb.y = clampedY;
+
+      const scrollRatio = (clampedY - minY) / (maxY - minY);
+      this.currentScrollY = scrollRatio * this.maxScroll;
+      this.contentContainer.y = -this.currentScrollY;
+      this._updateIconClipping();
+    });
+  }
+
+  _destroyScrollBar() {
+    if (this.scrollTrack) { this.scrollTrack.destroy(); this.scrollTrack = null; }
+    if (this.scrollThumb) { this.scrollThumb.destroy(); this.scrollThumb = null; }
+    this.scrollThumbHeight = null;
+    this.scrollTrackHeight = null;
+    this.scrollTrackY = null;
+  }
+
+  onMouseWheel(pointer, gameObjects, deltaX, deltaY, deltaZ) {
+    if (!this.maxScroll || this.maxScroll <= 0) return;
+    const scrollSpeed = 0.5;
+    this.currentScrollY += deltaY * scrollSpeed;
+    this.currentScrollY = Phaser.Math.Clamp(this.currentScrollY, 0, this.maxScroll);
+    this.contentContainer.y = -this.currentScrollY;
+    this._updateIconClipping();
+
+    if (this.scrollThumb) {
+      const minY = this.scrollTrackY + this.scrollThumbHeight / 2;
+      const maxY = this.scrollTrackY + this.scrollTrackHeight - this.scrollThumbHeight / 2;
+      const ratio = this.currentScrollY / this.maxScroll;
+      this.scrollThumb.y = minY + (maxY - minY) * ratio;
+    }
+  }
+
+  /**
+   * 创建单个技能卡片——布局/配色和 MilitaryUnitViewer.createUnitCard（兵种图鉴）保持一致：
+   * 卡片底色+边框、底部名字条、上方图片区域；悬浮描边变黄+放大，并弹出技能描述浮窗。
+   */
+  createSkillCard(key, skill, x, y) {
+    const { cardWidth, cardHeight } = this.config;
+    const container = this.scene.add.container(x, y);
+
+    // 1. 卡片背景与边框
+    const bg = this.scene.add.rectangle(0, 0, cardWidth, cardHeight, 0x333333);
+    const border = this.scene.add.rectangle(0, 0, cardWidth, cardHeight).setStrokeStyle(2, 0x888888);
+
+    // 2. 名字区域
+    const nameBgHeight = cardHeight * 0.15;
+    const nameY = (cardHeight / 2) - (nameBgHeight / 2);
+    const nameBg = this.scene.add.rectangle(0, nameY, cardWidth, nameBgHeight, 0x000000, 0.8);
+
+    let displayName = skill.name ?? key;
+    try { displayName = get.militaryTranslation(skill.name) || skill.name; } catch (e) { }
+
+    const nameText = this.scene.add.text(0, nameY, displayName, {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      padding: { top: 4 },
+    }).setOrigin(0.5);
+
+    // 3. 图片区域——技能图标不像兵组图片那样预先加载成 Phaser 纹理，改用 DOM <img>
+    // 直接读取 assets/military/skill/{key}.png（和战斗界面里的技能图标同一份素材）。
+    // 图标故意用 pointer-events:auto 让它自己接管鼠标事件，而不是 pointer-events:none
+    // 指望"穿透"给下层 canvas——实测 DOM 元素本来就渲染在 canvas 上层，鼠标放上去
+    // 下层 Phaser 对象完全收不到事件（不会高亮、光标也不会变），所以让图标自己可交互，
+    // 用自己的 cursor:pointer 保证光标正确，再把 mouseenter/mouseleave 转发成 bg 上
+    // 已经注册好的 pointerover/pointerout，让悬浮在图标像素上和悬浮在卡片其它区域表现一致。
+    const imageAreaHeight = cardHeight - nameBgHeight;
+    const imageCenterY = -nameBgHeight / 2;
+    const imgSize = Math.min(cardWidth, imageAreaHeight) - 16;
+
+    const noImgText = this.scene.add.text(0, imageCenterY, 'NO IMAGE', {
+      fontSize: '12px', color: '#666'
+    }).setOrigin(0.5).setVisible(false);
+
+    const iconEl = document.createElement('img');
+    iconEl.src = `assets/military/skill/${key}.png`;
+    iconEl.style.cssText = `width:${imgSize}px;height:${imgSize}px;object-fit:contain;display:block;pointer-events:auto;cursor:pointer;`;
+    const iconDom = this.scene.add.dom(0, imageCenterY, iconEl).setDepth(1101);
+    // 图标状态：素材加载失败时要一直隐藏，不能被 _updateIconClipping 按滚动位置重新显示出来
+    const iconState = { failed: false };
+    iconEl.onerror = () => {
+      iconState.failed = true;
+      noImgText.setVisible(true);
+      // 隐藏失败的图标要用 GameObject 的 setVisible，不能直接改 iconEl.style.display——
+      // Phaser 每帧都会把 DOM 元素的 display 从 GameObject.visible 重新同步回来，直接
+      // 改 style.display 下一帧就被覆盖失效了（和之前透明度那个坑同一个原因）
+      iconDom.setVisible(false);
+    };
+
+    // 登记进裁剪列表：top/bottom 用图标本身（不是整张卡片）在 contentContainer 局部
+    // 坐标系里的范围，供 _updateIconClipping 按滚动位置精确裁剪
+    const iconTop = y + imageCenterY - imgSize / 2;
+    const iconBottom = y + imageCenterY + imgSize / 2;
+    this._skillIconDoms.push({ dom: iconDom, el: iconEl, top: iconTop, bottom: iconBottom, state: iconState });
+
+    container.add([bg, border, iconDom, noImgText, nameBg, nameText]);
+
+    // 4. 交互：悬浮描边变黄+放大，并弹出技能描述浮窗（兵种卡片点击是打开详情页，
+    //    但技能没有那么多结构化数据，所以用悬浮浮窗展示描述，和游戏里其它技能提示的做法一致）
+    bg.setInteractive({ useHandCursor: true });
+
+    bg.on('pointerover', () => {
+      border.setStrokeStyle(2, 0xffff00);
+      container.setScale(1.02);
+      this._showSkillTip(skill);
+    });
+    bg.on('pointerout', () => {
+      border.setStrokeStyle(2, 0x888888);
+      container.setScale(1);
+      this._hideSkillTip();
+    });
+
+    // 图标是独立的、自己接管鼠标事件的 DOM 元素，转发成同名事件触发上面已经注册好的处理逻辑
+    iconEl.addEventListener('mouseenter', () => bg.emit('pointerover'));
+    iconEl.addEventListener('mouseleave', () => bg.emit('pointerout'));
+
+    // 图标接管了鼠标事件后，滚轮事件也会被它截走、传不到下层 canvas，导致 Phaser 全局
+    // 注册的 wheel 监听收不到——鼠标放在技能图片上时滚轮会失效。这里把原生 wheel 事件
+    // 直接转发给 onMouseWheel（deltaY 语义和 Phaser 的 wheel 事件一致），并阻止默认的
+    // 页面滚动行为。
+    iconEl.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.onMouseWheel(null, null, 0, e.deltaY, 0);
+    }, { passive: false });
+
+    this.contentContainer.add(container);
+  }
+
+  /**
+   * 技能描述浮窗：名称（+等级）、魔力消耗（如果有）、效果描述。
+   * 改用 DOM 元素而不是 Phaser Rectangle+Text——DOM 元素（技能图标）始终渲染在
+   * canvas 上层，浮窗如果用 canvas 画（Rectangle/Text），一旦位置和某张卡片的
+   * 技能图标重叠，就会被那张图标盖在上面，视觉上"浮窗消失了"。改成 DOM 之后浮窗
+   * 和图标在同一层，通过创建顺序保证浮窗在最后添加、显示在最上面，不会被盖住。
+   * 深色底+金边的样式，和游戏里其它技能提示浮窗（UnitDetailPage._showTip）风格统一。
+   */
+  _showSkillTip(skill) {
+    this._hideSkillTip();
+
+    const titleLine = skill.level != null ? `${skill.name}   Lv.${skill.level}` : (skill.name ?? '');
+    const bodyLines = [];
+    if (skill.cost?.mana != null) bodyLines.push(`消耗魔力：${skill.cost.mana}`);
+    if (skill.des) bodyLines.push(skill.des);
+
+    const div = document.createElement('div');
+    div.style.cssText = [
+      'width:240px',
+      'background:rgba(17,17,34,0.95)',
+      'border:1px solid #b8963e',
+      'border-radius:4px',
+      'padding:10px',
+      'box-sizing:border-box',
+      'font-family:sans-serif',
+      'pointer-events:none', // 浮窗本身不需要接收鼠标事件，避免干扰卡片的悬浮判定
+    ].join(';');
+
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'color:#ffcc44;font-size:14px;font-weight:bold;margin-bottom:6px;word-break:break-all;';
+    titleEl.textContent = titleLine;
+    div.appendChild(titleEl);
+
+    if (bodyLines.length > 0) {
+      const bodyEl = document.createElement('div');
+      bodyEl.style.cssText = 'color:#cccccc;font-size:13px;word-break:break-all;line-height:1.5;white-space:pre-line;';
+      bodyEl.textContent = bodyLines.join('\n');
+      div.appendChild(bodyEl);
+    }
+
+    this.tooltip = this.scene.add.dom(0, 0, div).setDepth(2000);
+
+    // 用全局 mousemove（document 级）驱动浮窗位置，而不是 Phaser 的 pointermove——
+    // 技能图标自己接管了鼠标事件（见 createSkillCard），悬浮在图标像素上时 Phaser
+    // 收不到原生 canvas 事件，只监听 Phaser pointermove 会导致浮窗在图标区域卡住不动。
+    // rAF 节流到每帧最多更新一次位置，避免高频重绘。
+    let pendingX = 0, pendingY = 0;
+    let rafScheduled = false;
+    const applyPosition = () => {
+      rafScheduled = false;
+      if (!this.tooltip) return;
+      this._positionSkillTip(pendingX, pendingY);
+    };
+    this._tipMouseMove = (e) => {
+      const canvas = this.scene.game.canvas;
+      const rect = canvas.getBoundingClientRect();
+      pendingX = e.clientX - rect.left;
+      pendingY = e.clientY - rect.top;
+      if (!rafScheduled) {
+        rafScheduled = true;
+        requestAnimationFrame(applyPosition);
+      }
+    };
+    document.addEventListener('mousemove', this._tipMouseMove);
+
+    // 初始位置：用当前指针位置，拿不到就先放在原点，下一帧 mousemove 会立刻纠正
+    const p = this.scene.input.activePointer;
+    this._positionSkillTip(p?.x ?? 0, p?.y ?? 0);
+  }
+
+  _positionSkillTip(px, py) {
+    if (!this.tooltip) return;
+    const { width, height } = this.scene.scale;
+    const node = this.tooltip.node;
+
+    // 直接读取浮窗真实渲染尺寸（浏览器已自动布局好）
+    const w = node.offsetWidth || 240;
+    const h = node.offsetHeight || 60;
+
+    let tx = px + 16 + w / 2;
+    let ty = py + 16 + h / 2;
+    if (tx + w / 2 > width - 8) tx = px - 16 - w / 2;
+    if (ty + h / 2 > height - 8) ty = py - 16 - h / 2;
+    if (tx - w / 2 < 8) tx = 8 + w / 2;
+    if (ty - h / 2 < 8) ty = 8 + h / 2;
+
+    this.tooltip.setPosition(tx, ty);
+  }
+
+  _hideSkillTip() {
+    if (this._tipMouseMove) {
+      document.removeEventListener('mousemove', this._tipMouseMove);
+      this._tipMouseMove = null;
+    }
+    if (this.tooltip) {
+      this.tooltip.destroy();
+      this.tooltip = null;
+    }
+  }
+
+  destroy() {
+    this.scene.input.off('wheel', this.onMouseWheel, this);
+    this._hideSkillTip();
+    this._destroyScrollBar();
+    if (this._maskShape) { this._maskShape.destroy(); this._maskShape = null; }
+    if (this.mainContainer) this.mainContainer.destroy();
   }
 }
 
@@ -858,6 +1336,41 @@ class UnitDetailPage {
         }
         tx += tw + 6;
       });
+      y += 26 + 14;
+    }
+
+    // ── 已学习未携带技能（学派系统学会、但携带栏已满没能自动带上的技能）───
+    // 只在兵力表（查看具体兵组）里有意义，图鉴没有"学会"这个概念
+    const learnedNotCarried = this._getLearnedNotCarriedSkills();
+    if (learnedNotCarried.length > 0) {
+      c.add(this._sectionTitle('已学习未携带', y));
+      y += 28;
+
+      let lx = -W / 2;
+      let ly = y;
+      const rowMaxX = W / 2 - 20; // 超出这行宽度就换到下一行
+      learnedNotCarried.forEach(({ key, skill }) => {
+        const lbl = this.scene.add.text(0, 0, skill.name, {
+          fontSize: '13px', color: '#cccccc', padding: { top: 4 },
+        }).setOrigin(0.5);
+        const tw = lbl.width + 18;
+        if (lx + tw > rowMaxX && lx > -W / 2) {
+          lx = -W / 2;
+          ly += 32;
+        }
+        const tbg = this.scene.add.rectangle(lx + tw / 2, ly + 13, tw, 26, 0x2a2a2a, 0.9)
+          .setStrokeStyle(1, 0x777777, 0.8);
+        lbl.setPosition(lx + tw / 2, ly + 13);
+        c.add([tbg, lbl]);
+        if (skill.des) {
+          tbg.setInteractive({ useHandCursor: false });
+          tbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
+          tbg.on('pointermove', (ptr) => this._moveTip(ptr));
+          tbg.on('pointerout', () => this._hideTip());
+        }
+        lx += tw + 6;
+      });
+      y = ly + 26 + 14;
     }
   }
 
@@ -1434,15 +1947,40 @@ class UnitDetailPage {
   }
 
   // ── 技能辅助 ───────────────────────────────────
+  /**
+   * 技能来源：兵力表（fromArmy）里查看的是某个具体兵组，要展示的是它当前实际
+   * 携带的技能（soldier.ability，包含学派系统学会后自动携带上的技能），不是
+   * 兵种模板出厂自带的默认技能表（template.special_ability）——之前这里一直
+   * 读的是模板，导致学派学到的技能哪怕自动携带了也不会显示在兵力表详情页里。
+   * 兵种图鉴（非 fromArmy，查看的是兵种本身，没有具体兵组）则继续用模板兜底。
+   */
   _getSkillsByType(type) {
-    const t = this.template;
-    return Object.keys(t?.special_ability ?? {})
+    const source = this.unitData?.fromArmy
+      ? (this.unitData.current_ability ?? {})
+      : (this.template?.special_ability ?? {});
+    return Object.keys(source)
       .filter(k => {
-        if (!t.special_ability[k]) return false;
+        if (!source[k]) return false;
         const skillType = MILITARY_SKILL[k]?.type;
         const effective = skillType ?? 'initiative';
         return effective === type;
       })
+      .map(k => ({
+        key: k,
+        skill: MILITARY_SKILL[k] ?? { name: k, type: 'initiative' },
+      }));
+  }
+
+  /**
+   * 已经学会、但当前没有携带的技能（携带栏满了学新技能时会出现这种情况）。
+   * 只有兵力表（fromArmy）才有意义——图鉴没有具体兵组、没有"学会"的概念。
+   */
+  _getLearnedNotCarriedSkills() {
+    if (!this.unitData?.fromArmy) return [];
+    const learned = this.unitData.current_learned_skills ?? {};
+    const carried = this.unitData.current_ability ?? {};
+    return Object.keys(learned)
+      .filter(k => learned[k] && !carried[k])
       .map(k => ({
         key: k,
         skill: MILITARY_SKILL[k] ?? { name: k, type: 'initiative' },
@@ -1506,6 +2044,18 @@ class UnitDetailPage {
         `gap:${GAP}px`,
       ].join(';');
       for (const termKey of Object.keys(terms)) {
+        if (termKey === 'buff') {
+          // buff 字段是一个数组，表示这个技能涉及的若干个增益/减益效果 ID，
+          // 每个 ID 要去 MILITARY_BUFF（而不是 MILITARY_TERM）里查名字和描述
+          const buffIds = terms.buff;
+          if (!Array.isArray(buffIds)) continue;
+          for (const buffId of buffIds) {
+            const bd = MILITARY_BUFF[buffId];
+            if (!bd) continue;
+            termCol.appendChild(makeBox(bd.name ?? `buff_${buffId}`, bd.des ?? '', TERM_W));
+          }
+          continue;
+        }
         const td = MILITARY_TERM[termKey];
         if (!td) continue;
         termCol.appendChild(makeBox(td.name ?? termKey, td.des ?? '', TERM_W));

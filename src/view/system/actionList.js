@@ -4,6 +4,7 @@ import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { ERA } from '../../data/era.js';
 import { REGION } from '../../data/region.js';
+import { ACADEMY_SKILL } from '../../data/academy_skill.js';
 import { get } from '../../system/i18n.js';
 
 export class ActionListSystem {
@@ -484,6 +485,12 @@ export class ActionListSystem {
     }
     else if (markedIntro.startsWith('research_tech_')) {
       markedIntro = '启发了科技【' + actionData.name + '】';
+    }
+    else if (markedIntro.startsWith('academy_upgrade_')) {
+      // actionData: { schoolKey, catKey, fromLevel }，见 academyView.js AcademyViewer.upgradeCategory
+      const schoolName = ACADEMY_SKILL[actionData.schoolKey]?.name ?? actionData.schoolKey;
+      const catName = ACADEMY_SKILL[actionData.schoolKey]?.category?.[actionData.catKey]?.name ?? actionData.catKey;
+      markedIntro = `学派【${schoolName}】的分支{{【${catName}】}}升级至 ${(actionData.fromLevel ?? 0) + 1} 级`;
     }
     else if (key.startsWith('get_resource_')) {
       let intro = MILITARY['get_resource']?.intro || key;

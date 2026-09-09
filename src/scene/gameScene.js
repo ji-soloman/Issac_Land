@@ -53,6 +53,16 @@ export class GameScene extends Phaser.Scene {
       this.load.image(`icon_${i}`, 'assets/ui_icon/' + i + '.png');
     }
 
+    // 学派界面背景图（浅色主题：背景图 + 20% 白色遮罩，见 view/system/academyView.js）
+    this.load.image('academy_bg', 'assets/background/academy.jpg');
+    // 学派界面专用 UI 素材：左上角标题牌、右上角退出按钮、分支卡片的已解锁/未解锁底板
+    this.load.image('academy_header', 'assets/ui_academy/header.png');
+    this.load.image('academy_close', 'assets/ui_academy/close.png');
+    this.load.image('academy_unlocked_panel', 'assets/ui_academy/unlocked_panel.png');
+    this.load.image('academy_locked_panel', 'assets/ui_academy/locked_panel.png');
+    // 通用"确认/未确认"按钮底板（升级/选择类按钮用），当前学派界面在用，其它界面也可以复用
+    this.load.image('btn_confirm', 'assets/ui/confirm.png');
+    this.load.image('btn_unconfirmed', 'assets/ui/unconfirm.png');
 
     // 左侧边栏
     this.load.image('tech_tree_btn', 'assets/ui_button/tech_tree.png');
