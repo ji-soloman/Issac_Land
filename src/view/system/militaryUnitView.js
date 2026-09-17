@@ -199,7 +199,9 @@ export class MilitaryUnitViewer {
     const { width } = this.scene.scale;
     const { cardWidth, cardHeight, spacing, sideMargin, topMargin } = this.config;
 
-    const units = Object.entries(MILITARY_UNIT);
+    // canCreate === false 的兵种（例如骷髅，只由技能在战斗中途召唤）不参与正常的
+    // 兵种训练/征募，也不应该出现在兵组图鉴里，这里先过滤掉。
+    const units = Object.entries(MILITARY_UNIT).filter(([, unit]) => unit.canCreate !== false);
 
     // 计算网格布局
     const availableWidth = width - sideMargin * 2;
@@ -1734,7 +1736,9 @@ class UnitDetailPage {
 
     const refreshTrainBtn = () => {
       const popOk = popAmount > 0 ? (popEnough && selectedMainGn !== null) : true;
-      const canTrain = techMet && nonPopAfford && popOk;
+      // canCreate === false 的兵种（例如骷髅）即使被别的途径打开了训练页，也不允许训练，
+      // 这里作为兜底再拦一次（正常情况下这类兵种在图鉴里已经被过滤掉，走不到这个页面）。
+      const canTrain = techMet && nonPopAfford && popOk && t?.canCreate !== false;
       btnBg.removeAllListeners();
       if (canTrain) {
         btnBg.setAlpha(1);

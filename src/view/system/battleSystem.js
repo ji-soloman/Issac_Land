@@ -11,6 +11,7 @@ const BG_IMAGE_KEY = 'battle_bg_image'; // 战场背景图纹理 key，图片路
 const MANA_ICON_PATH = 'assets/military/ui/mana.png';
 const THEME_COLOR = 0xb8963e;
 const THEME_COLOR_HEX = '#b8963e'; // THEME_COLOR 的字符串形式，供 Text 的 color 参数使用
+const LOG_HIGHLIGHT_COLOR = '#ffd700'; // 战斗记录里兵组名/技能名高亮成的黄色，和场上其它金色高亮（如行动中高亮描边）保持一致的色调
 const ATTACKER_TINT = 0xff6666;
 const DEFENDER_TINT = 0x6699ff;
 
@@ -22,14 +23,21 @@ const PANEL_RADIUS = 12;        // 面板圆角半径
 const PANEL_TEXT_COLOR = '#ede0c0'; // 面板暖白/米金色文字
 const PANEL_MUTED_TEXT_COLOR = '#7d7566'; // 面板里"不可用/次要"状态的文字（如技能负担不起时）
 
-// 每行（每人）最多显示的兵组数量，超出部分仍参与战斗但布局会自动压缩间距
+// 每行（每人）最多显示的兵组数量，超出部分仍参与战斗，但一路的卡牌总宽度可能超出
+// 屏幕可用空间——此时会在这一路下方出现可拖动的横向拉条（见 _renderRowScrollbar），
+// 不会真的把卡牌硬挤在一起。
 const MAX_SLOTS_PER_ROW = 8;
+// 召唤生物在战场上的数量上限——这是一条独立于"战术宽度"（MAX_SLOTS_PER_ROW，
+// 站位队列的显示/排布上限）的规则：不管这一方站位队列还剩多少空位，只要这一方
+// 场上存活的召唤物（isSummoned标记）数量已经达到这个上限，就无法再召唤新的。
+const MAX_SUMMONED_PER_SIDE = 5;
 const SLOT_W = 104;
 const SLOT_H = 132;
 const SLOT_GAP = 12;
 const ROW_GAP = 78; // 卡牌上方有血条/护甲条、下方有法力条+buff图标行，行间距要留够空间避免相邻行重叠
 const FRONT_GAP = 50; // 攻守双方最前排卡牌之间的额外间距（避免贴在中线上）
 const FIELD_TOP = 96; // 兵组卡牌区域顶部起始 y（_renderField 用它排布卡牌，_buildUI 用它定位VS标记/中线）
+const ROW_SCROLLBAR_H = 6; // 一路兵组过多时，下方横向拉条的轨道粗细
 
 // 底部三栏面板（战斗记录 / 行动 / 功能）统一布局参数——三栏顶对齐、等高、水平排成一行，
 // 具体每栏的 x/宽度由 _getBottomLayout() 统一计算，不要在各自的构建函数里各算一套。
@@ -88,6 +96,42 @@ function inferIgnoreArmor(components) {
   const activeKeys = Object.keys(DAMAGE_TYPE).filter(key => (components[key] ?? 0) > 0);
   if (activeKeys.length === 0) return false;
   return activeKeys.every(key => DAMAGE_TYPE[key].ignoreArmor);
+}
+
+/**
+ * buff 分类表 —— 用于"免疫控制类/免疫弱化类"这类效果的判定（例如玄藏、守护、无双）。
+ * 新增的 buff 如果需要参与这类免疫判定，把它的 key 加入对应集合即可，不需要改动别处逻辑。
+ * 目前只做"是否允许施加”的拦截判定，不涉及"无法行动"类效果本身的回合跳过（那是另一套
+ * 尚未实装的机制），仅用于让骸骨护盾（施加玄藏）等技能对未来的控制类效果产生实际免疫效果。
+ */
+const CONTROL_BUFF_KEYS = new Set([1, 5, 6, 8]);     // 眩晕/疲惫/恐惧/冰冻——"无法行动"类控制效果
+const DEBUFF_BUFF_KEYS = new Set([3, 4, 9, 10]);    // 烧伤/中毒/衰弱/溺水——伤害/削弱类弱化效果
+const CONTROL_IMMUNE_BUFF_KEYS = new Set([11, 16]);  // 振奋/玄藏——持有时免疫控制类
+const DEBUFF_IMMUNE_BUFF_KEYS = new Set([12, 17]);  // 无双/守护——持有时免疫弱化类
+
+/** 判断目标身上是否持有 keySet 集合里的任意一个、且剩余轮次>0的 buff */
+function hasActiveBuffFromSet(troop, keySet) {
+  if (!troop?.buffs) return false;
+  return Object.keys(troop.buffs).some(k => (troop.buffs[k] ?? 0) > 0 && keySet.has(Number(k)));
+}
+
+/**
+ * 判断一个兵组当前是否"存在于战场上"——统一入口，供所有"这个目标还在不在场上"的
+ * 判定使用（目标候选计算、回合行动队列、buff触发扫描、嘲讽判定、战斗结束判定等）。
+ *
+ * 除了生命值必须大于0，还要求没有被打上【消逝】标记（troop._vanished）。
+ * 【消逝】是一种特殊的阵亡状态：某些技能（例如罗睺一斩）杀死目标并将其转化为
+ * 召唤物时，除了照常触发这个目标自己的普通阵亡结算流程（清空buff、变灰禁用交互、
+ * 播报"已阵亡"，见 _resolveDeath）之外，还会额外给这个目标打上 _vanished 标记——
+ * 没有专门的前端显示（不出现任何图标/文字），纯粹是内部状态：这个目标已经彻底
+ * 从战场上消失了，即使未来出现某些"复活/回复生命"效果意外把它的生命值改回了
+ * 正数，只要 _vanished 为 true，依然要在所有"是否在场上"的判定里把它当作不存在，
+ * 不会被复活或重新参与战斗。
+ * @param {object} troop
+ * @returns {boolean}
+ */
+function isOnBattlefield(troop) {
+  return (troop?.currentHp ?? 0) > 0 && !troop?._vanished;
 }
 
 /**
@@ -204,6 +248,16 @@ export class BattleSystem {
       pathMap[BG_IMAGE_KEY] = 'assets/background/battle_bg.jpg';
     }
 
+    // 骷髅（罗睺一斩等技能战斗中途召唤的兵种）不在参战名单里，无法通过上面遍历参战兵组
+    // 的方式采集到贴图，但战斗中随时可能需要用到，这里统一预加载，避免召唤时贴图缺失。
+    if (MILITARY_UNIT.skeleton?.image) {
+      const skeletonKey = 'soldier_skeleton';
+      if (!this.scene.textures.exists(skeletonKey)) {
+        keysToLoad.add(skeletonKey);
+        pathMap[skeletonKey] = MILITARY_UNIT.skeleton.image;
+      }
+    }
+
     // 魔力图标现在用 DOM <img src="MANA_ICON_PATH"> 展示（见 _addActionBtn），
     // 不再需要预先加载成 Phaser 纹理
 
@@ -280,6 +334,102 @@ export class BattleSystem {
     troop.tagSkills = this._getSkillsByType(troop, 'tag');
 
     return troop;
+  }
+
+  /**
+   * 战斗中途召唤一个新兵组，加入指定 person 的站位队列，受"召唤生物数量上限"
+   * （MAX_SUMMONED_PER_SIDE，固定为5）限制——这一方场上存活的召唤物数量已达到
+   * 上限时无法继续召唤，返回 null（例如罗睺一斩杀死目标转化为骷髅时，如果施法者
+   * 所在队伍的召唤物已经满编，则那个目标就不会被转化）。这个限制和"战术宽度"
+   * （MAX_SLOTS_PER_ROW，站位队列的显示排布上限）是两条独立的规则，互不影响。
+   * 复用 _createTroopInstance 保证新兵组和备战阶段初始化出来的兵组结构完全一致，
+   * 再统一"升级"为 Player 实例（与 _convertTroopsToPlayerClass 的做法一致）。
+   * 新召唤的兵组本回合不参与行动（summonedOnRound 标记，_buildTurnOrder 已经支持这一规则）。
+   * @param {object} ownerPerson - 加入哪一方（this.attackers/this.defenders 里的一个 person）
+   * @param {string} unitKey - MILITARY_UNIT 的 key，例如 'skeleton'
+   * @param {object} [statsOverride] - 覆盖模板基础六维（例如"转化阵亡目标"场景需要
+   *   沿用阵亡目标自己的 physical_attack/spell_attack/hp/armor/mana/military_order）
+   * @returns {object|null} 召唤出的 Player 实例；受数量上限无法召唤时返回 null
+   */
+  _summonTroop(ownerPerson, unitKey, statsOverride = {}) {
+    if (!ownerPerson) return null;
+
+    const currentSummonCount = (ownerPerson.troops ?? [])
+      .filter(t => t.isSummoned && isOnBattlefield(t)).length;
+    if (currentSummonCount >= MAX_SUMMONED_PER_SIDE) return null; // 召唤生物数量已达上限
+
+    const idx = ownerPerson.troops.length; // _createTroopInstance 需要一个位置索引，稍后会重新插入正确站位
+    const raw = { soldierId: `${ownerPerson.id ?? 'p'}_summon_${unitKey}_${Date.now()}_${idx}`, name: unitKey };
+    const troop = this._createTroopInstance(raw, ownerPerson, idx);
+
+    // 覆盖基础六维（不影响 ability——召唤物固定沿用模板自己的技能配置，
+    // 骷髅模板 special_ability 是空对象，即"没有技能"）
+    Object.assign(troop.stats, statsOverride);
+    troop.maxHp = troop.stats.hp ?? troop.maxHp;
+    troop.currentHp = troop.maxHp;
+    troop.maxArmor = troop.stats.armor ?? troop.maxArmor;
+    troop.currentArmor = troop.maxArmor;
+    troop.maxMana = troop.stats.mana ?? troop.maxMana;
+    troop.currentMana = troop.maxMana;
+
+    Object.setPrototypeOf(troop, Player.prototype);
+    troop.battle = this;
+    troop.summonedOnRound = this.round; // 本回合刚被召唤，不参与本回合行动
+    troop.isSummoned = true; // 标记为召唤物，供"召唤生物数量上限"判定使用
+
+    // 继承所属方在场上已有兵组共同的阵营标记；battleOrderIndex 取该方当前最大值+1，
+    // 保证回合内出手顺序排序（_compareByActionOrder）能正常处理新召唤的兵组
+    const siblingSample = ownerPerson.troops[0];
+    troop.isAttackerSide = siblingSample ? siblingSample.isAttackerSide : this.attackers.includes(ownerPerson);
+    const maxOrderIndex = Math.max(-1, ...ownerPerson.troops.map(t => t.battleOrderIndex ?? -1));
+    troop.battleOrderIndex = maxOrderIndex + 1;
+
+    // 按顺位插入到"可能的最前面"的站位：找到第一个顺位 <= 自己的位置插进去
+    // （即排在所有同顺位的现有单位最前面），而不是简单追加到队列末尾——
+    // 既不破坏"顺位大在前"的排序规则，又能让新召唤的单位尽量靠前
+    const order = troop.stats.military_order ?? 0;
+    let insertIndex = ownerPerson.troops.length;
+    for (let i = 0; i < ownerPerson.troops.length; i++) {
+      if ((ownerPerson.troops[i].stats?.military_order ?? 0) <= order) { insertIndex = i; break; }
+    }
+    ownerPerson.troops.splice(insertIndex, 0, troop);
+
+    // 中途登场（例如被召唤）：立即单独触发一次这个兵组自己的"自身登场时"技能效果
+    // （例如嘲讽——见 _fireSkillHook 的说明；注意这里只触发 onEnterBattlefield，
+    // 不是 onGameStart——初始兵组和中途登场的兵组走的是两个互斥的节点），要在
+    // _renderField() 之前触发，这样如果技能给自己施加了 buff，首次渲染卡牌时
+    // 就能带上正确的 buff 图标。
+    this._fireSkillHook('onEnterBattlefield', troop);
+
+    this._renderField();
+    this._logBattle(`${ownerPerson.name ?? ownerPerson.id}召唤了一个${troop.displayName}`);
+    return troop;
+  }
+
+  /**
+   * 触发一个兵组在某个技能钩子节点上生效的效果——遍历这个兵组拥有的技能
+   * （special_ability），调用技能定义 trigger 对象里声明的对应钩子函数
+   * （如果有的话）。技能定义里 trigger 的写法和 military_buff.js 的 buff
+   * trigger 是同一套约定：trigger 只负责声明"什么时机做什么"，skill 函数
+   * （如果有）负责"被主动使用时做什么"，两者互不影响。
+   * 目前支持两个独立的节点，二者互斥，不会在同一次登场里同时触发：
+   *   'onGameStart'        —— 游戏开始时：只对战斗开始时就已经在场上的初始兵组
+   *                           生效，所有初始兵组按站位顺序（_compareByActionOrder）
+   *                           依次触发一次，见 _onStartBattle。
+   *   'onEnterBattlefield' —— 自身登场时：只对战斗中途才登场的兵组生效
+   *                           （例如被召唤，或者未来任何让这个兵组"重新登场"的
+   *                           效果），这个兵组自己单独触发一次，见 _summonTroop。
+   *                           游戏开始时就在场上的初始兵组不会触发这个节点。
+   * 新增一个"游戏开始时"或"自身登场时"生效的技能（例如嘲讽——为自身施加永久的
+   * 嘲讽buff，见 military_skill.js），只需要在 military_skill.js 对应条目的
+   * trigger 对象里补充同名函数即可自动接入，不需要改动这里的调用方。
+   */
+  _fireSkillHook(hookName, troop) {
+    for (const key of Object.keys(troop.ability ?? {})) {
+      if (!troop.ability[key]) continue;
+      const fn = MILITARY_SKILL[key]?.trigger?.[hookName];
+      if (typeof fn === 'function') fn(troop);
+    }
   }
 
   _getSkillsByType(troop, type) {
@@ -515,18 +665,112 @@ export class BattleSystem {
 
     this.fieldContainer.add(nameLabel);
 
-    // 槽位从中线向外排列：index 0（顺位最大，最靠前）离中线最近
+    // ── 横向拉条：这一路（这个 person）的卡牌总宽度如果超出可用空间，
+    // 就在下方出现一条可拖动的横向拉条，让玩家左右滑动查看这一路的完整阵容——
+    // VS 标记和另一方的位置完全独立计算，不受这里的滚动偏移影响。
+    const availableWidth = centerX - edgePad - 56; // 中线到屏幕边缘的可用宽度（预留一点名牌区域）
+    const contentWidth = FRONT_GAP + SLOT_W + Math.max(0, n - 1) * (SLOT_W + SLOT_GAP);
+    const overflow = contentWidth > availableWidth;
+    const maxScrollOffset = overflow ? (contentWidth - availableWidth) : 0;
+
+    // 每个 person 自己记一份当前的横向滚动偏移量，跨重渲染保留（拖完不会跳回0），
+    // 兵组数量变化（例如中途召唤）导致上限变化时在这里重新裁剪一次
+    if (person._rowScrollOffset == null) person._rowScrollOffset = 0;
+    person._rowScrollOffset = Phaser.Math.Clamp(person._rowScrollOffset, 0, maxScrollOffset);
+
+    // 这一路的卡牌都放进独立的 rowContainer 里：溢出时靠它的位移+遮罩实现横向滚动，
+    // 不溢出时它始终停在 (0,0)，效果等同于直接挂在 fieldContainer 上，不影响原有行为。
+    const rowContainer = this.scene.add.container(0, 0);
+    this.fieldContainer.add(rowContainer);
+
+    if (overflow) {
+      const maskShape = this.scene.make.graphics();
+      maskShape.fillStyle(0xffffff);
+      const maskX = isAttacker ? centerX - availableWidth : centerX;
+      maskShape.fillRect(maskX, rowY - SLOT_H, availableWidth, SLOT_H * 2);
+      rowContainer.setMask(maskShape.createGeometryMask());
+    }
+
+    // 槽位从中线向外排列：index 0（顺位最大，最靠前）离中线最近。
+    // 位置本身按"未滚动"的原始站位计算，横向滚动统一通过下面的 rowContainer.x 实现，
+    // 不需要在这里把 scrollOffset 混进每张卡牌的坐标计算。
     troops.forEach((troop, slotIndex) => {
       const dist = slotIndex; // 第几个槽位（0=最靠前/最靠近中线）
       const slotCenterOffset = FRONT_GAP + (SLOT_W / 2) + dist * (SLOT_W + SLOT_GAP);
       const slotX = isAttacker ? centerX - slotCenterOffset : centerX + slotCenterOffset;
 
-      this._renderTroopSlot(troop, person, slotX, rowY, isAttacker, slotIndex);
+      this._renderTroopSlot(troop, person, slotX, rowY, isAttacker, slotIndex, rowContainer);
+    });
+
+    // 滚动方向：scrollOffset 增大＝想看更靠外侧（远离中线）的卡牌——
+    // 攻方卡牌本来往左延伸，需要把 rowContainer 往右移（+）才能把左边溢出的部分移入可视区；
+    // 守方卡牌往右延伸，需要把 rowContainer 往左移（-）。
+    rowContainer.x = isAttacker ? person._rowScrollOffset : -person._rowScrollOffset;
+
+    if (overflow) {
+      this._renderRowScrollbar(person, rowY, isAttacker, centerX, availableWidth, contentWidth, maxScrollOffset, rowContainer);
+    }
+  }
+
+  /**
+   * 绘制并挂载"这一路兵组过多时"的横向拉条：拖动它只更新 person._rowScrollOffset
+   * 和 rowContainer.x（配合拉条本身的重绘），不重新渲染整个战场——
+   * 这样才不会在拖动过程中把正在拖动的拉条自己销毁掉。
+   * 拉条本身和命中区域都直接挂在 fieldContainer 上（不放进 rowContainer），
+   * 所以不会被 rowContainer 自己的遮罩裁切掉，滚动时始终可见。
+   */
+  _renderRowScrollbar(person, rowY, isAttacker, centerX, availableWidth, contentWidth, maxScrollOffset, rowContainer) {
+    const trackY = rowY + SLOT_H / 2 + 54; // 卡牌下方（避开血条/护甲条/法力条/buff图标行）
+    const trackX = isAttacker ? centerX - availableWidth : centerX;
+    const trackW = availableWidth;
+    const trackH = ROW_SCROLLBAR_H;
+    const thumbW = Math.max(24, trackW * Math.min(1, availableWidth / contentWidth));
+
+    const g = this.scene.add.graphics();
+    this.fieldContainer.add(g);
+
+    const drawThumb = () => {
+      g.clear();
+      g.fillStyle(0xffffff, 0.12);
+      g.fillRoundedRect(trackX, trackY - trackH / 2, trackW, trackH, trackH / 2);
+      const scrollRatio = maxScrollOffset > 0 ? (person._rowScrollOffset ?? 0) / maxScrollOffset : 0;
+      const thumbX = trackX + (trackW - thumbW) * scrollRatio;
+      g.fillStyle(THEME_COLOR, 0.85);
+      g.fillRoundedRect(thumbX, trackY - trackH / 2, thumbW, trackH, trackH / 2);
+    };
+    drawThumb();
+
+    // 透明命中区域覆盖整条轨道（比可视拉条略高一些，方便点中），负责拖动交互
+    const hit = this.scene.add.rectangle(trackX + trackW / 2, trackY, trackW, trackH + 14, 0, 0)
+      .setInteractive({ useHandCursor: true, draggable: true });
+    this.fieldContainer.add(hit);
+    this.scene.input.setDraggable(hit);
+
+    let dragStartPointerX = 0;
+    let dragStartOffset = 0;
+
+    hit.on('dragstart', (pointer) => {
+      dragStartPointerX = pointer.x;
+      dragStartOffset = person._rowScrollOffset ?? 0;
+    });
+
+    hit.on('drag', (pointer) => {
+      // 拖动量按"拉条轨道宽度 : 实际可滚动内容宽度"的比例放大，
+      // 保证把滑块从轨道一端拖到另一端正好对应 scrollOffset 从0滚到 maxScrollOffset
+      const deltaX = pointer.x - dragStartPointerX;
+      const deltaOffset = deltaX * (contentWidth / availableWidth);
+      person._rowScrollOffset = Phaser.Math.Clamp(dragStartOffset + deltaOffset, 0, maxScrollOffset);
+      rowContainer.x = isAttacker ? person._rowScrollOffset : -person._rowScrollOffset;
+      drawThumb();
     });
   }
 
-  _renderTroopSlot(troop, person, x, y, isAttacker, slotIndex) {
+  _renderTroopSlot(troop, person, x, y, isAttacker, slotIndex, parentContainer = this.fieldContainer) {
     const container = this.scene.add.container(x, y);
+
+    // 只有己方（person.isPlayer）的兵组才允许悬浮查看血量/护甲/蓝量的具体数值，
+    // 对方（AI）的兵组鼠标放上去不会显示——避免暴露敌方的隐藏数值信息
+    const canRevealStats = !!person.isPlayer;
 
     // 背景框（阵营颜色区分）
     const tintColor = isAttacker ? ATTACKER_TINT : DEFENDER_TINT;
@@ -534,7 +778,10 @@ export class BattleSystem {
       .setStrokeStyle(2, tintColor, 0.8);
     container.add(frame);
 
-    // ── 血条（卡牌上方，绿色，显示 当前/最大 体力，悬浮时才显示黑色数值）──────
+    // ── 血条（卡牌上方，绿色，显示 当前/最大 体力）──────────────────
+    // 己方兵组的具体数值常驻显示（不再需要悬浮才能看到），敌方（AI）兵组
+    // 依然不显示具体数值——只由 canRevealStats 控制是否创建/显示这个文字，
+    // 血量变化时的刷新见 _updateHpBar。
     const maxHp = troop.stats.hp ?? troop.maxHp ?? 1;
     const hpBarY = -SLOT_H / 2 - 16;
     const hpBarW = SLOT_W - 8;
@@ -550,16 +797,13 @@ export class BattleSystem {
       .setOrigin(0, 0.5);
     container.add(hpBarFill);
 
-    const hpHoverText = this.scene.add.text(0, hpBarY, '', {
+    // 黑底白边（黑色文字+白色描边）：纯黑字没有描边，遇到偏白/偏亮的背景区域
+    // 就看不清，加一圈白色描边保证不管叠在哪块背景上都能看清数值
+    const hpValueText = this.scene.add.text(0, hpBarY, canRevealStats ? `${Math.max(0, troop.currentHp ?? 0)}/${maxHp}` : '', {
       fontSize: '10px', color: '#000000', fontStyle: 'bold', padding: { top: 2 },
-    }).setOrigin(0.5).setVisible(false);
-    container.add(hpHoverText);
-
-    hpBarBg.on('pointerover', () => {
-      hpHoverText.setText(`${Math.max(0, troop.currentHp ?? 0)}/${maxHp}`);
-      hpHoverText.setVisible(true);
-    });
-    hpBarBg.on('pointerout', () => hpHoverText.setVisible(false));
+      stroke: '#ffffff', strokeThickness: 2,
+    }).setOrigin(0.5).setVisible(canRevealStats);
+    container.add(hpValueText);
 
     // ── 护甲条（血条上方，蓝色）──────────────────────
     // 护盾/护甲不存在上限，只有当前值：为0直接消失；有值时始终整条满宽显示（不做比例缩放）
@@ -576,17 +820,12 @@ export class BattleSystem {
     container.add(armorBarBg);
     container.add(armorBarFill);
 
-    const armorHoverText = this.scene.add.text(0, armorBarY, '', {
+    // 黑底白边，原因同血条的 hpValueText；护盾没有上限概念，只显示当前值（不是 x/y 格式）
+    const armorValueText = this.scene.add.text(0, armorBarY, canRevealStats ? `${Math.max(0, troop.currentArmor ?? 0)}` : '', {
       fontSize: '10px', color: '#000000', fontStyle: 'bold', padding: { top: 2 },
-    }).setOrigin(0.5).setVisible(false);
-    container.add(armorHoverText);
-
-    armorBarBg.on('pointerover', () => {
-      // 护盾没有上限概念，只显示当前值（不是 x/y 格式）
-      armorHoverText.setText(`${Math.max(0, troop.currentArmor ?? 0)}`);
-      armorHoverText.setVisible(true);
-    });
-    armorBarBg.on('pointerout', () => armorHoverText.setVisible(false));
+      stroke: '#ffffff', strokeThickness: 2,
+    }).setOrigin(0.5).setVisible(canRevealStats && hasArmor);
+    container.add(armorValueText);
 
     // 兵组名（顶部）
     container.add(this.scene.add.text(0, -SLOT_H / 2 + 16, troop.displayName, {
@@ -635,29 +874,27 @@ export class BattleSystem {
       .setOrigin(0, 0.5);
     container.add(manaBarFill);
 
-    const manaHoverText = this.scene.add.text(0, manaBarY, '', {
+    // 黑底白边，原因同血条的 hpValueText
+    const manaValueText = this.scene.add.text(0, manaBarY, canRevealStats ? `${Math.max(0, troop.currentMana ?? 0)}/${maxMana}` : '', {
       fontSize: '10px', color: '#000000', fontStyle: 'bold', padding: { top: 2 },
-    }).setOrigin(0.5).setVisible(false);
-    container.add(manaHoverText);
-
-    manaBarBg.on('pointerover', () => {
-      manaHoverText.setText(`${Math.max(0, troop.currentMana ?? 0)}/${maxMana}`);
-      manaHoverText.setVisible(true);
-    });
-    manaBarBg.on('pointerout', () => manaHoverText.setVisible(false));
+      stroke: '#ffffff', strokeThickness: 2,
+    }).setOrigin(0.5).setVisible(canRevealStats);
+    container.add(manaValueText);
 
     // ── Buff 图标行（法力条下方，持续堆放展示当前持有的所有buff）───────
     const buffRowY = manaBarY + manaBarH / 2 + 14;
     const buffRow = this.scene.add.container(0, buffRowY);
     container.add(buffRow);
 
-    this.fieldContainer.add(container);
+    parentContainer.add(container);
 
     const record = {
       container, frame, troop, person, isAttacker, slotIndex, baseX: x, baseY: y,
-      hpBarBg, hpBarFill, hpHoverText, hpBarW, maxHp,
-      armorBarBg, armorBarFill, armorHoverText,
-      manaBarBg, manaBarFill, manaHoverText, manaBarW, maxMana,
+      rowContainer: parentContainer, // 所属的这一路容器，_handleDragEnd 换算绝对坐标时需要
+      canRevealStats,
+      hpBarBg, hpBarFill, hpValueText, hpBarW, maxHp,
+      armorBarBg, armorBarFill, armorValueText,
+      manaBarBg, manaBarFill, manaValueText, manaBarW, maxMana,
       buffRow,
     };
     this.slotSprites.push(record);
@@ -688,8 +925,9 @@ export class BattleSystem {
         };
         // 把当前卡牌提升到显示列表最上层，确保拖拽悬停在其他卡牌上方时可见
         // （Container 默认按添加顺序渲染，setDepth 对普通 Container 子元素不生效，
-        //   必须用 bringToTop 调整其在 fieldContainer.list 中的位置）
-        this.fieldContainer.bringToTop(container);
+        //   必须用 bringToTop 调整其在所属父容器 list 中的位置——现在卡牌实际挂在
+        //   每一路自己的 rowContainer 下面，所以要提升的是 parentContainer 而不是 fieldContainer）
+        parentContainer.bringToTop(container);
         frame.setStrokeStyle(2, 0xffd700, 1);
       });
 
@@ -708,34 +946,139 @@ export class BattleSystem {
     }
   }
 
-  // ── 更新护甲条显示（受伤/护甲恢复后调用）──────────
-  // 护盾不存在上限，只有当前值：始终满宽显示，只需切换可见性（为0时隐藏）
+  // ── 更新护甲条显示（受伤扣减/护甲归零后调用）──────────
+  // 护盾不存在上限，只有当前值：始终满宽显示，只需切换可见性（为0时隐藏）。
+  // 注意：护甲"增加"时不要调用这个方法——应该调用 _animateArmorGain 播放增长动画，
+  // 这里始终把蓝条摆回满宽，会直接盖掉动画效果。
   _updateArmorBar(record) {
     if (!record) return;
-    const { troop, armorBarBg, armorBarFill } = record;
+    const { troop, armorBarBg, armorBarFill, armorValueText, canRevealStats, hpBarW } = record;
     const hasArmor = (troop.currentArmor ?? 0) > 0;
     armorBarBg.setVisible(hasArmor);
     armorBarFill.setVisible(hasArmor);
+    this.scene.tweens.killTweensOf(armorBarFill);
+    armorBarFill.displayWidth = hpBarW; // 非"增加"场景（例如护甲被扣减到0后又被完全清空）始终满宽显示
+    // 己方兵组的护甲数值常驻显示，随护甲变化同步刷新文字内容
+    if (canRevealStats && armorValueText) {
+      armorValueText.setText(`${Math.max(0, troop.currentArmor ?? 0)}`);
+      armorValueText.setVisible(hasArmor);
+    }
+  }
+
+  /**
+   * 护甲"增加"专用动画（例如寒冰盾施加护甲）：
+   *   1. 先把蓝色填充条瞬间收缩成"旧护甲值 / 新护甲值"的比例——视觉上相当于
+   *      把护甲条的满格容量瞬间扩大到新的护甲值，但填充部分还停留在旧数值，
+   *      所以旧数值现在只占新容量的一部分（例如旧值5、新值7，蓝条先收缩到 5/7 宽度）；
+   *   2. 再用补间动画把蓝条从这个比例过渡到满宽——代表护甲真正"涨"上来，
+   *      最终视觉效果和 _updateArmorBar 平时的"始终满宽"保持一致。
+   * 数值文字（右侧显示的具体数字）直接刷新成最终结果，不参与这个过渡动画，
+   * 和血量/魔力条的处理方式一致（见 _updateHpBar/_updateManaBar）。
+   * 这只是装饰性动画，不接入 _beginEffect/_endEffect 计数——护甲增加不需要阻塞回合推进。
+   * @param {object} record
+   * @param {number} oldVal - 增加前的护甲值
+   * @param {number} newVal - 增加后的护甲值（调用方需保证 newVal > oldVal）
+   */
+  _animateArmorGain(record, oldVal, newVal) {
+    if (!record) return;
+    const { armorBarBg, armorBarFill, armorValueText, canRevealStats, hpBarW } = record;
+    armorBarBg.setVisible(true);
+    armorBarFill.setVisible(true);
+
+    if (canRevealStats && armorValueText) {
+      armorValueText.setText(`${Math.max(0, newVal)}`);
+      armorValueText.setVisible(true);
+    }
+
+    // 旧值相对新值的占比：newVal 大于0时才有意义（调用前已保证是"增加"场景，newVal>oldVal>=0）
+    const startRatio = newVal > 0 ? Phaser.Math.Clamp(oldVal / newVal, 0, 1) : 0;
+    this.scene.tweens.killTweensOf(armorBarFill);
+    armorBarFill.displayWidth = hpBarW * startRatio; // 第一步：瞬间收缩成"旧值/新值"的比例，不做过渡
+
+    // 第二步：从这个比例补间过渡到满宽
+    this.scene.tweens.add({
+      targets: armorBarFill,
+      displayWidth: hpBarW,
+      duration: 350,
+      ease: 'Cubic.easeOut',
+    });
+  }
+
+  /**
+   * 用补间动画把一条"从左边缘往右延伸"的填充条（origin 是 (0,0.5)，左边缘固定在
+   * 卡牌上的锚点位置不动）的显示宽度，从当前值过渡到目标宽度——由于左边缘不动，
+   * 视觉上就是右边缘向左（变短/减少）或向右（变长/增加）滑动，而不是瞬间跳变。
+   * 血条、法力条都是这种"左对齐、右边缘随数值变化"的条形，共用这一个过渡逻辑。
+   * 会先清掉这个对象身上可能还没播完的旧补间，避免连续变化时新旧动画叠加冲突。
+   *
+   * @param {Phaser.GameObjects.Rectangle} fillObj
+   * @param {number} targetWidth
+   * @param {object} [effectTarget] - 传入时（例如血条），把这次动画也算进通用的
+   *   "结算动画"计数（_beginEffect/_endEffect，和伤害飘字用的是同一套），
+   *   动画播完前不会进入这个目标自己的阵亡结算，也不会推进到下一个兵组的回合——
+   *   即"上一个角色事件里的所有动画都播完，才会开始下一个角色的回合"。
+   *   不传（例如法力条）则只是纯视觉过渡，不参与结算时机的等待。
+   */
+  _tweenBarWidth(fillObj, targetWidth, effectTarget = null) {
+    this.scene.tweens.killTweensOf(fillObj);
+
+    // 如果这个填充条上一次登记的"结算动画"效果还没等到 onComplete 就被上面这行
+    // killTweensOf 打断了，需要先手动把它收尾掉——否则 _pendingEffectCount 会
+    // 永久多算一个，导致后面永远等不到"所有动画播完"，卡死在这一回合走不下去。
+    if (fillObj._hpAnimPending) {
+      fillObj._hpAnimPending = false;
+      this._endEffect(fillObj._hpAnimEffectTarget);
+    }
+
+    if (effectTarget) {
+      fillObj._hpAnimPending = true;
+      fillObj._hpAnimEffectTarget = effectTarget;
+      this._beginEffect(effectTarget);
+    }
+
+    this.scene.tweens.add({
+      targets: fillObj,
+      displayWidth: Math.max(0, targetWidth),
+      duration: 350,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        if (fillObj._hpAnimPending) {
+          fillObj._hpAnimPending = false;
+          this._endEffect(fillObj._hpAnimEffectTarget);
+        }
+      },
+    });
   }
 
   // ── 更新法力条显示（消耗/恢复法力后调用）──────────
+  // 纯视觉过渡，不算进结算动画——消耗/恢复法力本身不参与"这一回合有没有播完"的判定
   _updateManaBar(record) {
     if (!record) return;
-    const { troop, manaBarFill, manaBarW, maxMana } = record;
+    const { troop, manaBarFill, manaBarW, maxMana, manaValueText, canRevealStats } = record;
     const mana = Math.max(0, troop.currentMana ?? 0);
     const ratio = maxMana > 0 ? Phaser.Math.Clamp(mana / maxMana, 0, 1) : 0;
-    manaBarFill.setDisplaySize(manaBarW * ratio, manaBarFill.height);
+    this._tweenBarWidth(manaBarFill, manaBarW * ratio);
+    // 己方兵组的魔力数值常驻显示，随魔力变化同步刷新文字内容
+    if (canRevealStats && manaValueText) {
+      manaValueText.setText(`${mana}/${maxMana}`);
+    }
   }
 
   // ── 更新血条显示（战斗中受伤/治疗后调用）───────────
   _updateHpBar(record) {
     if (!record) return;
-    const { troop, hpBarFill, hpBarW, maxHp } = record;
+    const { troop, hpBarFill, hpBarW, maxHp, hpValueText, canRevealStats } = record;
     const cur = Math.max(0, troop.currentHp ?? 0);
     const ratio = maxHp > 0 ? Phaser.Math.Clamp(cur / maxHp, 0, 1) : 0;
-    hpBarFill.setDisplaySize(hpBarW * ratio, hpBarFill.height);
-    // 血量过低时变红提示
+    // 血量变动动画和伤害飘字一样算进结算动画：播完之前不会触发这个目标的阵亡结算，
+    // 也不会推进到下一个兵组的回合（见 _tweenBarWidth 的 effectTarget 说明）
+    this._tweenBarWidth(hpBarFill, hpBarW * ratio, troop);
+    // 血量过低时变红提示——颜色切换是瞬时的，不需要过渡动画
     hpBarFill.setFillStyle(ratio <= 0.25 ? 0xc0392b : 0x2ecc40, 1);
+    // 己方兵组的体力数值常驻显示，随血量变化同步刷新文字内容
+    if (canRevealStats && hpValueText) {
+      hpValueText.setText(`${cur}/${maxHp}`);
+    }
   }
 
   /**
@@ -776,11 +1119,13 @@ export class BattleSystem {
         : this.scene.add.rectangle(0, 0, ICON, ICON, 0x552222, 0.9).setStrokeStyle(1, 0xffaa33, 0.9);
       iconContainer.add(iconObj);
 
-      // 剩余轮次数：图标左下角
-      iconContainer.add(this.scene.add.text(-ICON / 2, ICON / 2, `${rounds}`, {
-        fontSize: '9px', color: '#ffffff', fontStyle: 'bold', padding: { top: 2 },
-        stroke: '#000000', strokeThickness: 2,
-      }).setOrigin(0, 1));
+      // 剩余轮次数：图标左下角——永久buff（rounds 为 Infinity，例如嘲讽）不显示这个数字
+      if (Number.isFinite(rounds)) {
+        iconContainer.add(this.scene.add.text(-ICON / 2, ICON / 2, `${rounds}`, {
+          fontSize: '9px', color: '#ffffff', fontStyle: 'bold', padding: { top: 2 },
+          stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0, 1));
+      }
 
       // 透明命中区域：负责悬浮浮窗交互，不影响图标本身显示
       const hitZone = this.scene.add.rectangle(0, 0, ICON, ICON, 0, 0)
@@ -814,9 +1159,12 @@ export class BattleSystem {
       return;
     }
 
-    // 找出组内各槽位的目标 X 坐标，选出离当前拖拽位置最近的槽位
+    // 找出组内各槽位的目标 X 坐标，选出离当前拖拽位置最近的槽位。
+    // record.container.x 是相对于所属 rowContainer 的局部坐标，若这一路正处于
+    // 横向滚动状态（rowContainer.x !== 0），需要加回这个偏移量才能还原成绝对屏幕坐标，
+    // 和下面按绝对坐标算出来的 slotX 放在同一个坐标系里比较。
     const centerX = this.scene.scale.width / 2;
-    const dragFinalX = record.container.x;
+    const dragFinalX = record.container.x + (record.rowContainer?.x ?? 0);
 
     let bestIndex = curIndex;
     let bestDist = Infinity;
@@ -907,6 +1255,15 @@ export class BattleSystem {
     this._logLines = [];
     this._logScrollY = 0;
 
+    // 用于计算换行结果的"测量专用" Text 对象：字号/换行配置和真正显示的战斗记录文字
+    // 完全一致，但本身不可见、不加入 _logContent——只是借助 Phaser 自带的 useAdvancedWrap
+    // 换行算法，算出"这段文字会被自动分成哪几行"，这样就不需要自己重新实现一套中文换行
+    // 逻辑，同时又能对换行后的每一行分别按关键词做局部变色（见 _renderRichLogLine）。
+    this._logMeasureText = this.scene.add.text(0, 0, '', {
+      fontSize: '13px', padding: { top: 4 },
+      wordWrap: { width: this._logAreaW, useAdvancedWrap: true },
+    }).setVisible(false);
+
     // 滚动条（贴文字区域右侧，轨道+滑块都在预留出的空间里，不会盖住文字）
     this._logScrollbarX = contentX + this._logAreaW + scrollbarGap + scrollbarW / 2;
     this._logScrollbarTrackTop = areaTop;
@@ -947,11 +1304,100 @@ export class BattleSystem {
   }
 
   /**
-   * 追加一条战斗记录，自动滚动到最新内容。
-   * useAdvancedWrap:true 是必须的——中文没有空格分词，Phaser 默认的 wordWrap
-   * 只按空格换行，不会对中文断行；必须用"高级"模式才会按字符宽度真正换行，
-   * 一行显示不下时才会自动分成两行。
+   * 战斗记录里需要高亮成黄色的关键词表：所有兵种名称（MILITARY_UNIT 的 name）+
+   * 所有技能名称（MILITARY_SKILL 的 name）+ 硬编码的"普通攻击"（它不是 MILITARY_SKILL
+   * 里的条目，是 _executeAction 里单独拼出来的技能名）。这两张表在游戏运行期间不会变化，
+   * 懒加载后缓存在 this._logHighlightTerms 上，不需要每条战斗记录都重新构建一次。
+   * 按字符串长度从长到短排序，保证匹配时优先匹配更长的名字，避免短名字恰好是
+   * 另一个长名字的前缀时被提前截断误判。
+   * @returns {string[]}
    */
+  _getLogHighlightTerms() {
+    if (this._logHighlightTerms) return this._logHighlightTerms;
+    const terms = new Set(['普通攻击']);
+    for (const tmpl of Object.values(MILITARY_UNIT)) {
+      if (tmpl?.name) terms.add(tmpl.name);
+    }
+    for (const skill of Object.values(MILITARY_SKILL)) {
+      if (skill?.name) terms.add(skill.name);
+    }
+    this._logHighlightTerms = [...terms].sort((a, b) => b.length - a.length);
+    return this._logHighlightTerms;
+  }
+
+  /**
+   * 把一段文本按 _getLogHighlightTerms() 里的关键词切分成若干片段：
+   * 命中关键词的片段 { text, highlight: true }（渲染成黄色），其余片段
+   * { text, highlight: false }（默认颜色）。采用贪心最长匹配，每个位置优先尝试
+   * 匹配最长的关键词，命中后跳过这段关键词的长度，不会出现重叠匹配。
+   * @param {string} text
+   * @returns {{ text: string, highlight: boolean }[]}
+   */
+  _splitLogHighlights(text) {
+    const terms = this._getLogHighlightTerms();
+    const segments = [];
+    let i = 0;
+    let plainStart = 0;
+    while (i < text.length) {
+      let matched = null;
+      for (const term of terms) {
+        if (term.length > 0 && text.startsWith(term, i)) { matched = term; break; }
+      }
+      if (matched) {
+        if (i > plainStart) segments.push({ text: text.slice(plainStart, i), highlight: false });
+        segments.push({ text: matched, highlight: true });
+        i += matched.length;
+        plainStart = i;
+      } else {
+        i++;
+      }
+    }
+    if (plainStart < text.length) segments.push({ text: text.slice(plainStart), highlight: false });
+    return segments;
+  }
+
+  /**
+   * 渲染一条"富文本"战斗记录：兵组名/技能名等关键词高亮显示成黄色，其余文字保持原本的
+   * 暖白色（PANEL_TEXT_COLOR）。
+   *
+   * 换行规则完全复用 Phaser Text 自带的高级自动换行算法（useAdvancedWrap，按字符宽度
+   * 对中文断行）——先用 this._logMeasureText（不可见的"测量专用"Text，配置和这里要
+   * 显示的文字完全一致）跑一遍换行，拿到跟"直接把整段文字塞进一个 Text 对象"完全一样的
+   * 换行结果（各物理行的文字），再对每一行分别按关键词切分成若干色块，用多个小 Text
+   * 对象左右拼接渲染——这样既不需要重新实现一套换行算法，又能做到"部分文字变色"。
+   * （极端情况下如果某个关键词恰好被换行断开在两行之间，跨行的那部分不会被识别高亮，
+   * 是可以接受的小瑕疵，不影响正常阅读。）
+   *
+   * @param {string} text - 完整的这一条战斗记录文本
+   * @param {number} y - 这一行在 _logContent 容器内的起始 y 坐标
+   * @returns {{ container: Phaser.GameObjects.Container, y: number, height: number }}
+   */
+  _renderRichLogLine(text, y) {
+    const measure = this._logMeasureText;
+    measure.setText(text);
+    const wrappedLines = measure.getWrappedText(text);
+    const totalHeight = measure.height;
+    const lineHeight = wrappedLines.length > 0 ? totalHeight / wrappedLines.length : totalHeight;
+
+    const container = this.scene.add.container(0, y);
+
+    wrappedLines.forEach((line, lineIndex) => {
+      const segments = this._splitLogHighlights(line);
+      let x = 0;
+      segments.forEach(seg => {
+        if (seg.text.length === 0) return;
+        const segTxt = this.scene.add.text(x, lineIndex * lineHeight, seg.text, {
+          fontSize: '13px', color: seg.highlight ? LOG_HIGHLIGHT_COLOR : PANEL_TEXT_COLOR, padding: { top: 4 },
+        }).setOrigin(0, 0);
+        container.add(segTxt);
+        x += segTxt.width;
+      });
+    });
+
+    return { container, y, height: totalHeight };
+  }
+
+  /** 追加一条战斗记录，自动滚动到最新内容（具体的换行/变色渲染见 _renderRichLogLine）。 */
   _logBattle(text) {
     if (!this._logContent) { console.log(text); return; }
 
@@ -960,14 +1406,12 @@ export class BattleSystem {
       const last = this._logLines[this._logLines.length - 1];
       y = last.y + last.height + 4;
     }
-    const txt = this.scene.add.text(0, y, text, {
-      fontSize: '13px', color: PANEL_TEXT_COLOR, padding: { top: 4 },
-      wordWrap: { width: this._logAreaW, useAdvancedWrap: true },
-    }).setOrigin(0, 0);
-    this._logContent.add(txt);
-    this._logLines.push(txt);
 
-    const contentH = y + txt.height;
+    const line = this._renderRichLogLine(text, y);
+    this._logContent.add(line.container);
+    this._logLines.push(line);
+
+    const contentH = y + line.height;
     const maxScroll = Math.max(0, contentH - this._logAreaH);
     this._logScrollY = maxScroll;
     this._logContent.setY(this._logContentTopY - this._logScrollY);
@@ -1047,10 +1491,36 @@ export class BattleSystem {
     // 正式进入战斗：把每个兵组对象升级为 Player 类实例（拥有 attack/useSkill 等方法）
     this._convertTroopsToPlayerClass();
 
+    // 游戏开始时：所有初始兵组按站位顺序（沿用行动顺序的排序规则）依次触发各自
+    // "游戏开始时"生效的技能（例如嘲讽——见 _fireSkillHook 的说明；注意这里只
+    // 触发 onGameStart，不是 onEnterBattlefield——这些初始兵组不算"登场"，
+    // 后续如果因为某种效果被重新登场，则会另外触发一次 onEnterBattlefield）。
+    // 必须放在 _convertTroopsToPlayerClass() 之后，此时每个兵组才是 Player 实例，
+    // 才能调用 applyBuff 等方法。
+    const initialTroops = [
+      ...this.attackers.flatMap(p => p.troops ?? []),
+      ...this.defenders.flatMap(p => p.troops ?? []),
+    ].sort((a, b) => this._compareByActionOrder(a, b));
+    initialTroops.forEach(troop => this._fireSkillHook('onGameStart', troop));
+
     // 战斗开始后不再允许拖拽调整站位，且默认不存在任何点击/拖拽事件——
     // 交互只在目标选择期间（_beginTargeting）对候选目标临时开启，选择结束即关闭
+    //
+    // 注意：disableInteractive() 只是把 input.enabled 置为 false，并不会清除
+    // 备战阶段（_renderTroopSlot）里给我方兵组卡牌设置过的 draggable 状态和
+    // dragstart/drag/dragend 监听。如果某个技能允许选择我方自己的兵组作为目标
+    // （pool: 'ally'，且不是 auto 自动选择，例如"寒冰盾"），_beginTargeting()
+    // 会对候选卡牌重新调用 setInteractive()，这会让之前残留的 draggable 状态
+    // 重新生效——玩家在选择目标时如果不小心拖动了卡牌，就会触发 _handleDragEnd()
+    // 里的 _renderField()，把所有卡牌销毁重建，而 _targetingHandlers 里还留着
+    // 指向旧卡牌（已销毁对象）的引用，之后 _endTargeting() 再对它调用
+    // disableInteractive() 时就会因为对象内部 scene 引用已被清空而报错
+    // "Cannot read properties of undefined (reading 'sys')"。
+    // 这里显式调用 setDraggable(frame, false) 彻底关闭拖拽能力，
+    // 这样即使目标选择时重新 setInteractive()，卡牌也不会恢复可拖拽。
     this._battleStarted = true;
     this.slotSprites.forEach(r => {
+      this.scene.input.setDraggable(r.frame, false);
       r.frame.disableInteractive();
     });
 
@@ -1162,8 +1632,8 @@ export class BattleSystem {
   _checkBattleEnd() {
     if (this._battleEnded) return true;
 
-    const attackersAlive = this.attackers.some(p => (p.troops ?? []).some(t => (t.currentHp ?? 0) > 0));
-    const defendersAlive = this.defenders.some(p => (p.troops ?? []).some(t => (t.currentHp ?? 0) > 0));
+    const attackersAlive = this.attackers.some(p => (p.troops ?? []).some(t => isOnBattlefield(t)));
+    const defendersAlive = this.defenders.some(p => (p.troops ?? []).some(t => isOnBattlefield(t)));
 
     if (attackersAlive && defendersAlive) return false; // 双方都还有存活兵组，战斗继续
 
@@ -1229,7 +1699,7 @@ export class BattleSystem {
     ];
 
     return allTroops
-      .filter(t => (t.currentHp ?? 0) > 0)                 // 只有存活的兵组参与
+      .filter(t => isOnBattlefield(t))                     // 只有存活且未消逝的兵组参与
       .filter(t => t.summonedOnRound !== roundNumber)       // 本回合刚召唤的不行动
       .sort((a, b) => this._compareByActionOrder(a, b));
   }
@@ -1268,7 +1738,7 @@ export class BattleSystem {
    *          具体是否要对本次事件生效由 trigger 函数自己判断，例如诅咒的
    *          onUseSkill 里会检查 ctx.actor === meta.holder，只对buff持有者自己生效）
    *
-   * @param {string} hookName - 触发时机名，例如 'onUseSkill'、'onRoundEnd'
+   * @param {string} hookName - 触发时机名，例如 'onUseSkill'、'onRoundEnd'、'onBeforeDamage'
    * @param {object} [ctx]    - 传给每个 trigger 函数的事件数据，函数可直接修改它
    * @returns {object} ctx（便于调用方链式读取被修改后的结果）
    */
@@ -1276,7 +1746,7 @@ export class BattleSystem {
     const allTroops = [
       ...this.attackers.flatMap(p => p.troops ?? []),
       ...this.defenders.flatMap(p => p.troops ?? []),
-    ].filter(t => (t.currentHp ?? 0) > 0);
+    ].filter(t => isOnBattlefield(t));
 
     const ordered = [...allTroops].sort((a, b) => this._compareByActionOrder(a, b));
 
@@ -1298,8 +1768,8 @@ export class BattleSystem {
 
   // ── 逐个处理行动队列中的下一个兵组 ─────────────────
   _processNextTurn() {
-    // 先剔除本回合中途已阵亡的兵组
-    this.turnOrder = this.turnOrder.filter(t => (t.currentHp ?? 0) > 0);
+    // 先剔除本回合中途已阵亡（含已消逝）的兵组
+    this.turnOrder = this.turnOrder.filter(t => isOnBattlefield(t));
 
     this._clearActiveHighlight();
 
@@ -1897,12 +2367,12 @@ export class BattleSystem {
 
   _getAliveEnemies(troop) {
     const enemySide = troop.isAttackerSide ? this.defenders : this.attackers;
-    return enemySide.flatMap(p => p.troops).filter(t => (t.currentHp ?? 0) > 0);
+    return enemySide.flatMap(p => p.troops).filter(t => isOnBattlefield(t));
   }
 
   _getAliveAllies(troop) {
     const ownSide = troop.isAttackerSide ? this.attackers : this.defenders;
-    return ownSide.flatMap(p => p.troops).filter(t => (t.currentHp ?? 0) > 0);
+    return ownSide.flatMap(p => p.troops).filter(t => isOnBattlefield(t));
   }
 
   /**
@@ -1920,7 +2390,7 @@ export class BattleSystem {
     const enemySide = troop.isAttackerSide ? this.defenders : this.attackers;
     const fronts = [];
     for (const person of enemySide) {
-      const frontmost = (person.troops ?? []).find(t => (t.currentHp ?? 0) > 0);
+      const frontmost = (person.troops ?? []).find(t => isOnBattlefield(t));
       if (frontmost) fronts.push(frontmost);
     }
     return fronts;
@@ -1928,12 +2398,35 @@ export class BattleSystem {
 
   /**
    * 根据行动类型返回可选目标：
-   *   普通攻击：只能选择敌方每一路站位最靠前的存活兵组（可能并列多路）
+   *   普通攻击：只能选择敌方每一路站位最靠前的存活兵组（可能并列多路），
+   *             但受"嘲讽"重定向规则约束，见 _getTauntAdjustedFrontmostEnemies
    *   技能：暂不限制，可选任意存活敌方
    */
   _getValidTargetsForAction(troop, actionKey) {
     if (actionKey !== 'normal_attack') return this._getAliveEnemies(troop);
-    return this._getFrontmostEnemies(troop);
+    return this._getTauntAdjustedFrontmostEnemies(troop);
+  }
+
+  /**
+   * 普通攻击专用的目标计算：默认取每一路敌方站位最靠前的存活兵组（_getFrontmostEnemies），
+   * 但如果某一路里存在存活且持有【嘲讽】buff（buff key = 20，登场时由嘲讽技能施加，
+   * 见 military_skill.js 的 onGameStart/onEnterBattlefield）的单位，则该路的普通攻击目标只能是
+   * 这个嘲讽单位本身——不管它实际站在哪个位置，替换掉默认的"站位最靠前"目标。
+   *
+   * 注意：这个重定向只影响"普通攻击"的目标计算，不修改 getFrontmostEnemies()/
+   * _getFrontmostEnemies() 本身——技能内部依赖"纯粹按站位取最前排"语义的逻辑
+   * （例如秘术·回旋的起点判定）不会被嘲讽影响，符合嘲讽描述里"普通攻击"这个限定范围。
+   */
+  _getTauntAdjustedFrontmostEnemies(troop) {
+    const enemySide = troop.isAttackerSide ? this.defenders : this.attackers;
+    const result = [];
+    for (const person of enemySide) {
+      const troops = person.troops ?? [];
+      const taunter = troops.find(t => isOnBattlefield(t) && t.hasBuff?.(20));
+      const frontmost = taunter ?? troops.find(t => isOnBattlefield(t));
+      if (frontmost) result.push(frontmost);
+    }
+    return result;
   }
 
   /**
@@ -1956,8 +2449,18 @@ export class BattleSystem {
    *   [2, 5]   → 至少选 2 个，至多选 5 个
    *   [3]      → 固定选 3 个（等价于数字 3）
    *
+   * count 还支持传入函数 (player) => number|[min,max]，用于"数量取决于施法者自身数值"
+   * 的技能（例如流星火雨"至多等同于自身等级数量个目标"，等级因单位而异，无法写死）——
+   * 计算候选时会先用当前 troop 调用一次这个函数，取得真正的 count 配置再走上面三种写法。
+   *
    * count 会向 filter 结果让步：filter 筛出的候选数量若少于 min/max，
    * 实际可选数量会被裁剪到不超过候选数量（即使配置要求更多也无法凭空生出目标）。
+   *
+   * 嘲讽约束（见 _applyTauntConstraint）：敌方存在存活的嘲讽单位时，
+   * "单目标"技能（解析出来的 max === 1）的候选会被收紧为"敌方全部嘲讽单位"；
+   * 有数量要求的技能（max > 1）无视嘲讽，候选不受影响；只对候选池是敌方的技能生效，
+   * 目标池是己方（pool:'ally'）的技能不受此约束。普通攻击不经过这里，
+   * 有自己单独的"每一路取最靠前的嘲讽者"规则，见 _getTauntAdjustedFrontmostEnemies。
    *
    * @returns {{ candidates: Player[], min: number, max: number }}
    */
@@ -1970,23 +2473,63 @@ export class BattleSystem {
     const targeting = skillDef?.targeting;
 
     if (!targeting) {
-      // 没有自定义 targeting 配置的技能：沿用旧行为——任意存活敌方，单目标
-      const candidates = this._getAliveEnemies(troop);
+      // 没有自定义 targeting 配置的技能：沿用旧行为——任意存活敌方，单目标，
+      // 属于"允许选择任意目标"的技能，同样受嘲讽约束
+      let candidates = this._getAliveEnemies(troop);
+      candidates = this._applyTauntConstraint(troop, candidates, 1);
       return { candidates, min: Math.min(1, candidates.length), max: Math.min(1, candidates.length) };
     }
 
     const pool = targeting.pool === 'ally' ? this._getAliveAllies(troop) : this._getAliveEnemies(troop);
-    const candidates = typeof targeting.filter === 'function'
+    let candidates = typeof targeting.filter === 'function'
       ? pool.filter(c => targeting.filter(troop, c))
       : pool;
 
-    const { min, max } = this._normalizeCount(targeting.count ?? 1);
+    const rawCount = typeof targeting.count === 'function'
+      ? targeting.count(troop)
+      : (targeting.count ?? 1);
+    const { min, max } = this._normalizeCount(rawCount);
+
+    if (targeting.pool !== 'ally') {
+      candidates = this._applyTauntConstraint(troop, candidates, max);
+    }
+
     // count 向 filter 结果让步：不能要求比实际候选数量更多的目标
     return {
       candidates,
       min: Math.min(min, candidates.length),
       max: Math.min(max, candidates.length),
     };
+  }
+
+  /**
+   * 嘲讽约束："对方有存活的嘲讽单位时，己方的攻击只能选择这些嘲讽单位"——
+   * 但只对"单目标"技能生效（resolvedMax === 1，即允许选择任意目标的技能）：
+   * 敌方存在嘲讽单位时，候选收紧为候选池和"敌方全部嘲讽单位"的交集
+   * （不区分嘲讽单位分属哪个人/哪一路，本身就允许选任意目标，收紧后仍是任选其一）；
+   * 有多个嘲讽单位时，同样按各自技能原本的 filter 规则筛选，不额外指定"选哪一个"。
+   * "有数量要求的技能"（resolvedMax > 1，固定多个/区间/按等级动态等）无视嘲讽，
+   * 候选不受影响，原样返回。
+   *
+   * 特殊情况——技能本身带有前提条件（targeting.filter）时：如果敌方的嘲讽单位
+   * 里没有一个满足这个技能自己的前提条件（交集为空），说明嘲讽单位对这个技能
+   * 来说根本不是合法目标，这时不应该收紧到"无候选可选"，而是退回技能自己筛选出的
+   * 候选列表（即视为嘲讽对这个技能不生效），仍然从满足前提条件的目标里正常选择。
+   * @param {Player} troop
+   * @param {Player[]} candidates - 已经过技能自身 pool/filter 筛选后的候选
+   * @param {number} resolvedMax - 这次技能已经解析出来的最大可选数量
+   * @returns {Player[]}
+   */
+  _applyTauntConstraint(troop, candidates, resolvedMax) {
+    if (resolvedMax > 1) return candidates; // 有数量要求的技能无视嘲讽
+    const enemySide = troop.isAttackerSide ? this.defenders : this.attackers;
+    const taunters = enemySide.flatMap(p => p.troops ?? [])
+      .filter(t => isOnBattlefield(t) && t.hasBuff?.(20));
+    if (taunters.length === 0) return candidates;
+    const restricted = candidates.filter(c => taunters.includes(c));
+    // 嘲讽单位里没有一个满足技能自身前提条件：嘲讽对这个技能不生效，
+    // 退回未被嘲讽收紧过的候选列表，而不是让候选变成空
+    return restricted.length > 0 ? restricted : candidates;
   }
 
   /**
@@ -2102,10 +2645,11 @@ export class BattleSystem {
 
     const useNormalAttack = !isSkill || converted;
 
-    // 被转化为普通攻击时，沿用普通攻击自身的目标规则（敌方每路站位最靠前的存活兵组），
-    // 而不是复用原技能已经选好的目标——两者的候选池/数量规则可能完全不同
+    // 被转化为普通攻击时，沿用普通攻击自身的目标规则（敌方每路站位最靠前的存活兵组，
+    // 且同样受嘲讽重定向约束），而不是复用原技能已经选好的目标——
+    // 两者的候选池/数量规则可能完全不同
     const attackTarget = useNormalAttack
-      ? (isSkill ? (troop.getFrontmostEnemies()[0] ?? null) : targetOrTargets)
+      ? (isSkill ? (this._getTauntAdjustedFrontmostEnemies(troop)[0] ?? null) : targetOrTargets)
       : null;
 
     const components = useNormalAttack
@@ -2262,6 +2806,9 @@ export class BattleSystem {
     this._hideActionMenu();
     this._endTargeting();
     this._logMaskShape?.destroy();
+    // _logMeasureText 是直接挂在场景显示列表上的测量用对象（没有加入 root 容器），
+    // root.destroy(true) 不会连带销毁它，这里要单独清理
+    this._logMeasureText?.destroy();
     this._battleEndPanel?.destroy(true);
     this._battleEndOverlay?.destroy();
     this.root?.destroy(true);
@@ -2419,15 +2966,34 @@ class Player {
    *   传 { pure: 10 }，不需要凑齐 physical/magic 这些用不到的字段。
    * @param {{ignoreArmor?:boolean}} [options] - 显式传 true/false 可以强制覆盖是否无视护甲；
    *   不传时按 DAMAGE_TYPE 的 ignoreArmor 规则自动判断（例如纯真实伤害会自动无视护甲）。
-   * @returns {number} 实际造成的总伤害数值
+   * @returns {{hit: boolean, total: number, components: Record<string, number>}}
+   *   hit    — 这次攻击是否真正命中并结算了伤害；为 false 表示被"命中前"钩子拦截
+   *            （目前没有任何 buff 会拦截，是为未来的闪避/无效攻击等效果预留的接口）。
+   *   total  — 实际造成的总伤害数值（未命中时为0）。
+   *   components — 原样传回本次的伤害拆分，便于调用方需要时读取。
+   *   像宗教审判这类"必须先命中主目标才会触发后续效果"的复合技能，应该在这次调用后
+   *   检查返回值的 hit 字段，为 false 时中断自己的后续逻辑（诅咒/溅射等），不再执行。
    */
   dealDamage(target, components, options = {}) {
-    if (!this.battle || !target) return 0;
+    if (!this.battle || !target) return { hit: false, total: 0, components: components ?? {} };
+
+    // 命中判定钩子：伤害真正结算前，广播给场上所有 buff 一个介入机会——
+    // 未来实装的闪避、无效攻击等效果，可以在自己声明的 trigger.onBeforeDamage 里
+    // 把 ctx.cancelled 置为 true 来"打断"这次攻击（例如目标身上的闪避buff判定命中率后
+    // 决定回避）。目前 MILITARY_BUFF 里还没有任何 buff 声明这个钩子，广播总是原样返回。
+    const hookCtx = this.battle._fireBuffTrigger('onBeforeDamage', {
+      attacker: this, target, components, cancelled: false,
+    });
+
+    if (hookCtx.cancelled) {
+      return { hit: false, total: 0, components: components ?? {} };
+    }
+
     const total = sumDamageComponents(components);
     const ignoreArmor = options.ignoreArmor ?? inferIgnoreArmor(components);
     this.battle._applyDamage(target, total, { ...options, ignoreArmor });
     this.battle._spawnDamageFloaters(target, components);
-    return total;
+    return { hit: true, total, components };
   }
 
   /** 追加一条战斗记录 */
@@ -2436,7 +3002,8 @@ class Player {
   }
 
   /**
-   * 给目标增加护甲/护盾值，并刷新护甲条显示。
+   * 给目标增加护甲/护盾值，并播放护甲条的"增长"动画（见 BattleSystem._animateArmorGain）：
+   * 蓝条先瞬间收缩成"旧护甲值/新护甲值"的比例，再补间过渡到满宽，直观展示这次增加了多少。
    * 护盾不存在上限，只有当前值——直接叠加到 currentArmor 上即可。
    * 供护盾/增益类技能使用，例如"寒冰盾：给己方1组单位增加10×等级的寒冰护甲"。
    * @param {Player} target
@@ -2445,10 +3012,24 @@ class Player {
    */
   grantArmor(target, amount) {
     if (!this.battle || !target || amount <= 0) return 0;
-    target.currentArmor = (target.currentArmor ?? 0) + amount;
+    const oldArmor = target.currentArmor ?? 0;
+    target.currentArmor = oldArmor + amount;
     const record = this.battle._troopRecordMap.get(target.instanceId);
-    this.battle._updateArmorBar(record);
+    this.battle._animateArmorGain(record, oldArmor, target.currentArmor);
     return amount;
+  }
+
+  /**
+   * 召唤一个新兵组加入自己所在的队伍（战斗中途），例如罗睺一斩杀死目标后
+   * 将其转化为骷髅。受"召唤生物数量上限"（固定为5，与站位队列的战术宽度是
+   * 两条独立的规则）限制——达到上限时返回 null（调用方应据此判断是否要
+   * 播报"无法召唤"的提示）。
+   * @param {string} [unitKey='skeleton'] - MILITARY_UNIT 的 key
+   * @param {object} [statsOverride] - 覆盖召唤物的基础六维（例如沿用被杀死目标自己的数值）
+   * @returns {Player|null}
+   */
+  summonUnit(unitKey = 'skeleton', statsOverride = {}) {
+    return this.battle?._summonTroop(this.owner, unitKey, statsOverride) ?? null;
   }
 
   /**
@@ -2471,13 +3052,29 @@ class Player {
    */
   applyBuff(target, key, rounds) {
     if (!this.battle || !target || !(rounds > 0)) return;
+
+    // 免疫判定：控制类/弱化类 buff 若目标当前持有对应的免疫状态（振奋/玄藏免疫控制类，
+    // 无双/守护免疫弱化类），本次施加直接被拦截，不生效。见 CONTROL_BUFF_KEYS 等分类表。
+    const numericKey = Number(key);
+    if (CONTROL_BUFF_KEYS.has(numericKey) && hasActiveBuffFromSet(target, CONTROL_IMMUNE_BUFF_KEYS)) {
+      this.log(`${target.displayName}免疫控制类异常状态，未受到【${MILITARY_BUFF[key]?.name ?? key}】影响`);
+      return;
+    }
+    if (DEBUFF_BUFF_KEYS.has(numericKey) && hasActiveBuffFromSet(target, DEBUFF_IMMUNE_BUFF_KEYS)) {
+      this.log(`${target.displayName}免疫弱化类异常状态，未受到【${MILITARY_BUFF[key]?.name ?? key}】影响`);
+      return;
+    }
+
     if (!target.buffs) target.buffs = {};
 
     const current = target.buffs[key] ?? 0;
     target.buffs[key] = Math.max(current, rounds);
 
     const buffName = MILITARY_BUFF[key]?.name ?? key;
-    this.log(`${target.displayName}陷入了【${buffName}】状态（剩余${target.buffs[key]}轮）`);
+    // 永久buff（rounds 为 Infinity）不显示剩余轮次数，也不加"（永久）"这个后缀——
+    // 直接显示"XXX陷入了【YYY】状态"即可，见 _updateBuffIcons 里同类的"不显示轮次数字"处理
+    const roundsSuffix = Number.isFinite(target.buffs[key]) ? `（剩余${target.buffs[key]}轮）` : '';
+    this.log(`${target.displayName}陷入了【${buffName}】状态${roundsSuffix}`);
 
     const record = this.battle._troopRecordMap.get(target.instanceId);
     this.battle._updateBuffIcons(record);
@@ -2578,9 +3175,9 @@ class Player {
     return {};
   }
 
-  /** 是否存活 */
+  /** 是否存活——同时排除已打上【消逝】标记的目标，见 isOnBattlefield 的说明 */
   isAlive() {
-    return (this.currentHp ?? 0) > 0;
+    return isOnBattlefield(this);
   }
 }
 

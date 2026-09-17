@@ -223,12 +223,32 @@ export const MILITARY_UNIT = {
     },
     special_ability: {
       Inquisition_dark: true,
+      magic_fire_lv3_1: true,
+      magic_ice_lv1_1: true,
+      mutation_devil_lv2_1: true,
     },
     training: {
       cost: {
         population: 1,
       },
       round: 4,
+    },
+  },
+  // 骷髅——由罗睺一斩（mutation_devil_lv3_1）等技能在战斗中途召唤，不参与正常的兵种训练/征募，
+  // 是一个基础数值很低的"填充型"召唤物（见 military_term.js 的 summon_1 词条说明）。
+  skeleton: {
+    name: "骷髅",
+    type: "summon",
+    image: "assets/military/soliders/skeleton.jpg",
+    quality: 'normal',
+    equipments: {},
+    canCreate: false,
+    basic_stats: {
+    },
+    special_ability: {},
+    training: {
+      cost: {},
+      round: 0,
     },
   },
 };

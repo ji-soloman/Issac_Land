@@ -274,6 +274,12 @@ export class AcademyViewer {
     this.mainContainer = null;
     // 正在处理中的分支升级请求（防止 addAction 的异步回调还没返回时重复点击升级按钮）
     this._pendingUpgradeKeys = new Set();
+    // 正在"浏览"哪个学派的分支（null 表示查看玩家自己真正选择的学派）；
+    // 是否处于"选择/浏览学派列表"这一层界面。这两个字段都是纯临时的展示状态，
+    // 不写进存档——每次重新打开学派面板都会新建一个 AcademyViewer 实例，字段
+    // 自动回到默认值，天然满足"点进去默认还是保持当前学院"的要求。
+    this.viewingSchoolKey = null;
+    this._showSchoolList = false;
     this.create();
   }
 
@@ -423,20 +429,39 @@ export class AcademyViewer {
     this.contentContainer.removeAll(true);
     const schoolKey = this.activeSchoolKey;
     if (!schoolKey) {
-      this.renderChooseSchool();
-    } else {
-      this.renderBranches(schoolKey);
+      // 还没选过学派：只有"选择学派"这一种界面，没有浏览模式
+      this.renderChooseSchool(false);
+      return;
     }
+    if (this._showSchoolList) {
+      // 已经选过学派，但玩家点了"查看其他学院"——展示只读的学派列表
+      this.renderChooseSchool(true);
+      return;
+    }
+    // viewingSchoolKey 为 null 表示当前没有在浏览别的学派，显示自己真正选择的学派；
+    // 不为 null 时显示正在浏览的那个学派（可能等于自己的学派，也可能是别的学派）
+    const viewKey = this.viewingSchoolKey ?? schoolKey;
+    this.renderBranches(viewKey, viewKey === schoolKey);
   }
 
   // ── 第一步：选择学派 ──────────────────────────────────────────────
 
-  renderChooseSchool() {
+  /**
+   * @param {boolean} browseMode 是否是"已经选好学派之后，回来查看其他学派"的只读浏览模式。
+   * false（默认）是最初"从未选择过学派"时的一次性选择流程，点击卡片会调用 chooseSchool
+   * 永久绑定学派；true 时点击卡片只是切换 viewingSchoolKey/_showSchoolList，绝不会调用
+   * chooseSchool，也就永远不会二次绑定学派。
+   */
+  renderChooseSchool(browseMode = false) {
     const { width, height } = this.scene.scale;
 
-    const hint = this._text(width / 2, 100, '请选择一个学派（选定后无法更换或重选）', {
-      fontSize: '18px', color: THEME.accent, fontStyle: 'bold',
-    }).setOrigin(0.5);
+    // 浏览模式下不再单独放一个"返回"链接——点击列表里自己当前学派的卡片
+    // （createSchoolCard 的 isOwn 分支）同样能退出这个列表，回到自己的学派
+    const hint = this._text(
+      width / 2, 100,
+      browseMode ? '查看其他学院的分支与技能（只能查看，无法选择或升级）' : '请选择一个学派（选定后无法更换或重选）',
+      { fontSize: '18px', color: THEME.accent, fontStyle: 'bold' }
+    ).setOrigin(0.5);
     this.contentContainer.add(hint);
 
     const entries = Object.entries(ACADEMY_SKILL);
@@ -452,19 +477,31 @@ export class AcademyViewer {
 
     entries.forEach(([schoolKey, school], index) => {
       const x = startX + index * (cardWidth + spacing);
-      this.createSchoolCard(schoolKey, school, x, y, cardWidth, cardHeight);
+      this.createSchoolCard(schoolKey, school, x, y, cardWidth, cardHeight, browseMode);
     });
   }
 
-  createSchoolCard(schoolKey, school, x, y, cardWidth, cardHeight) {
+  createSchoolCard(schoolKey, school, x, y, cardWidth, cardHeight, browseMode = false) {
+    // 浏览模式下，玩家自己真正选择的那个学派单独标出来（isOwn），点击它只是
+    // 把 viewingSchoolKey 清空、回到"查看自己学派"的状态，不会走 chooseSchool
+    const isOwn = browseMode && schoolKey === this.activeSchoolKey;
+
     const container = this.scene.add.container(x, y);
-    // 选学派这一步还没有"已解锁/未解锁"之分，统一用未解锁底板（素材缺失时退回兜底矩形）
-    this._addCardPanel(container, cardWidth, cardHeight, LOCKED_PANEL_KEY);
+    // 选学派这一步原本统一用未解锁底板；浏览模式下额外用已解锁底板把"当前学派"
+    // 区分出来，素材缺失时退回兜底矩形
+    this._addCardPanel(container, cardWidth, cardHeight, isOwn ? UNLOCKED_PANEL_KEY : LOCKED_PANEL_KEY);
 
     const nameText = this._text(0, -cardHeight / 2 + 30, school.name, {
       fontSize: '22px', color: THEME.textPrimary, fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add(nameText);
+
+    if (isOwn) {
+      const tagText = this._text(0, -cardHeight / 2 + 58, '（当前学派）', {
+        fontSize: '13px', color: THEME.accent, fontStyle: 'bold',
+      }).setOrigin(0.5);
+      container.add(tagText);
+    }
 
     const branchNames = Object.values(school.category ?? {}).map(c => c.name).join('\n');
     const branchList = this._text(0, 10, branchNames, {
@@ -472,9 +509,11 @@ export class AcademyViewer {
     }).setOrigin(0.5);
     container.add(branchList);
 
-    const hintText = this._text(0, cardHeight / 2 - 26, '点击选择', {
-      fontSize: '14px', color: THEME.success, fontStyle: 'bold',
-    }).setOrigin(0.5);
+    const hintText = this._text(
+      0, cardHeight / 2 - 26,
+      browseMode ? (isOwn ? '点击返回' : '点击查看') : '点击选择',
+      { fontSize: '14px', color: THEME.success, fontStyle: 'bold' }
+    ).setOrigin(0.5);
     container.add(hintText);
 
     const hitArea = this.scene.add.rectangle(0, 0, cardWidth, cardHeight, 0xffffff, 0)
@@ -482,7 +521,18 @@ export class AcademyViewer {
     container.add(hitArea);
     hitArea.on('pointerover', () => container.setScale(1.03));
     hitArea.on('pointerout', () => container.setScale(1));
-    hitArea.on('pointerdown', () => this.chooseSchool(schoolKey));
+    hitArea.on('pointerdown', () => {
+      if (browseMode) {
+        // 浏览模式下点击卡片只是切换"正在查看"的学派，绝不会调用 chooseSchool——
+        // 真正绑定学派的入口始终只有非浏览模式（首次选择）下的这一处，保证学派
+        // 一旦选定就不可更改
+        this.viewingSchoolKey = isOwn ? null : schoolKey;
+        this._showSchoolList = false;
+        this.render();
+        return;
+      }
+      this.chooseSchool(schoolKey);
+    });
 
     this.contentContainer.add(container);
   }
@@ -501,15 +551,46 @@ export class AcademyViewer {
 
   // ── 第二步：分支列表（选择分支 / 升级分支）────────────────────────────
 
-  renderBranches(schoolKey) {
+  /**
+   * @param {string} schoolKey 要展示分支的学派——正常情况下等于玩家自己的 activeSchoolKey，
+   * 浏览模式下可以是任意学派 key。
+   * @param {boolean} isActiveSchool 这个 schoolKey 是否就是玩家自己真正选择的学派。为 false
+   * 时表示"只读浏览别的学派"：不显示学院区数量警告，分支的"解锁分支"按钮永远不可点——
+   * 已经解锁的分支天然只可能出现在玩家自己的学派下（getCategoryLevel 读的是
+   * saveData.academy.schools[schoolKey]，别的学派在这里永远没有记录，level 恒为 0），
+   * 所以已解锁分支的"升级"按钮代码路径本身就不会在浏览别的学派时被触发，不需要额外加判断。
+   */
+  renderBranches(schoolKey, isActiveSchool = true) {
     const school = ACADEMY_SKILL[schoolKey];
     if (!school) return; // 数据异常兜底，理论上不会发生
 
     const { width, height } = this.scene.scale;
 
-    const subTitle = this._text(width / 2, 95, `当前学派：${school.name}`, {
-      fontSize: '20px', color: THEME.accent, fontStyle: 'bold',
-    }).setOrigin(0.5);
+    // 查看自己学派时提供"查看其他学院 >"入口；正在浏览别的学派时提供
+    // "‹ 返回我的学派"，两者共用同一行位置，切换只影响文字/点击回调
+    const toggleLink = this._text(
+      width - 40, 70,
+      isActiveSchool ? '查看其他学院 >' : '‹ 返回我的学派',
+      { fontSize: '15px', color: THEME.textSecondary, fontStyle: 'bold' }
+    ).setOrigin(1, 0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => toggleLink.setColor(THEME.accent))
+      .on('pointerout', () => toggleLink.setColor(THEME.textSecondary))
+      .on('pointerdown', () => {
+        if (isActiveSchool) {
+          this._showSchoolList = true;
+        } else {
+          this.viewingSchoolKey = null;
+        }
+        this.render();
+      });
+    this.contentContainer.add(toggleLink);
+
+    const subTitle = this._text(
+      width / 2, 95,
+      isActiveSchool ? `当前学派：${school.name}` : `查看学派：${school.name}`,
+      { fontSize: '20px', color: THEME.accent, fontStyle: 'bold' }
+    ).setOrigin(0.5);
     this.contentContainer.add(subTitle);
 
     const categoryEntries = Object.entries(school.category ?? {});
@@ -517,24 +598,34 @@ export class AcademyViewer {
     const selectedCount = Object.keys(this.schools[schoolKey]?.categories ?? {}).length;
     const maxSelectable = Math.min(districtCount, categoryEntries.length, 4);
 
-    const infoText = this._text(
-      width / 2, 125,
-      `已解锁分支：${selectedCount} / ${maxSelectable}　（每建成 1 座学院区/特区，可选择的分支数 +1，上限4条）`,
-      { fontSize: '14px', color: THEME.textSecondary }
-    ).setOrigin(0.5);
-    this.contentContainer.add(infoText);
-
-    // 学院区/特区被拆到 0 个：整套学派功能（选分支、升级分支）暂时锁住，
-    // 顶部给一条醒目提示，避免玩家看着分支卡片却不知道为什么按钮全是灰的
+    // 学院区/特区被拆到 0 个：整套学派功能（选分支、升级分支）暂时锁住，顶部给一条
+    // 醒目提示；这条提示、以及上面的"已解锁分支"统计，只在查看自己真正的学派时显示——
+    // 浏览别的学派本来就不能操作，不需要这些和"我能不能操作"相关的提示
     let topY = 170;
-    if (districtCount <= 0) {
-      const warnText = this._text(
-        width / 2, 150,
-        '当前没有已完工的学院区/特区，学派功能暂时锁定（已选择的分支也无法继续升级），需要重新建成学院区/特区',
-        { fontSize: '13px', color: THEME.danger, fontStyle: 'bold' }
+    if (isActiveSchool) {
+      const infoText = this._text(
+        width / 2, 125,
+        `已解锁分支：${selectedCount} / ${maxSelectable}　（每建成 1 座学院区/特区，可选择的分支数 +1，上限4条）`,
+        { fontSize: '14px', color: THEME.textSecondary }
       ).setOrigin(0.5);
-      this.contentContainer.add(warnText);
-      topY = 195;
+      this.contentContainer.add(infoText);
+
+      if (districtCount <= 0) {
+        const warnText = this._text(
+          width / 2, 150,
+          '当前没有已完工的学院区/特区，学派功能暂时锁定，需要重新建成学院区/特区',
+          { fontSize: '13px', color: THEME.danger, fontStyle: 'bold' }
+        ).setOrigin(0.5);
+        this.contentContainer.add(warnText);
+        topY = 195;
+      }
+    } else {
+      const browseInfoText = this._text(
+        width / 2, 125,
+        '正在查看该学派的分支与技能，无法选择或升级',
+        { fontSize: '14px', color: THEME.textSecondary }
+      ).setOrigin(0.5);
+      this.contentContainer.add(browseInfoText);
     }
 
     // 卡片宽度按屏幕宽度自适应收缩（学派最多4条分支，窄屏/小窗口时避免整排卡片超出屏幕），
@@ -551,11 +642,11 @@ export class AcademyViewer {
     categoryEntries.forEach(([catKey, category], index) => {
       const x = startX + index * (cardWidth + spacing);
       const y = topY + cardHeight / 2;
-      this.createBranchCard(schoolKey, catKey, category, x, y, cardWidth, cardHeight, selectedCount, maxSelectable, districtCount);
+      this.createBranchCard(schoolKey, catKey, category, x, y, cardWidth, cardHeight, selectedCount, maxSelectable, districtCount, isActiveSchool);
     });
   }
 
-  createBranchCard(schoolKey, catKey, category, x, y, cardWidth, cardHeight, selectedCount, maxSelectable, districtCount) {
+  createBranchCard(schoolKey, catKey, category, x, y, cardWidth, cardHeight, selectedCount, maxSelectable, districtCount, isActiveSchool = true) {
     const level = getCategoryLevel(this.saveData, schoolKey, catKey);
     const unlocked = level > 0;
 
@@ -582,9 +673,12 @@ export class AcademyViewer {
 
     if (!unlocked) {
       // maxSelectable 里已经把 districtCount 算进去了，districtCount 为 0 时 maxSelectable
-      // 也会是 0，canSelect 自然为 false——这里只是给出更具体的提示文案
-      const canSelect = selectedCount < maxSelectable;
-      const lockReason = districtCount <= 0 ? '未解锁\n（没有学院区/特区）' : '未解锁\n（需要更多学院区/特区）';
+      // 也会是 0，canSelect 自然为 false；另外 isActiveSchool 为 false（正在只读浏览别的
+      // 学派）时一律不能选择——浏览是纯只读的，不管学院区数量/已选分支数量是否满足
+      const canSelect = isActiveSchool && selectedCount < maxSelectable;
+      const lockReason = !isActiveSchool
+        ? '未解锁'
+        : (districtCount <= 0 ? '未解锁\n（没有学院区/特区）' : '未解锁\n（需要更多学院区/特区）');
       // 下半区：分割线和按钮之间放"未解锁"提示 + "查看技能"入口两行，位置按比例分配，
       // 这样不管卡片高度怎么变，两行都不会挤到一起或撞到按钮
       const btnW = 130, btnH = 38;
@@ -623,7 +717,10 @@ export class AcademyViewer {
     this._addViewSkillLink(container, dividerLocalY + 30, schoolKey, catKey, category.name);
 
     // 升级按钮固定贴在卡片底部——分支不设等级上限，只要文化够、行动条够、
-    // 学院区/特区数量大于0，就可以一直升，点击后先弹出二次确认（showUpgradeConfirm）
+    // 学院区/特区数量大于0，就可以一直升，点击后先弹出二次确认（showUpgradeConfirm）。
+    // 这个代码分支只有 unlocked === true 才会走到，而 unlocked 只在玩家自己真正选择的
+    // 学派（saveData.academy.schools[schoolKey] 有记录）下才可能为 true，浏览别的学派
+    // 时 getCategoryLevel 恒为 0，永远不会走到这里，不需要再额外用 isActiveSchool 判断。
     const btnY = cardHeight / 2 - 44;
     const cost = getUpgradeCost(level);
     const culture = this.saveData.resource?.culture ?? 0;

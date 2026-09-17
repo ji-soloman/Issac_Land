@@ -22,6 +22,15 @@
  *       onRoundEnd(ctx, meta) — 每轮结束时触发（早于 buff 剩余轮次递减）。
  *         ctx:  { round }
  *         meta: 同上
+ *       onBeforeDamage(ctx, meta) — 每次 Player.dealDamage 结算前触发，
+ *         用于未来的闪避/无效攻击等"让本次攻击不命中"的效果。
+ *         ctx:  { attacker, target, components, cancelled }
+ *           attacker   — 本次造成伤害的一方（Player 实例）
+ *           target     — 本次受到伤害的一方
+ *           components — 本次的伤害拆分（未经护甲/免伤加成前的原始值）
+ *           cancelled  — 置为 true 可以让这次攻击被判定为"未命中"，
+ *                        dealDamage 会直接返回 { hit:false, total:0 }，不结算任何伤害
+ *         meta: 同上
  *
  *     trigger 函数里可以调用 meta.holder 上 Player 类提供的方法
  *     （dealDamage / applyBuff / removeBuff / log 等）来实现具体效果。
@@ -30,11 +39,13 @@ export const MILITARY_BUFF = {
   1: {
     name: '眩晕',
     des: '无法行动',
+    type: 'control',
   },
 
   2: {
     name: '诅咒',
     des: '使用技能消耗的魔力翻倍，且有40%概率被转换为普通攻击',
+    type: 'weaken',
     trigger: {
       /**
        * 只在 buff 持有者自己使用技能时生效（不会影响别人使用技能）：
@@ -60,85 +71,121 @@ export const MILITARY_BUFF = {
   3: {
     name: '烧伤',
     des: '轮次结束时，失去最大生命1/8无视护甲的生命',
+    type: 'weaken',
+    trigger: {
+      /**
+       * 轮次结束时，对持有者造成"最大生命1/8"的伤害（向下取整，至少1点，
+       * 避免最大生命较低时因为除法结果为0而完全不生效）。使用 pure 伤害类型，
+       * 天然无视护甲，对应描述里的"无视护甲的生命"。
+       */
+      onRoundEnd(ctx, meta) {
+        const holder = meta.holder;
+        const maxHp = holder.maxHp ?? holder.stats?.hp ?? 0;
+        const dmg = Math.max(1, Math.floor(maxHp / 8));
+        holder.dealDamage(holder, { pure: dmg });
+        holder.log?.(`${holder.displayName}受到【烧伤】的影响，失去了${dmg}点生命`);
+      },
+    },
   },
 
   4: {
     name: '中毒',
     des: '轮次结束时，失去最大生命1/8无视护甲的生命',
+    type: 'weaken',
   },
 
   5: {
     name: '疲惫',
     des: '无法行动',
+    type: 'control',
   },
 
   6: {
     name: '恐惧',
     des: '无法行动',
+    type: 'control',
   },
 
   7: {
     name: '魅惑',
     des: '无法对敌方造成伤害',
+    type: 'weaken',
   },
 
   8: {
     name: '冰冻',
     des: '无法行动',
+    type: 'control',
   },
 
   9: {
     name: '衰弱',
     des: '造成的物理伤害减少20%；轮次结束时，失去最大生命1/8的生命',
+    type: 'weaken',
   },
 
   10: {
     name: '溺水',
     des: '造成的魔法伤害减少20%',
+    type: 'weaken',
   },
 
   11: {
     name: '振奋',
     des: '进入时解除自身全部弱化类异常状态；免疫控制类异常状态',
+    type: 'strengthen',
   },
 
   12: {
     name: '无双',
     des: '免疫弱化类异常状态；造成的伤害提升20%',
+    type: 'strengthen',
   },
 
   13: {
     name: '皇威',
     des: '进入时解除自身全部弱化类和控制类异常状态；造成的伤害提升10%；受到的伤害减少10%',
+    type: 'strengthen',
   },
 
   14: {
     name: '麟佑',
     des: '受到的物理伤害减少20%',
+    type: 'strengthen',
   },
 
   15: {
     name: '凤隐',
     des: '受到的魔法伤害减少20%',
+    type: 'strengthen',
   },
 
   16: {
     name: '玄藏',
     des: '免疫控制类异常状态',
+    type: 'strengthen',
   },
 
   17: {
     name: '守护',
     des: '免疫弱化类异常状态',
+    type: 'strengthen',
   },
 
   18: {
     name: '引雷',
     des: '造成的伤害提升25%；轮次结束时，失去最大生命1/8的生命',
+    type: 'special',
   },
 
   19: {
     name: '浴火',
     des: '自身阵亡时，恢复全部体力并解除该状态，解除全部弱化类异常，然后进入【守护】和【疲惫】状态',
+    type: 'special',
   },
+  20: {
+    name: '嘲讽',
+    des: '敌方目标攻击时，优先选择自己为目标',
+    type: 'special',
+  }
 };

@@ -17,8 +17,35 @@ export const MILITARY_SKILL = {
   taunt: {
     name: '嘲讽',
     type: 'passive',
-    des: '目标存活时，其他目标的普通攻击只能以自身为目标',
+    des: '目标存活时，其他目标的攻击只能以自身为目标',
     level: 1,
+    term: {
+      buff: [20],
+    },
+    /**
+     * 嘲讽没有主动技能效果（skill 函数），实际效果完全通过 trigger 声明的两个
+     * "登场"钩子触发（见 battleSystem.js 的 _fireSkillHook 说明），二者互斥，
+     * 同一个兵组不会在同一次登场里被触发两次：
+     *   1. onGameStart —— 游戏开始时：只对战斗开始时就已经在场上的初始兵组生效，
+     *      所有初始兵组按站位顺序依次触发一次；
+     *   2. onEnterBattlefield —— 自身登场时：只对战斗中途才登场的兵组生效
+     *      （例如被召唤，或者未来任何让这个兵组"重新登场"的效果），在登场的
+     *      那一刻单独触发一次。游戏开始时就在场上的初始兵组不会触发这个节点；
+     *      但如果之后这个兵组因为某种效果被"再次登场"，则确实会再触发一次。
+     * 两者效果相同：为自身施加永久的【嘲讽】buff（buff key = 20，见 military_buff.js）。
+     * 永久buff的剩余轮次用 Infinity 表示，不会随轮次递减/消失，buff图标上也不会
+     * 显示剩余轮次数字（见 battleSystem.js 的 _updateBuffIcons）。嘲讽的实际拦截
+     * 效果（"其他目标的普通攻击/单目标技能优先以自己为目标"）由 BattleSystem 里
+     * 判断 t.hasBuff(20) 的地方统一处理，这里只负责施加这个buff。
+     */
+    trigger: {
+      onGameStart(player) {
+        player.applyBuff(player, 20, Infinity);
+      },
+      onEnterBattlefield(player) {
+        player.applyBuff(player, 20, Infinity);
+      },
+    },
   },
   pitch: {
     name: '投掷',
@@ -97,7 +124,14 @@ export const MILITARY_SKILL = {
         physical: Math.round(physAtk),
         magic: Math.round(magicAtk), // 基础攻击的魔法部分 + 额外4倍
       };
-      player.dealDamage(target, mainDmg, { ignoreArmor: true });
+      const mainResult = player.dealDamage(target, mainDmg, { ignoreArmor: true });
+
+      // 必须先成功命中第一目标，才会触发后续的诅咒和溅射——如果因为任何原因
+      // （例如未来出现的闪避、无效攻击等效果）导致这次攻击未命中，后续效果全部中断。
+      if (!mainResult.hit) {
+        player.log(`${player.displayName}对${target.displayName}的攻击未能命中，宗教审判的后续效果未能触发`);
+        return mainDmg;
+      }
 
       // 对主目标施加4轮【诅咒】（buff key = 2，见 data/military_buff.js）
       player.applyBuff(target, 2, 4);
@@ -194,7 +228,26 @@ export const MILITARY_SKILL = {
     cost: { mana: 1 },
     term: {
       dam_3: true,
-    }
+    },
+    /**
+     * 未声明 targeting：沿用默认规则——任意存活敌方，单目标。
+     * 主目标：2×魔法攻击的魔法伤害；溅射：目标站位队列中前后相邻的兵组
+     * （各最多2个，越界即停），各受到 0.5×魔法攻击的魔法伤害。
+     */
+    skill(player, targets) {
+      const target = targets[0];
+      if (!target) return { physical: 0, magic: 0 };
+      const magicAtk = player.stats?.spell_attack ?? 0;
+
+      const mainDmg = { physical: 0, magic: Math.round(magicAtk * 2) };
+      player.dealDamage(target, mainDmg);
+
+      const splashDmg = { physical: 0, magic: Math.round(magicAtk / 2) };
+      player.getNearbyTroops(target, 2)
+        .forEach(t => player.dealDamage(t, splashDmg));
+
+      return mainDmg;
+    },
   },
   magic_fire_lv2_1: {
     name: '火墙术',
@@ -202,6 +255,22 @@ export const MILITARY_SKILL = {
     des: '对己方站位最靠前的目标使用，令目标增加1×自身魔法攻击的护盾。',
     level: 2,
     cost: { mana: 1 },
+    // 目标固定为"己方站位最靠前的存活单位"，不需要玩家/AI 手动选择，
+    // 技能函数内部自己从施法者所在的站位队列（player.owner.troops）里找
+    targeting: {
+      auto: true,
+    },
+    skill(player) {
+      const lineup = player.owner?.troops ?? [];
+      const target = lineup.find(t => t.isAlive?.());
+      if (!target) return { physical: 0, magic: 0 };
+
+      const magicAtk = player.stats?.spell_attack ?? 0;
+      const bonus = Math.round(magicAtk);
+      player.grantArmor(target, bonus);
+      player.log(`${player.displayName}施展火墙术，为${target.displayName}增加了${bonus}点护盾`);
+      return { physical: 0, magic: 0 }; // 没有造成伤害
+    },
   },
   magic_fire_lv3_1: {
     name: '流星火雨',
@@ -212,7 +281,38 @@ export const MILITARY_SKILL = {
     term: {
       buff: [3],
       dam_3: true,
-    }
+    },
+    /**
+     * 目标数量取决于施法者自身等级（"至多等同于自身等级数量个"），不是固定值——
+     * count 传入函数 (player) => [1, 等级]，由 BattleSystem 在计算候选目标时
+     * 用当前施法者动态解析（见 battleSystem.js 的 _getTargetCandidates）。
+     */
+    targeting: {
+      count: (player) => [1, Math.max(1, player.level ?? 1)],
+    },
+    /**
+     * 每个目标各受到一次"攻击"（物理攻击+魔法攻击，未额外说明倍率，按普通攻击同等公式结算），
+     * 命中顺序即选中顺序，最后一个目标额外施加2轮【烧伤】（buff key = 3）。
+     */
+    skill(player, targets) {
+      if (!targets || targets.length === 0) return { physical: 0, magic: 0 };
+      const dmg = {
+        physical: Math.round(player.stats?.physical_attack ?? 0),
+        magic: Math.round(player.stats?.spell_attack ?? 0),
+      };
+
+      targets.forEach(t => player.dealDamage(t, dmg));
+
+      const lastTarget = targets[targets.length - 1];
+      player.applyBuff(lastTarget, 3, 2);
+
+      return dmg;
+    },
+  },
+  magic_fire_lv4_1: {
+    name: '火舞旋风',
+    level: 4,
+    des: '对敌方目标使用，造成3×魔法攻击的魔法伤害，并对其和其身后的1个目标施加3轮【烧伤】状态。'
   },
   magic_ice_lv1_1: {
     name: '寒冰盾',
@@ -222,14 +322,19 @@ export const MILITARY_SKILL = {
     cost: { mana: 1 },
     effect: 4,
     /**
-     * targeting 示例：候选池是己方（pool:'ally'），过滤条件是"护甲未满的"
-     * （currentArmor < maxArmor，近似"已受伤"的护盾版本——优先给还没顶到护甲上限的单位），
-     * 最多选1个（count:1）。前端会只高亮满足条件的己方卡牌供玩家点选；
-     * AI 则会在这些候选里按 _aiSelectTargets 的策略自动选一个。
+     * targeting：候选池是己方（pool:'ally'），和技能描述"对己方任意目标使用"一致，
+     * 不做任何过滤，最多选1个（count:1）。
+     *
+     * 注意：这里不能像之前那样用 currentArmor < maxArmor 做"护甲未满"过滤——
+     * 护甲本身没有上限（grantArmor 会无上限地叠加到 currentArmor 上，见 battleSystem.js
+     * 的说明），maxArmor 只是兵组初始基础护甲值，只有护甲被打掉一部分之后 currentArmor
+     * 才会小于 maxArmor。也就是说，只要场上没有任何兵组挨过护甲扣减，所有人的
+     * currentArmor 都等于 maxArmor，这个过滤条件会把所有候选目标都排除掉，导致
+     * 寒冰盾在整局战斗前期完全选不出任何目标、技能形同虚设——这正是之前"寒冰盾用不出来"
+     * 的原因，去掉这个过滤条件即可让技能按描述那样可以对任意己方目标使用。
      */
     targeting: {
       pool: 'ally',
-      filter: (player, candidate) => (candidate.currentArmor ?? 0) < (candidate.maxArmor ?? 0),
       count: 1,
     },
     skill(player, targets) {
@@ -247,6 +352,23 @@ export const MILITARY_SKILL = {
     des: '攻击目标并额外造成2×魔法攻击的物理伤害。',
     level: 2,
     cost: { mana: 1 },
+    /**
+     * "攻击目标"= 一次普通攻击的伤害公式（物理攻击+魔法攻击），
+     * "额外造成2×魔法攻击的物理伤害"= 在此基础上叠加的物理类型伤害（用魔法攻击数值计算）。
+     */
+    skill(player, targets) {
+      const target = targets[0];
+      if (!target) return { physical: 0, magic: 0 };
+      const physAtk = player.stats?.physical_attack ?? 0;
+      const magicAtk = player.stats?.spell_attack ?? 0;
+
+      const dmg = {
+        physical: Math.round(physAtk + magicAtk * 2),
+        magic: Math.round(magicAtk),
+      };
+      player.dealDamage(target, dmg);
+      return dmg;
+    },
   },
   magic_ice_lv3_1: {
     name: '寒冰之棺',
@@ -256,13 +378,39 @@ export const MILITARY_SKILL = {
     cost: { mana: 2 },
     term: {
       buff: [8],
-    }
+    },
+    skill(player, targets) {
+      const target = targets[0];
+      if (!target) return { physical: 0, magic: 0 };
+      const physAtk = player.stats?.physical_attack ?? 0;
+      const magicAtk = player.stats?.spell_attack ?? 0;
+
+      const dmg = { physical: 0, magic: Math.round((physAtk + magicAtk) * 2) };
+      player.dealDamage(target, dmg);
+      player.applyBuff(target, 8, 1);
+      return dmg;
+    },
+  },
+  magic_ice_lv4_1: {
+    name: '飞檐溅雪',
+    level: 4,
+    des: '对目标造成3×武器等级的魔法伤害，然后令其进入2轮【恐惧】和【衰弱】状态。',
   },
   nomad_fight_lv1_1: {
     name: '破甲击',
     des: '对目标进行无视护甲的攻击，并额外造成3点物理伤害。',
     cost: { mana: 1 },
     level: 1,
+    skill(player, targets) {
+      const target = targets[0];
+      if (!target) return { physical: 0, magic: 0 };
+      const dmg = {
+        physical: Math.round((player.stats?.physical_attack ?? 0) + 3),
+        magic: Math.round(player.stats?.spell_attack ?? 0),
+      };
+      player.dealDamage(target, dmg, { ignoreArmor: true });
+      return dmg;
+    },
   },
   nomad_fight_lv2_1: {
     name: '刺击',
@@ -295,6 +443,19 @@ export const MILITARY_SKILL = {
     des: '攻击至多3个目标并额外造成6点物理伤害和6点魔法伤害。',
     level: 3,
     cost: { mana: 3 },
+    // "至多3个"：玩家/AI 可以选择1~3个目标
+    targeting: {
+      count: [1, 3],
+    },
+    skill(player, targets) {
+      if (!targets || targets.length === 0) return { physical: 0, magic: 0 };
+      const dmg = {
+        physical: Math.round((player.stats?.physical_attack ?? 0) + 6),
+        magic: Math.round((player.stats?.spell_attack ?? 0) + 6),
+      };
+      targets.forEach(t => player.dealDamage(t, dmg));
+      return dmg;
+    },
   },
   mutation_devil_lv1_1: {
     name: '暗影箭',
@@ -306,22 +467,176 @@ export const MILITARY_SKILL = {
     des: '失去1点体力，令自身进入2轮【玄藏】状态。',
     level: 2,
     cost: { mana: 1 },
+    term: {
+      buff: [16],
+    },
+    // 只对自己生效，不需要选择目标
+    targeting: {
+      auto: true,
+    },
+    skill(player) {
+      // "失去1点体力"：直接扣减自身生命值，走 pure 伤害类型（天然无视护甲）
+      player.dealDamage(player, { pure: 1 }, { ignoreArmor: true });
+      // 令自身进入2轮【玄藏】（buff key = 16，免疫控制类异常状态，见 military_buff.js）
+      player.applyBuff(player, 16, 2);
+      player.log(`${player.displayName}使用骸骨护盾，失去1点体力，进入了【玄藏】状态`);
+      return { physical: 0, magic: 0 };
+    },
   },
   mutation_devil_lv3_1: {
     name: '罗睺一斩',
     des: '攻击至多5个目标并额外造成15×武器等级的物理伤害，被杀死的单位自动转换为骷髅（受到召唤生物战术宽度限制）',
     level: 3,
+    // 技能描述中未给出魔力消耗，参照同为3级、多目标的半月斩/流星火雨等技能规模暂定为4，
+    // 后续如需按数值平衡调整，直接改这里的 cost 即可
+    cost: { mana: 4 },
+    term: {
+      summon_1: true,
+    },
+    // "至多5个"：玩家/AI 可以选择1~5个目标
+    targeting: {
+      count: [1, 5],
+    },
+    /**
+     * "武器等级"目前没有对应的装备系统（military_unit.js 里所有兵种的 equipments 都是
+     * 空对象），这里暂时兜底取 player.equipments?.weapon?.level，取不到时退回自身等级
+     * player.level——后续实装真正的武器/装备系统后，直接去掉这个兜底即可自动生效，
+     * 不需要改这里的技能逻辑。
+     *
+     * 每个目标各受到一次"攻击"（物理攻击+魔法攻击）+ 15×武器等级 的额外物理伤害；
+     * 被直接打死的目标会转化为骷髅加入施法者所在队伍（player.summonUnit），沿用
+     * 阵亡目标自己的基础六维（攻击/魔攻/生命/护甲/蓝量/顺位），不继承任何技能。
+     * 若该队伍场上的召唤物数量已经达到战场数量上限（固定为5，是一条独立于
+     * 站位队列"战术宽度"的规则），则这一次转化失败，只播报一条提示。
+     */
+    skill(player, targets) {
+      if (!targets || targets.length === 0) return { physical: 0, magic: 0 };
+
+      const weaponLevel = player.equipments?.weapon?.level ?? player.level ?? 1;
+      const dmg = {
+        physical: Math.round((player.stats?.physical_attack ?? 0) + 15 * weaponLevel),
+        magic: Math.round(player.stats?.spell_attack ?? 0),
+      };
+
+      targets.forEach(target => {
+        player.dealDamage(target, dmg);
+        if ((target.currentHp ?? 0) <= 0) {
+          // 骷髅沿用阵亡目标自己的基础六维，而不是骷髅模板的默认数值
+          const baseStats = {
+            physical_attack: target.stats?.physical_attack ?? 0,
+            spell_attack: target.stats?.spell_attack ?? 0,
+            hp: target.stats?.hp ?? target.maxHp ?? 0,
+            armor: target.stats?.armor ?? target.maxArmor ?? 0,
+            mana: target.stats?.mana ?? target.maxMana ?? 0,
+            military_order: target.stats?.military_order ?? 0,
+          };
+          const summoned = player.summonUnit('skeleton', baseStats);
+          if (summoned) {
+            // 转化成功：给被转化的目标额外打上【消逝】标记（没有专门的前端显示），
+            // 表示它属于一种特殊的阵亡状态——除了照常走一遍普通的阵亡结算流程
+            // （清空buff、变灰、播报"已阵亡"），还要在所有"是否在场上"的判定里
+            // 永远视为不存在于战场上，见 battleSystem.js 的 isOnBattlefield 说明。
+            target._vanished = true;
+          } else {
+            player.log(`召唤生物数量已达战场上限，${target.displayName}未能转化为骷髅`);
+          }
+        }
+      });
+
+      return dmg;
+    },
   },
   lightning_lv1_1: {
     name: '闪电链',
-    level: 1
+    level: 1,
+    des: '对目标和目标身后的1个目标造成等同于自身魔法攻击的魔法伤害。',
   },
   lightning_lv2_1: {
     name: '雷霆一击',
-    level: 2
+    level: 2,
+    des: '攻击任意目标并造成3×武器等级的溅射伤害。'
+  },
+  lightning_lv3_1: {
+    name: '惊雷',
+    level: 3
+  },
+  wind_lv1_1: {
+    name: '疾风刃',
+    level: 1,
+    des: '攻击站位最靠前的3名目标。'
+  },
+  wind_lv1_2: {
+    name: '快攻',
+    level: 1,
+    cost: { mana: 0 },
+    des: '攻击任意1名目标，并额外造成2点魔法伤害。'
+  },
+  wind_lv3_1: {
+    name: '借风',
+    level: 2,
+    des: '攻击站位最靠后的目标，并令自身和己方站位最靠前的目标进入【凤隐】状态，持续2轮。'
   },
   wind_lv4_1: {
     name: '罗天剑舞',
     level: 4,
-  }
+  },
+  mutation_blood_lv1_1: {
+    name: '血刺',
+    level: 1,
+    des: '攻击任意目标并额外造成1×魔法攻击的魔法伤害。'
+  },
+  mutation_blood_lv2_1: {
+    name: '血契',
+    level: 2,
+    des: '令至多3名目标进入【衰弱】状态，持续4轮。',
+  },
+  mutation_blood_lv3_1: {
+    name: '血池',
+    level: 3,
+    des: '攻击目标并额外造成3×魔法攻击的真实伤害，造成伤害的20%恢复自身体力。',
+  },
+  mutation_blood_lv4_1: {
+    name: '血海',
+    level: 4,
+  },
+  berserk_might_lv1_1: {
+    name: '狂龙震',
+    level: 1,
+    des: '攻击目标并为自身增加等同于双方血量之差的护甲（至多为10）。',
+  },
+  berserk_might_lv2_1: {
+    name: '猛虎破',
+    level: 2,
+    des: '攻击目标并造成6×防具等级点无视护甲的物理伤害。',
+  },
+  berserk_might_lv3_1: {
+    name: '伏龙枪',
+    level: 3,
+    des: '攻击任意目标并令其进入【疲惫】状态，持续2轮。',
+  },
+  berserk_might_lv4_1: {
+    name: '无敌无我',
+    level: 4,
+    des: '可以在处于控制类异常状态时使用；令自身进入【皇威】状态，持续2轮；攻击目标并造成2×物理攻击的物理伤害，并造成等同于造成伤害的溅射伤害。',
+  },
+  berserk_might_lv5_1: {
+    name: '天龙扑月',
+    level: 5,
+    des: '',
+  },
+  berserk_might_lv6_1: {
+    name: '铁血征尘',
+    level: 6,
+    des: '',
+  },
+  berserk_might_lv7_1: {
+    name: '威临九霄',
+    level: 7,
+    des: '',
+  },
+  berserk_might_lv8_1: {
+    name: '星河倒卷',
+    level: 8,
+    des: '',
+  },
 }
