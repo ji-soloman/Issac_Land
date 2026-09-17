@@ -1314,8 +1314,20 @@ class UnitDetailPage {
 
     const actives = this._getSkillsByType('initiative').slice(0, 4);
     const gridH = 100;
-    const actualGridH = this._buildSkillGrid(c, actives, -W / 2, y, W, gridH);
-    y += actualGridH + 14;
+    const gridY = y;
+    const actualGridH = this._buildSkillGrid(c, actives, -W / 2, gridY, W, gridH);
+    const gridBottomY = gridY + actualGridH;
+    y = gridBottomY + 14;
+
+    // "+" 换将按钮：主动技能整个区域（四宫格）右下角，兵力表专属——图鉴（查看兵种
+    // 模板，没有具体兵组）没有"携带/更换技能"这个概念，不显示。所有已拥有的兵组
+    // 都会显示这个按钮，哪怕当前一个主动技能都没装备也一样（见 _addSkillSwapButton）。
+    // 按钮放在四宫格外侧下方而不是格子内部，避免和最后一格右下角的"已解锁"标签重叠。
+    if (this.unitData?.fromArmy) {
+      const R = 16;
+      this._addSkillSwapButton(c, W / 2 - R - 2, gridBottomY + R + 6);
+      y = gridBottomY + R * 2 + 12 + 14;
+    }
 
     // ── tag 标签技能（四宫格下方，第三类技能） ────────────────
     const tagSkills = this._getSkillsByType('tag');
@@ -1339,40 +1351,6 @@ class UnitDetailPage {
         tx += tw + 6;
       });
       y += 26 + 14;
-    }
-
-    // ── 已学习未携带技能（学派系统学会、但携带栏已满没能自动带上的技能）───
-    // 只在兵力表（查看具体兵组）里有意义，图鉴没有"学会"这个概念
-    const learnedNotCarried = this._getLearnedNotCarriedSkills();
-    if (learnedNotCarried.length > 0) {
-      c.add(this._sectionTitle('已学习未携带', y));
-      y += 28;
-
-      let lx = -W / 2;
-      let ly = y;
-      const rowMaxX = W / 2 - 20; // 超出这行宽度就换到下一行
-      learnedNotCarried.forEach(({ key, skill }) => {
-        const lbl = this.scene.add.text(0, 0, skill.name, {
-          fontSize: '13px', color: '#cccccc', padding: { top: 4 },
-        }).setOrigin(0.5);
-        const tw = lbl.width + 18;
-        if (lx + tw > rowMaxX && lx > -W / 2) {
-          lx = -W / 2;
-          ly += 32;
-        }
-        const tbg = this.scene.add.rectangle(lx + tw / 2, ly + 13, tw, 26, 0x2a2a2a, 0.9)
-          .setStrokeStyle(1, 0x777777, 0.8);
-        lbl.setPosition(lx + tw / 2, ly + 13);
-        c.add([tbg, lbl]);
-        if (skill.des) {
-          tbg.setInteractive({ useHandCursor: false });
-          tbg.on('pointerover', (ptr) => this._showTip(skill.name, skill.des, ptr));
-          tbg.on('pointermove', (ptr) => this._moveTip(ptr));
-          tbg.on('pointerout', () => this._hideTip());
-        }
-        lx += tw + 6;
-      });
-      y = ly + 26 + 14;
     }
   }
 
@@ -1566,6 +1544,306 @@ class UnitDetailPage {
       }
     });
     return actualH;
+  }
+
+  // ── 换将（技能替换）按钮 ─────────────────────────
+  /**
+   * 主动技能区右下角的"+"按钮，点击打开技能替换面板（见 _showSkillSwapPanel）。
+   * 只有兵力表（fromArmy，具体兵组）才会调用到这里，兵种图鉴不涉及。
+   */
+  _addSkillSwapButton(ct, x, y) {
+    const R = 16;
+    const circle = this.scene.add.circle(x, y, R, 0xb8963e, 0.95).setStrokeStyle(1.5, 0xf0e6cc, 0.9);
+    const plus = this.scene.add.text(x, y, '+', {
+      fontSize: '22px', color: '#2c1a00', fontStyle: 'bold', padding: { top: 2 },
+    }).setOrigin(0.5);
+    const hit = this.scene.add.circle(x, y, R + 2, 0xffffff, 0)
+      .setInteractive({ useHandCursor: true });
+    hit.on('pointerover', () => { circle.setScale(1.12); plus.setScale(1.12); });
+    hit.on('pointerout', () => { circle.setScale(1); plus.setScale(1); });
+    hit.on('pointerdown', () => this._showSkillSwapPanel());
+    ct.add([circle, plus, hit]);
+  }
+
+  /**
+   * 技能替换面板：用 scene.add.dom 搭建一个原生 DOM 的弹窗（遮罩+浮层），
+   * 上半部分展示当前已装备的（最多4个）主动技能格子，下半部分展示"已学习
+   * 未携带"的备选技能。用原生拖拽（draggable + dragstart/dragover/drop）
+   * 把备选技能拖到已装备格子上完成替换。
+   *
+   * 关键约束（用户明确要求）：已装备的技能格子永远 draggable=false，只有
+   * 备选技能格子 draggable=true——这是单向拖拽，从机制上保证已装备的技能
+   * 不能被拖回备选区，不会出现"4个主动技能变成3个"的情况。
+   *
+   * 外层遮罩负责屏蔽下层所有鼠标事件（点击遮罩关闭面板，浮层本身
+   * stopPropagation 避免点击穿透触发遮罩关闭）。
+   */
+  _showSkillSwapPanel() {
+    this._closeSkillSwapPanel();
+
+    const soldierId = this.unitData?.id;
+    const soldier = soldierId != null ? this.saveData?.military?.[soldierId] : null;
+    if (!soldier) return;
+
+    // 确保携带/已学习技能池都存在，并把详情页缓存的引用重新同步到同一个对象，
+    // 避免 showMyArmy() 快照时若 learnedSkills 尚未初始化、后续懒初始化出一个
+    // 新对象导致 unitData.current_learned_skills 和 soldier.learnedSkills 脱节。
+    soldier.ability ??= {};
+    soldier.learnedSkills ??= {};
+    this.unitData.current_ability = soldier.ability;
+    this.unitData.current_learned_skills = soldier.learnedSkills;
+
+    // ── 定位问题的最终解法 ──────────────────────────────────────────
+    // 前两次尝试（scene.add.dom 挂场景顶层 / 挂进 this.root 容器）都还是歪的，
+    // 说明问题出在 Phaser 的 DOM GameObject 本身的定位换算（origin、容器变换
+    // 叠加等）上，光靠调坐标或换个容器猜不准。这里换一个不依赖 Phaser 定位
+    // 换算的做法：直接拿到 Phaser 用来承载所有 add.dom 元素的那个原生 DOM 容器
+    // （this.scene.sys.game.domContainer——scene.add.dom(...) 内部挂的就是这个
+    // 节点），把遮罩当成普通网页元素直接 appendChild 进去，用最朴素的
+    // position:absolute; inset:0 铺满整个容器（domContainer 本身由 Phaser 负责
+    // 跟随 canvas 大小/缩放，不需要我们自己算 width/height），再用 flex 布局把
+    // 弹窗居中——全程只用标准 CSS，不经过 Phaser 的 x/y/origin 变换，不会再有
+    // "歪"的问题。因为不是通过 scene.add.dom() 创建的 GameObject，销毁时直接
+    // remove() 这个原生节点即可，不需要 this.root.add(...)。
+    const domContainer = this.scene.sys.game.domContainer;
+
+    // z-index 必须盖过页面上所有 DOM 图标——Phaser 会把 GameObject.setDepth() 的值
+    // 直接写成这些 DOM 节点自己的 CSS z-index（比如四宫格技能图标、tab 图标用的是
+    // DETAIL_DEPTH+2≈1202，技能浮窗用的是 DETAIL_DEPTH+50≈1250），如果遮罩的
+    // z-index 比这些小，遮罩虽然位置对了，但会被这些图标"透"上来盖在遮罩上面
+    // （之前用 1000 就是吃了这个亏）。这里给一个远超页面里任何 setDepth() 数值的值，
+    // 保证遮罩+弹窗永远盖在最上层。
+    const overlayEl = document.createElement('div');
+    overlayEl.style.cssText = `
+      position:absolute; inset:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.45);
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:auto; z-index:999999;
+    `;
+    domContainer.appendChild(overlayEl);
+    // 注意：故意不给遮罩注册点击关闭——这个面板只能通过右上角的"×"关闭，
+    // 点遮罩空白处不应该关闭（用户明确要求过）。
+
+    // 关键修复：这个面板是普通 DOM 节点，浏览器原生的点击/按下事件即使被这层
+    // DOM 挡住了（不会传到 canvas 元素上），仍然会按 DOM 树往上冒泡到
+    // document/window——而 Phaser 的输入系统默认是监听在 window/document 上的
+    // （不是只盯着 canvas 元素本身），所以只要事件冒泡到了 window，Phaser
+    // 照样会拿点击时的屏幕坐标去命中测试它自己场景里的可交互对象（比如面板
+    // 正下方、同一屏幕位置的技能四宫格），导致"点了浮窗里的格子，下面同位置
+    // 的技能详情也被点开了"。在这层整体拦截 stopPropagation，事件到这里就不
+    // 再继续往上冒泡，Phaser 就收不到了；面板内部自己的点击/拖拽处理不受影响
+    // （它们是在冒泡到这里之前、更早的阶段就已经触发过了）。
+    ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'click', 'wheel']
+      .forEach(type => overlayEl.addEventListener(type, (e) => e.stopPropagation()));
+
+    // 弹窗本体：不再需要"外层交给 Phaser 定位、内层管样式"的两层结构——
+    // 既然已经不走 Phaser 的 add.dom 定位换算了，直接一个 div 做视觉容器即可，
+    // 居中完全交给上面 overlayEl 的 flex 布局。
+    const modalW = 520;
+    const panelEl = document.createElement('div');
+    panelEl.style.cssText = `
+      width:${modalW}px; box-sizing:border-box; background:#faf5e6;
+      border:1px solid #c9a86a; border-radius:10px; padding:20px;
+      position:relative; font-family:sans-serif;
+      box-shadow:0 10px 30px rgba(0,0,0,0.35);
+    `;
+    overlayEl.appendChild(panelEl);
+
+    // 悬浮提示（用来展示格子里技能的效果说明）：作为 overlayEl 的子节点、
+    // 放在 panelEl 之后追加，天然按 DOM 顺序盖在弹窗上方，不需要额外处理
+    // z-index——不能像页面其它地方那样直接复用 _showTip（那个方法建的是
+    // Phaser add.dom 对象，depth 只有 DETAIL_DEPTH+50≈1250，比这个面板的
+    // z-index:999999 低得多，会被这个面板整个盖住，根本看不见）。
+    const tileTipEl = document.createElement('div');
+    tileTipEl.style.cssText = `
+      position:absolute; max-width:240px; background:#faf5e6; border:1px solid #c9a86a;
+      border-radius:6px; padding:8px 10px; font-size:12px; color:#2c1a00; line-height:1.5;
+      box-shadow:0 6px 16px rgba(0,0,0,0.3); pointer-events:none; white-space:pre-line;
+      display:none;
+    `;
+    overlayEl.appendChild(tileTipEl);
+
+    const showTileTip = (tile, skill) => {
+      if (!skill?.des && skill?.cost?.mana == null) return;
+      const titleLine = skill.level != null ? `${skill.name}   Lv.${skill.level}` : (skill.name ?? '');
+      const bodyLines = [];
+      if (skill.cost?.mana != null) bodyLines.push(`消耗魔力：${skill.cost.mana}`);
+      if (skill.des) bodyLines.push(skill.des);
+      tileTipEl.innerHTML = '';
+      const titleEl = document.createElement('div');
+      titleEl.textContent = titleLine;
+      titleEl.style.cssText = 'font-weight:bold;color:#8a6a2e;margin-bottom:4px;';
+      tileTipEl.appendChild(titleEl);
+      if (bodyLines.length > 0) {
+        const bodyEl = document.createElement('div');
+        bodyEl.textContent = bodyLines.join('\n');
+        tileTipEl.appendChild(bodyEl);
+      }
+      tileTipEl.style.display = 'block';
+
+      const tileRect = tile.getBoundingClientRect();
+      const overlayRect = overlayEl.getBoundingClientRect();
+      const left = tileRect.left - overlayRect.left + tileRect.width / 2;
+      const top = tileRect.top - overlayRect.top - 8;
+      tileTipEl.style.left = `${left}px`;
+      tileTipEl.style.top = `${top}px`;
+      tileTipEl.style.transform = 'translate(-50%, -100%)';
+    };
+    const hideTileTip = () => { tileTipEl.style.display = 'none'; };
+
+    this._skillSwapPanel = { overlayEl };
+
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = 'position:absolute;top:4px;right:14px;font-size:24px;font-weight:bold;color:#8a6a2e;cursor:pointer;line-height:1;user-select:none;';
+    closeBtn.addEventListener('click', () => this._closeSkillSwapPanel());
+    panelEl.appendChild(closeBtn);
+
+    const title = document.createElement('div');
+    title.textContent = '更换主动技能';
+    title.style.cssText = 'font-size:18px;font-weight:bold;color:#2c1a00;text-align:center;margin-bottom:6px;';
+    panelEl.appendChild(title);
+
+    const hint = document.createElement('div');
+    hint.textContent = '把下方"备选技能"拖到上方已装备的格子里即可替换；已装备的技能不能被拖走，只能被替换。';
+    hint.style.cssText = 'font-size:12px;color:#8a7a5a;text-align:center;margin-bottom:16px;line-height:1.5;';
+    panelEl.appendChild(hint);
+
+    const equippedTitle = document.createElement('div');
+    equippedTitle.textContent = '已装备';
+    equippedTitle.style.cssText = 'font-size:13px;color:#8a6a2e;font-weight:bold;margin-bottom:8px;';
+    panelEl.appendChild(equippedTitle);
+
+    const equippedRow = document.createElement('div');
+    equippedRow.style.cssText = 'display:flex;gap:10px;margin-bottom:18px;';
+    panelEl.appendChild(equippedRow);
+
+    const candidateTitle = document.createElement('div');
+    candidateTitle.textContent = '备选技能';
+    candidateTitle.style.cssText = 'font-size:13px;color:#8a6a2e;font-weight:bold;margin-bottom:8px;';
+    panelEl.appendChild(candidateTitle);
+
+    const candidateList = document.createElement('div');
+    candidateList.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;max-height:160px;overflow-y:auto;';
+    panelEl.appendChild(candidateList);
+
+    const SLOT_SZ = 96;
+    const isActiveType = (key) => (MILITARY_SKILL[key]?.type ?? 'initiative') === 'initiative';
+
+    const getEquippedKeys = () => Object.keys(soldier.ability).filter(k => soldier.ability[k] && isActiveType(k));
+
+    const makeSkillTile = (key, { draggable }) => {
+      const skill = MILITARY_SKILL[key];
+      const tile = document.createElement('div');
+      tile.draggable = !!draggable;
+      tile.style.cssText = `
+        width:${SLOT_SZ}px; height:${SLOT_SZ}px; box-sizing:border-box;
+        background:#fffdf6; border:1px solid #c9a86a; border-radius:4px;
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        padding:4px; cursor:${draggable ? 'grab' : 'default'};
+      `;
+      const img = document.createElement('img');
+      img.src = `assets/military/skill/${key}.png`;
+      img.style.cssText = 'width:36px;height:36px;object-fit:contain;pointer-events:none;';
+      img.onerror = () => { img.style.display = 'none'; };
+      const nameEl = document.createElement('div');
+      nameEl.textContent = skill?.name ?? key;
+      nameEl.style.cssText = 'font-size:11px;color:#2c1a00;text-align:center;margin-top:4px;line-height:1.2;pointer-events:none;';
+      tile.appendChild(img);
+      tile.appendChild(nameEl);
+
+      // 鼠标悬浮显示技能效果说明——已装备和备选的格子都要有，方便替换前先看清楚效果。
+      tile.addEventListener('mouseenter', () => showTileTip(tile, skill));
+      tile.addEventListener('mouseleave', hideTileTip);
+
+      // 只有备选技能格子（draggable=true）才注册 dragstart——已装备格子永远
+      // draggable=false，从机制上杜绝"把已装备技能拖回备选区"的操作。
+      if (draggable) {
+        tile.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', key);
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        tile.addEventListener('dragend', hideTileTip);
+      }
+      return tile;
+    };
+
+    const makeEmptySlot = () => {
+      const tile = document.createElement('div');
+      tile.style.cssText = `
+        width:${SLOT_SZ}px; height:${SLOT_SZ}px; box-sizing:border-box;
+        background:#f4ede0; border:1px dashed #cbbfa0; border-radius:4px;
+        display:flex; align-items:center; justify-content:center;
+        color:#9a8a6a; font-size:12px;
+      `;
+      tile.textContent = '未装备';
+      return tile;
+    };
+
+    // 替换逻辑：oldKey（被替换掉的已装备技能，可能为 null 表示空位）从 ability
+    // 里摘掉但保留在 learnedSkills 里（变回备选，不会被彻底遗忘）；newKey 同时
+    // 写入 ability 和 learnedSkills。
+    const swapSkill = (oldKey, newKey) => {
+      if (oldKey === newKey) return;
+      if (oldKey != null) {
+        soldier.ability[oldKey] = false;
+        soldier.learnedSkills[oldKey] = true;
+      }
+      soldier.ability[newKey] = true;
+      soldier.learnedSkills[newKey] = true;
+      saveSystem.save();
+      renderPanel();
+      // 同步刷新详情页背后的信息 Tab，让四宫格立即反映最新装备状态
+      if (this.currentTab === 'info') {
+        this._infoContainer.removeAll(true);
+        this._renderInfoTab();
+      }
+    };
+
+    const renderPanel = () => {
+      equippedRow.innerHTML = '';
+      const equippedKeys = getEquippedKeys();
+      for (let i = 0; i < 4; i++) {
+        const key = equippedKeys[i] ?? null;
+        const slot = key ? makeSkillTile(key, { draggable: false }) : makeEmptySlot();
+        slot.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          slot.style.borderColor = '#d4a017';
+        });
+        slot.addEventListener('dragleave', () => { slot.style.borderColor = key ? '#c9a86a' : '#cbbfa0'; });
+        slot.addEventListener('drop', (e) => {
+          e.preventDefault();
+          slot.style.borderColor = key ? '#c9a86a' : '#cbbfa0';
+          const draggedKey = e.dataTransfer.getData('text/plain');
+          if (!draggedKey || draggedKey === key) return;
+          swapSkill(key, draggedKey);
+        });
+        equippedRow.appendChild(slot);
+      }
+
+      candidateList.innerHTML = '';
+      const learned = soldier.learnedSkills;
+      const carried = soldier.ability;
+      const candidateKeys = Object.keys(learned).filter(k => learned[k] && !carried[k] && isActiveType(k));
+      if (candidateKeys.length === 0) {
+        const emptyTip = document.createElement('div');
+        emptyTip.textContent = '暂无可替换的备选技能';
+        emptyTip.style.cssText = 'font-size:13px;color:#9a8a6a;padding:10px 0;';
+        candidateList.appendChild(emptyTip);
+      } else {
+        candidateKeys.forEach(key => candidateList.appendChild(makeSkillTile(key, { draggable: true })));
+      }
+    };
+
+    renderPanel();
+  }
+
+  /** 关闭技能替换面板（把遮罩+弹窗这个原生 DOM 节点从 domContainer 里移除）。 */
+  _closeSkillSwapPanel() {
+    if (!this._skillSwapPanel) return;
+    this._skillSwapPanel.overlayEl.remove();
+    this._skillSwapPanel = null;
   }
 
   // ── 装备 Tab ───────────────────────────────────
@@ -1975,22 +2253,6 @@ class UnitDetailPage {
       }));
   }
 
-  /**
-   * 已经学会、但当前没有携带的技能（携带栏满了学新技能时会出现这种情况）。
-   * 只有兵力表（fromArmy）才有意义——图鉴没有具体兵组、没有"学会"的概念。
-   */
-  _getLearnedNotCarriedSkills() {
-    if (!this.unitData?.fromArmy) return [];
-    const learned = this.unitData.current_learned_skills ?? {};
-    const carried = this.unitData.current_ability ?? {};
-    return Object.keys(learned)
-      .filter(k => learned[k] && !carried[k])
-      .map(k => ({
-        key: k,
-        skill: MILITARY_SKILL[k] ?? { name: k, type: 'initiative' },
-      }));
-  }
-
   // ── 技能浮窗 ───────────────────────────────────
   _showTip(title, des, ptr, terms) {
     this._hideTip();
@@ -2129,6 +2391,7 @@ class UnitDetailPage {
 
   // ── 销毁 ───────────────────────────────────────
   destroy() {
+    this._closeSkillSwapPanel();
     this._hideTip();
     this.scene.tweens.add({
       targets: [this.root, this.overlay],
