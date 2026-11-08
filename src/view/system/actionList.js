@@ -445,10 +445,14 @@ export class ActionListSystem {
       markedIntro = `开始训练{{【${unitName}】}}`;
     } else if (key.startsWith('academy_skill_learn_')) {
       // actionData: { soldierId, skillKey, schoolKey }，见 academyView.js
-      // AcademySkillProgressViewer.showLearnUnitPicker 里的 game.addAction 调用
+      // AcademySkillProgressViewer.showLearnUnitPicker 里的 game.addAction 调用。
+      // 兵组名的取法和下面 else 分支里 actionData.soldier 的做法保持一致
+      // （优先用兵种模板名，模板缺失时退回兵组自己存的 name，再退回 soldierId 本身）。
+      const learnerDetail = this.saveData.military[actionData.soldierId];
+      const unitName = MILITARY_UNIT[learnerDetail?.name]?.name || learnerDetail?.name || actionData.soldierId;
       const schoolName = ACADEMY_SKILL[actionData.schoolKey]?.name ?? actionData.schoolKey;
       const skillName = MILITARY_SKILL[actionData.skillKey]?.name ?? actionData.skillKey;
-      markedIntro = `开始学习${schoolName}学派的技能{{【${skillName}】}}`;
+      markedIntro = `{{${unitName}}}开始学习${schoolName}学派的技能{{【${skillName}】}}`;
     } else {
       let intro = MILITARY[key]?.intro || key;
       const replacements = [];
