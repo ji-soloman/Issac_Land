@@ -247,7 +247,7 @@ export class CreateBuilding {
       }
 
       itemBg.on('pointerdown', () => this.selectBuilding(key));
-      this.buildingItems[key] = { bg: itemBg, isBuildable: isBuildable && !isDone, isAffordable, config, uniqueBlocked };
+      this.buildingItems[key] = { bg: itemBg, isBuildable: isBuildable && !isDone, isAffordable, config, uniqueBlocked, isBuilt, isBuilding };
       this.scrollContainer.add(itemContainer);
       index++;
     }
@@ -468,8 +468,17 @@ export class CreateBuilding {
     } else if (this.viewedBuildingKey && !this.buildingItems[this.viewedBuildingKey].isBuildable) {
       this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
       this.confirmBtnBg.input.cursor = 'default';
-      const blockedByUnique = this.buildingItems[this.viewedBuildingKey].uniqueBlocked;
-      this.confirmBtnText.setText(blockedByUnique ? '城市唯一' : '条件不足').setColor('#aa0000');
+      const viewed = this.buildingItems[this.viewedBuildingKey];
+      // 已建成 / 建造中不属于"条件不足"，按钮上直接显示当前状态
+      if (viewed.isBuilt) {
+        this.confirmBtnText.setText('建造完成').setColor('#88cc88');
+      } else if (viewed.isBuilding) {
+        this.confirmBtnText.setText('建造中').setColor('#ffcc44');
+      } else if (viewed.uniqueBlocked) {
+        this.confirmBtnText.setText('城市唯一').setColor('#aa0000');
+      } else {
+        this.confirmBtnText.setText('条件不足').setColor('#aa0000');
+      }
     } else if (this.viewedBuildingKey && !this.buildingItems[this.viewedBuildingKey].isAffordable) {
       this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
       this.confirmBtnBg.input.cursor = 'default';
