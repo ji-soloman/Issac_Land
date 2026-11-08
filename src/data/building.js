@@ -747,6 +747,7 @@ export const BUILDING = {
     require_tech(tech) {
       return false;
     },
+    unique: true, // 城市唯一：每座城市（主城+分城）最多建造一座
     cost: {
       mine: 4,
     },
@@ -769,6 +770,7 @@ export const BUILDING = {
     require_tech(tech) {
       return false;
     },
+    unique: true, // 城市唯一：每座城市（主城+分城）最多建造一座
     cost: {
       mine: 4,
     },
@@ -1121,6 +1123,7 @@ export const BUILDING = {
     require_tech(tech) {
       return tech.art_1;
     },
+    unique: true, // 城市唯一：每座城市（主城+分城）最多建造一座
     cost: {
       mine: 20,
     },

@@ -3,6 +3,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { get } from '../../system/i18n.js';
 import { BUILDING } from '../../data/building.js';
 import { REGION } from '../../data/region.js';
+import { game } from '../../system/function.js';
 
 export class CreateBuilding {
   constructor(scene, gridId, data) {
@@ -200,8 +201,12 @@ export class CreateBuilding {
 
       if (!this.checkAffordable(this.data.resource, config)) isAffordable = false;
 
+      // 【城市唯一】建筑：本城（主城+分城）其他格点已有/正在建造时，也不可再建
+      const uniqueHit = config.unique ? game.findUniqueBuildingInCity(this.data, this.gridId, key) : null;
+      const uniqueBlocked = !!uniqueHit && uniqueHit.gridId !== this.gridId;
+
       // 已建造或建造中：不可再次建造
-      const isDone = isBuilt || isBuilding;
+      const isDone = isBuilt || isBuilding || uniqueBlocked;
 
       const itemContainer = this.scene.add.container(startX, 40 + index * rowSpacing);
       const itemBg = this.scene.add.rectangle(0, 0, itemWidth, itemHeight, (isBuildable && !isDone) ? 0x222222 : 0x111111, 1)
@@ -219,11 +224,19 @@ export class CreateBuilding {
       itemContainer.add([itemBg, nameText]);
 
       // 状态标签（右侧显示，优先建造中 > 已建造）
-      if (isBuilding || isBuilt) {
-        const statusLabel = isBuilding ? '建造中' : '已建造';
-        const statusColor = isBuilding ? '#ffcc44' : '#88cc88';
+      if (isBuilding || isBuilt || uniqueBlocked) {
+        let statusLabel, statusColor;
+        if (isBuilding || isBuilt) {
+          statusLabel = isBuilding ? '建造中' : '已建造';
+          statusColor = isBuilding ? '#ffcc44' : '#88cc88';
+        } else {
+          // 本城其他格点已有 / 正在建造该城市唯一建筑
+          const going = uniqueHit.status === 'building';
+          statusLabel = going ? '本城建造中' : '本城已有';
+          statusColor = going ? '#ffcc44' : '#88cc88';
+        }
         const statusText = this.scene.add.text(itemWidth * 0.3, 0, statusLabel, {
-          fontSize: '15px', color: statusColor, fontStyle: 'bold', padding: { top: 4 },
+          fontSize: uniqueBlocked ? '13px' : '15px', color: statusColor, fontStyle: 'bold', padding: { top: 4 },
         }).setOrigin(0.5);
         itemContainer.add(statusText);
       }
@@ -234,7 +247,7 @@ export class CreateBuilding {
       }
 
       itemBg.on('pointerdown', () => this.selectBuilding(key));
-      this.buildingItems[key] = { bg: itemBg, isBuildable: isBuildable && !isDone, isAffordable, config };
+      this.buildingItems[key] = { bg: itemBg, isBuildable: isBuildable && !isDone, isAffordable, config, uniqueBlocked };
       this.scrollContainer.add(itemContainer);
       index++;
     }
@@ -455,7 +468,8 @@ export class CreateBuilding {
     } else if (this.viewedBuildingKey && !this.buildingItems[this.viewedBuildingKey].isBuildable) {
       this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
       this.confirmBtnBg.input.cursor = 'default';
-      this.confirmBtnText.setText('条件不足').setColor('#aa0000');
+      const blockedByUnique = this.buildingItems[this.viewedBuildingKey].uniqueBlocked;
+      this.confirmBtnText.setText(blockedByUnique ? '城市唯一' : '条件不足').setColor('#aa0000');
     } else if (this.viewedBuildingKey && !this.buildingItems[this.viewedBuildingKey].isAffordable) {
       this.confirmBtnBg.setFillStyle(0x333333, 1).setStrokeStyle(2, 0x555555);
       this.confirmBtnBg.input.cursor = 'default';

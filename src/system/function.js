@@ -75,6 +75,40 @@ export const game = {
     return Math.max(0, limit - current);
   },
 
+  /**
+   * 返回某个格点所属城市的主城格点 id：
+   *   主城自己 → 自己的 gridId；分城格点 → hasMain（所属主城）；野地/未知格点 → null
+   */
+  getCityId(grids, gridId) {
+    const g = grids?.[gridId];
+    if (!g) return null;
+    if (g.isMain) return gridId;
+    return g.hasMain ?? null;
+  },
+
+  /**
+   * 【城市唯一】建筑查重：在 gridId 所属城市（主城 + 其全部分城格点）里，
+   * 查找建筑 buildingKey 是否已建成 / 正在建造 / 已在本回合民生行动里排队。
+   * 不同城市互不影响，各自最多一座。
+   * @returns {{ gridId: string, status: 'built'|'building' } | null}  找到则返回所在格点和状态
+   */
+  findUniqueBuildingInCity(saveData, gridId, buildingKey) {
+    const grids = saveData?.map?.grids ?? {};
+    const cityId = this.getCityId(grids, gridId);
+    if (!cityId) return null;
+
+    const civil = saveData?.actionList?.civil ?? {};
+    let building = null;
+    for (const [gid, g] of Object.entries(grids)) {
+      if (this.getCityId(grids, gid) !== cityId) continue;
+      if (g.buildings?.[buildingKey]) return { gridId: gid, status: 'built' };
+      if (!building && (g.createBuilding?.[buildingKey] || civil[`build_building_${gid}_${buildingKey}`])) {
+        building = { gridId: gid, status: 'building' };
+      }
+    }
+    return building;
+  },
+
   showTips(scene, tip) {
     const { width, height } = scene.scale;
     const x = width / 2;

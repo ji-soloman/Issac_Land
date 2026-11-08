@@ -710,6 +710,15 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
+      // 1.5) 【城市唯一】本城（主城+分城）任意格点已有 / 正在建造，则不可再建
+      if (BUILDING[result.buildingKey]?.unique) {
+        const hit = game.findUniqueBuildingInCity(data, result.gridId, result.buildingKey);
+        if (hit) {
+          game.showTips(this, `每座城市只能建造一座【${BUILDING[result.buildingKey].name}】`);
+          return;
+        }
+      }
+
       // 2) 行动条是否还有空位
       if (!game.hasAvailableAction('civil')) {
         game.showTips(this, '民生行动数量超过上限');
