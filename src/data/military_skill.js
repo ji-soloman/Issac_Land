@@ -226,13 +226,18 @@ export const MILITARY_SKILL = {
     des: '对目标造成2×魔法攻击的魔法伤害，同时造成魔法攻击一半的溅射伤害。',
     level: 1,
     cost: { mana: 1 },
+    effect: 5, // 之前漏填这个字段，AI选行动时effect缺省会当0处理、比普攻的1还低，导致AI永远不会选这个技能，一直普攻
     term: {
       dam_3: true,
     },
     /**
      * 未声明 targeting：沿用默认规则——任意存活敌方，单目标。
-     * 主目标：2×魔法攻击的魔法伤害；溅射：目标站位队列中前后相邻的兵组
-     * （各最多2个，越界即停），各受到 0.5×魔法攻击的魔法伤害。
+     * 主目标：2×魔法攻击的魔法伤害；溅射：技能描述里没有写明具体数量
+     * （只说"同时造成...溅射伤害"），按约定使用 getNearbyTroops 的默认值——
+     * 只波及目标站位队列中紧邻的前1个和后1个（各最多1个，越界或紧邻的
+     * 那个已阵亡则该侧不命中，不会找更远的替补），各受到 0.5×魔法攻击的
+     * 魔法伤害。只有像宗教审判那样明确写出"至多4个其他角色"的技能，
+     * 才需要显式传更大的 maxEachSide。
      */
     skill(player, targets) {
       const target = targets[0];
@@ -243,7 +248,7 @@ export const MILITARY_SKILL = {
       player.dealDamage(target, mainDmg);
 
       const splashDmg = { physical: 0, magic: Math.round(magicAtk / 2) };
-      player.getNearbyTroops(target, 2)
+      player.getNearbyTroops(target)
         .forEach(t => player.dealDamage(t, splashDmg));
 
       return mainDmg;
@@ -255,6 +260,7 @@ export const MILITARY_SKILL = {
     des: '对己方站位最靠前的目标使用，令目标增加1×自身魔法攻击的护盾。',
     level: 2,
     cost: { mana: 1 },
+    effect: 4, // 同为护盾类技能，和寒冰盾(magic_ice_lv1_1)同一档；之前漏填会导致AI永远选不到这个技能
     // 目标固定为"己方站位最靠前的存活单位"，不需要玩家/AI 手动选择，
     // 技能函数内部自己从施法者所在的站位队列（player.owner.troops）里找
     targeting: {
@@ -278,6 +284,7 @@ export const MILITARY_SKILL = {
     des: '攻击至多等同于自身等级数量个目标并对最后1个目标施加2轮【烧伤】状态。',
     level: 3,
     cost: { mana: 2 },
+    effect: 9, // 多目标伤害+烧伤，之前漏填这个字段导致AI永远不会用（同样问题见下面几个技能的注释）
     term: {
       buff: [3],
       dam_3: true,
@@ -352,6 +359,7 @@ export const MILITARY_SKILL = {
     des: '攻击目标并额外造成2×魔法攻击的物理伤害。',
     level: 2,
     cost: { mana: 1 },
+    effect: 6, // 之前漏填这个字段，导致AI（比如副本boss侍女）永远选不到这个技能，一直普攻
     /**
      * "攻击目标"= 一次普通攻击的伤害公式（物理攻击+魔法攻击），
      * "额外造成2×魔法攻击的物理伤害"= 在此基础上叠加的物理类型伤害（用魔法攻击数值计算）。
@@ -376,6 +384,7 @@ export const MILITARY_SKILL = {
     des: '对目标造成2×自身物理攻击和魔法攻击之和的魔法伤害，并令其进入1轮【冰冻】状态。',
     level: 3,
     cost: { mana: 2 },
+    effect: 8, // 高倍伤害+控制，之前漏填这个字段导致AI永远选不到
     term: {
       buff: [8],
     },
@@ -401,6 +410,7 @@ export const MILITARY_SKILL = {
     des: '对目标进行无视护甲的攻击，并额外造成3点物理伤害。',
     cost: { mana: 1 },
     level: 1,
+    effect: 4, // 无视护甲+额外伤害，之前漏填这个字段导致AI永远选不到
     skill(player, targets) {
       const target = targets[0];
       if (!target) return { physical: 0, magic: 0 };
@@ -443,6 +453,7 @@ export const MILITARY_SKILL = {
     des: '攻击至多3个目标并额外造成6点物理伤害和6点魔法伤害。',
     level: 3,
     cost: { mana: 3 },
+    effect: 9, // 多目标伤害，之前漏填这个字段导致AI永远选不到
     // "至多3个"：玩家/AI 可以选择1~3个目标
     targeting: {
       count: [1, 3],
@@ -467,6 +478,7 @@ export const MILITARY_SKILL = {
     des: '失去1点体力，令自身进入2轮【玄藏】状态。',
     level: 2,
     cost: { mana: 1 },
+    effect: 3, // 纯防御/免疫类自我增益，之前漏填这个字段导致AI永远选不到
     term: {
       buff: [16],
     },
@@ -490,6 +502,7 @@ export const MILITARY_SKILL = {
     // 技能描述中未给出魔力消耗，参照同为3级、多目标的半月斩/流星火雨等技能规模暂定为4，
     // 后续如需按数值平衡调整，直接改这里的 cost 即可
     cost: { mana: 4 },
+    effect: 13, // 多目标高额外伤害+击杀转化骷髅，收益很高；之前漏填这个字段导致AI永远选不到
     term: {
       summon_1: true,
     },

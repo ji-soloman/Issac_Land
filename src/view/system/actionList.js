@@ -2,6 +2,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 
 import { MILITARY } from '../../data/military.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
+import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { ERA } from '../../data/era.js';
 import { REGION } from '../../data/region.js';
 import { ACADEMY_SKILL } from '../../data/academy_skill.js';
@@ -442,6 +443,12 @@ export class ActionListSystem {
     if (key.startsWith('train_soldier_')) {
       const unitName = MILITARY_UNIT[actionData.unitKey]?.name ?? actionData.unitKey;
       markedIntro = `开始训练{{【${unitName}】}}`;
+    } else if (key.startsWith('academy_skill_learn_')) {
+      // actionData: { soldierId, skillKey, schoolKey }，见 academyView.js
+      // AcademySkillProgressViewer.showLearnUnitPicker 里的 game.addAction 调用
+      const schoolName = ACADEMY_SKILL[actionData.schoolKey]?.name ?? actionData.schoolKey;
+      const skillName = MILITARY_SKILL[actionData.skillKey]?.name ?? actionData.skillKey;
+      markedIntro = `开始学习${schoolName}学派的技能{{【${skillName}】}}`;
     } else {
       let intro = MILITARY[key]?.intro || key;
       const replacements = [];

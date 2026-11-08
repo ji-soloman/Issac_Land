@@ -3,13 +3,13 @@ import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { MILITARY_BUFF } from '../../data/military_buff.js';
 
-const DEPTH = 1600;
-const BG_COLOR = 0x0d0d1a;
+const DEPTH        = 1600;
+const BG_COLOR     = 0x0d0d1a;
 const BG_IMAGE_KEY = 'battle_bg_image'; // 战场背景图纹理 key，图片路径见 _loadAssetsAndBuild
 // 魔力图标改用 DOM <img> 展示（和技能图标一致的做法，见 _addActionBtn），
 // 直接用路径而不走 Phaser 纹理加载，路径复用兵组详情页(militaryUnitView.js)同一份素材
 const MANA_ICON_PATH = 'assets/military/ui/mana.png';
-const THEME_COLOR = 0xb8963e;
+const THEME_COLOR  = 0xb8963e;
 const THEME_COLOR_HEX = '#b8963e'; // THEME_COLOR 的字符串形式，供 Text 的 color 参数使用
 const LOG_HIGHLIGHT_COLOR = '#ffd700'; // 战斗记录里兵组名/技能名高亮成的黄色，和场上其它金色高亮（如行动中高亮描边）保持一致的色调
 const ATTACKER_TINT = 0xff6666;
@@ -17,9 +17,9 @@ const DEFENDER_TINT = 0x6699ff;
 
 // 面板视觉主题（战斗记录/行动框/功能栏/标题牌统一用这一套）：深蓝黑圆角底 + 金色描边，
 // 对照参考图新增——比之前的纯色矩形面板更接近参考图里"深色卡片+金色细边"的调性。
-const PANEL_BG_COLOR = 0x0c1420;  // 面板深蓝黑色底
-const PANEL_BG_ALPHA = 0.82;
-const PANEL_RADIUS = 12;        // 面板圆角半径
+const PANEL_BG_COLOR   = 0x0c1420;  // 面板深蓝黑色底
+const PANEL_BG_ALPHA   = 0.82;
+const PANEL_RADIUS     = 12;        // 面板圆角半径
 const PANEL_TEXT_COLOR = '#ede0c0'; // 面板暖白/米金色文字
 const PANEL_MUTED_TEXT_COLOR = '#7d7566'; // 面板里"不可用/次要"状态的文字（如技能负担不起时）
 
@@ -34,7 +34,7 @@ const MAX_SUMMONED_PER_SIDE = 5;
 const SLOT_W = 104;
 const SLOT_H = 132;
 const SLOT_GAP = 12;
-const ROW_GAP = 78; // 卡牌上方有血条/护甲条、下方有法力条+buff图标行，行间距要留够空间避免相邻行重叠
+const ROW_GAP  = 78; // 卡牌上方有血条/护甲条、下方有法力条+buff图标行，行间距要留够空间避免相邻行重叠
 const FRONT_GAP = 50; // 攻守双方最前排卡牌之间的额外间距（避免贴在中线上）
 const FIELD_TOP = 96; // 兵组卡牌区域顶部起始 y（_renderField 用它排布卡牌，_buildUI 用它定位VS标记/中线）
 const ROW_SCROLLBAR_H = 6; // 一路兵组过多时，下方横向拉条的轨道粗细
@@ -65,8 +65,8 @@ const FUNC_PANEL_W_RATIO = 0.23; // 功能栏宽度占比——行动栏占剩�
  */
 const DAMAGE_TYPE = {
   physical: { color: '#ff4444', ignoreArmor: false }, // 物理伤害：红色
-  magic: { color: '#99e6ff', ignoreArmor: false }, // 魔法伤害：淡蓝色
-  pure: { color: '#ffffff', ignoreArmor: true },  // 真实伤害：白色（黑边），无视护甲——烧伤/冻伤等特殊结算用
+  magic:    { color: '#99e6ff', ignoreArmor: false }, // 魔法伤害：淡蓝色
+  pure:     { color: '#ffffff', ignoreArmor: true },  // 真实伤害：白色（黑边），无视护甲——烧伤/冻伤等特殊结算用
 };
 
 /**
@@ -105,9 +105,9 @@ function inferIgnoreArmor(components) {
  * 尚未实装的机制），仅用于让骸骨护盾（施加玄藏）等技能对未来的控制类效果产生实际免疫效果。
  */
 const CONTROL_BUFF_KEYS = new Set([1, 5, 6, 8]);     // 眩晕/疲惫/恐惧/冰冻——"无法行动"类控制效果
-const DEBUFF_BUFF_KEYS = new Set([3, 4, 9, 10]);    // 烧伤/中毒/衰弱/溺水——伤害/削弱类弱化效果
+const DEBUFF_BUFF_KEYS  = new Set([3, 4, 9, 10]);    // 烧伤/中毒/衰弱/溺水——伤害/削弱类弱化效果
 const CONTROL_IMMUNE_BUFF_KEYS = new Set([11, 16]);  // 振奋/玄藏——持有时免疫控制类
-const DEBUFF_IMMUNE_BUFF_KEYS = new Set([12, 17]);  // 无双/守护——持有时免疫弱化类
+const DEBUFF_IMMUNE_BUFF_KEYS  = new Set([12, 17]);  // 无双/守护——持有时免疫弱化类
 
 /** 判断目标身上是否持有 keySet 集合里的任意一个、且剩余轮次>0的 buff */
 function hasActiveBuffFromSet(troop, keySet) {
@@ -169,7 +169,7 @@ function isOnBattlefield(troop) {
  */
 export class BattleSystem {
   constructor(scene, saveData, battleConfig) {
-    this.scene = scene;
+    this.scene    = scene;
     this.saveData = saveData;
 
     this.attackers = battleConfig?.attackers ?? [];
@@ -223,11 +223,15 @@ export class BattleSystem {
     for (const person of allPersons) {
       for (const troop of (person.troops ?? [])) {
         const tmpl = MILITARY_UNIT[troop.name];
-        if (!tmpl?.image) continue;
+        // 优先用模板自带的图片；模板不存在时（例如副本boss，没有对应的 MILITARY_UNIT
+        // 条目）退回兵组自己携带的 image 字段——见 dungeonSelector.js 构造boss数据时
+        // 直接把 units[key].image 原样传进 troop.image。
+        const imagePath = tmpl?.image ?? troop.image;
+        if (!imagePath) continue;
         const key = `soldier_${troop.name}`;
         if (!this.scene.textures.exists(key)) {
           keysToLoad.add(key);
-          pathMap[key] = tmpl.image;
+          pathMap[key] = imagePath;
         }
       }
     }
@@ -304,36 +308,66 @@ export class BattleSystem {
 
   _createTroopInstance(raw, person, idx) {
     const tmpl = MILITARY_UNIT[raw.name] ?? {};
-    const stats = { ...(tmpl.basic_stats ?? {}), ...(raw.stats ?? {}) };
+    const stats   = { ...(tmpl.basic_stats ?? {}), ...(raw.stats ?? {}) };
     const ability = { ...(tmpl.special_ability ?? {}), ...(raw.ability ?? {}) };
 
     const troop = {
       instanceId: raw.soldierId ?? `${person.id}_t${idx}`,
-      unitKey: raw.name,
-      displayName: tmpl.name ?? raw.name,
-      image: tmpl.image,
-      quality: raw.quality ?? tmpl.quality ?? 'normal',
-      level: raw.level ?? 1,
+      unitKey:    raw.name,
+      // displayName/image/type 优先取 raw 自己携带的值，取不到时再退回模板——
+      // 普通兵组（在 MILITARY_UNIT 里有对应模板）不受影响，行为和之前完全一致；
+      // 副本boss等没有模板的兵组（raw.name 只是一个内部编号，MILITARY_UNIT 里查不到），
+      // 必须靠 raw 自己直接提供这几个展示字段，见 dungeonSelector.js 构造boss数据的写法。
+      displayName: raw.displayName ?? tmpl.name ?? raw.name,
+      image:      raw.image ?? tmpl.image,
+      type:       raw.type ?? tmpl.type,
+      quality:    raw.quality ?? tmpl.quality ?? 'normal',
+      level:      raw.level ?? 1,
       stats,
       ability,
       equipments: raw.equipments ?? tmpl.equipments ?? {},
-      maxHp: stats.hp ?? 0,
-      currentHp: stats.hp ?? 0,
-      maxArmor: stats.armor ?? 0,     // 护甲上限（即兵种自带的 armor 数值）
+      maxHp:      stats.hp ?? 0,
+      currentHp:  stats.hp ?? 0,
+      maxArmor:   stats.armor ?? 0,     // 护甲上限（即兵种自带的 armor 数值）
       currentArmor: stats.armor ?? 0,   // 当前护甲值，优先于生命值被扣除，未来可由技能恢复但不超过上限
-      maxMana: stats.mana ?? 0,      // 魔力上限（兵种自带的 mana 数值），供技能 cost 消耗判定
+      maxMana:    stats.mana ?? 0,      // 魔力上限（兵种自带的 mana 数值），供技能 cost 消耗判定
       currentMana: stats.mana ?? 0,     // 当前魔力值
-      buffs: {},                   // buff 状态表：{ [buffKey]: 剩余轮次数 }，key 对应 MILITARY_BUFF
-      owner: person,
+      // buff 状态表：{ [buffKey]: 剩余轮次数 }，key 对应 MILITARY_BUFF。
+      // 普通兵组默认没有初始buff；raw.init_buff（例如副本boss，开局自带的buff，
+      // 见 dungeon.js）声明的buff会在这里直接写入——这一步在 _initTroops()/_build()
+      // 阶段就完成，必定早于点击"开始战斗"后 _onStartBattle() 里才触发的
+      // onGameStart 被动技能初始化钩子，满足"早于被动技能初始化"的要求。
+      buffs:      this._buildInitBuffs(raw.init_buff),
+      owner:      person,
       originalIndex: idx,
     };
 
     // 拆分技能分类
-    troop.activeSkills = this._getSkillsByType(troop, 'initiative');
+    troop.activeSkills  = this._getSkillsByType(troop, 'initiative');
     troop.passiveSkills = this._getSkillsByType(troop, 'passive');
-    troop.tagSkills = this._getSkillsByType(troop, 'tag');
+    troop.tagSkills      = this._getSkillsByType(troop, 'tag');
 
     return troop;
+  }
+
+  /**
+   * 把 raw.init_buff（例如副本boss战斗开始前就自带的buff，见 dungeon.js）转换成
+   * troop.buffs 的存储格式：{ [buffKey]: 剩余轮次数 }。
+   * 取值约定和 Player.applyBuff 施加"永久buff"时的约定一致——true 表示永久，
+   * 存成 Infinity（不显示剩余轮次数字，见 _updateBuffIcons）；其余情况按数值
+   * 原样作为剩余轮次数。这里只是兵组刚创建时的初始状态赋值，不经过 applyBuff 的
+   * 免疫判定（免疫判定只针对战斗过程中"被施加"的buff，开局自带的buff不受影响）。
+   * @param {Record<string, true|number>} [initBuff]
+   * @returns {Record<string, number>}
+   */
+  _buildInitBuffs(initBuff) {
+    const buffs = {};
+    if (!initBuff) return buffs;
+    for (const key of Object.keys(initBuff)) {
+      const val = initBuff[key];
+      buffs[key] = val === true ? Infinity : val;
+    }
+    return buffs;
   }
 
   /**
@@ -572,9 +606,9 @@ export class BattleSystem {
 
     return {
       y, h,
-      log: { x: logX, w: logW },
+      log:    { x: logX,    w: logW },
       action: { x: actionX, w: actionW },
-      func: { x: funcX, w: funcW },
+      func:   { x: funcX,   w: funcW },
     };
   }
 
@@ -618,7 +652,7 @@ export class BattleSystem {
     const fieldTop = FIELD_TOP;
     const fieldBottom = height - BOTTOM_MARGIN - BOTTOM_PANEL_H - BOTTOM_MARGIN;
 
-    this._renderSide(this.attackers, true, centerX, fieldTop, fieldBottom);
+    this._renderSide(this.attackers, true,  centerX, fieldTop, fieldBottom);
     this._renderSide(this.defenders, false, centerX, fieldTop, fieldBottom);
   }
 
@@ -1199,7 +1233,7 @@ export class BattleSystem {
       stroke: '#1a0000', strokeThickness: 4,
     }).setOrigin(0.5);
     closeHit.on('pointerover', () => closeTxt.setColor('#ffaaaa'));
-    closeHit.on('pointerout', () => closeTxt.setColor('#ff4444'));
+    closeHit.on('pointerout',  () => closeTxt.setColor('#ff4444'));
     closeHit.on('pointerdown', () => {
       // 不保存任何战斗记录，直接销毁战场
       this.destroy();
@@ -1466,9 +1500,9 @@ export class BattleSystem {
     }).setOrigin(0.5);
 
     btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
-    btnBg.on('pointerout', () => btnBg.setAlpha(1));
+    btnBg.on('pointerout',  () => btnBg.setAlpha(1));
     btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
-    btnBg.on('pointerup', () => { btnBg.setAlpha(1); this._onStartBattle(); });
+    btnBg.on('pointerup',   () => { btnBg.setAlpha(1); this._onStartBattle(); });
 
     this.root.add([btnBg, btnTxt]);
     this._startBtnBg = btnBg;
@@ -1628,6 +1662,12 @@ export class BattleSystem {
    *  一方全灭后，剩下一方的兵组每次行动都因为没有目标而立刻同步进入下一回合，
    *  没有任何检查会导致这个过程无限嵌套下去，最终耗尽调用栈）。
    * 若还有双方都存活，返回 false，战斗正常继续。
+   *
+   * 不存在平局——只要任意一方全灭，战斗立刻结束并分出胜负，不会出现
+   * "双方同归于尽"这种结果。胜负统一按"玩家方是否还有存活兵组"判断：
+   * 玩家可能是进攻方也可能是防守方（例如副本战斗由boss的position配置决定）。
+   * 即使极端情况下双方恰好在同一次判定里都已全灭，也直接按"玩家方没有
+   * 存活兵组 = 玩家方失败"处理，不再单独区分出一个"平局"结果。
    */
   _checkBattleEnd() {
     if (this._battleEnded) return true;
@@ -1639,12 +1679,9 @@ export class BattleSystem {
 
     this._battleEnded = true;
 
-    let resultText;
-    if (!attackersAlive && !defendersAlive) {
-      resultText = '战斗结束：双方同归于尽';
-    } else {
-      resultText = attackersAlive ? '战斗结束：进攻方获胜！' : '战斗结束：防守方获胜！';
-    }
+    const playerIsAttacker = this.attackers.some(p => p.isPlayer);
+    const playerAlive = playerIsAttacker ? attackersAlive : defendersAlive;
+    const resultText = playerAlive ? '战斗结束：玩家方胜利！' : '战斗结束：玩家方失败！';
 
     this._logBattle(resultText);
     this._titleText?.setText('战斗结束');
@@ -1674,9 +1711,9 @@ export class BattleSystem {
       fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5);
     btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
-    btnBg.on('pointerout', () => btnBg.setAlpha(1));
+    btnBg.on('pointerout',  () => btnBg.setAlpha(1));
     btnBg.on('pointerdown', () => btnBg.setAlpha(0.6));
-    btnBg.on('pointerup', () => { btnBg.setAlpha(1); this.destroy(); });
+    btnBg.on('pointerup',   () => { btnBg.setAlpha(1); this.destroy(); });
     panel.add([btnBg, btnTxt]);
 
     panel.setAlpha(0); overlay.setAlpha(0);
@@ -2058,7 +2095,7 @@ export class BattleSystem {
       // 悬浮时图标增加20%透明度（不透明度 100% → 80%），离开恢复；用 iconDom.setAlpha
       // 而不是直接改 style.opacity（原因见上面创建 iconDom 时的注释）
       hitZone.on('pointerover', () => { iconDom?.setAlpha(0.8); });
-      hitZone.on('pointerout', () => { iconDom?.setAlpha(1); });
+      hitZone.on('pointerout',  () => { iconDom?.setAlpha(1); });
       hitZone.on('pointerdown', () => {
         this._hideActionMenu();
         this._beginTargeting(troop, actionKey);
@@ -2069,7 +2106,7 @@ export class BattleSystem {
     if (des) {
       hitZone.on('pointerover', (ptr) => this._showActionTip(label, des, ptr));
       hitZone.on('pointermove', (ptr) => this._moveActionTip(ptr));
-      hitZone.on('pointerout', () => this._hideActionTip());
+      hitZone.on('pointerout',  () => this._hideActionTip());
     }
 
     // 技能图标这张 DOM 图片是可交互的（见上面的创建注释），鼠标真的悬浮在图标像素上时
@@ -2079,9 +2116,9 @@ export class BattleSystem {
     if (iconEl) {
       const fwd = (name) => hitZone.emit(name, this.scene.input.activePointer);
       iconEl.addEventListener('mouseenter', () => fwd('pointerover'));
-      iconEl.addEventListener('mousemove', () => fwd('pointermove'));
+      iconEl.addEventListener('mousemove',  () => fwd('pointermove'));
       iconEl.addEventListener('mouseleave', () => fwd('pointerout'));
-      iconEl.addEventListener('mousedown', () => fwd('pointerdown'));
+      iconEl.addEventListener('mousedown',  () => fwd('pointerdown'));
     }
   }
 
@@ -2150,14 +2187,14 @@ export class BattleSystem {
     if (!this._actionTooltip) return;
     const { width, height } = this.scene.scale;
     const node = this._actionTooltip.node;
-    const w = node.offsetWidth || 220;
+    const w = node.offsetWidth  || 220;
     const h = node.offsetHeight || 80;
 
     // 行动按钮在屏幕底部，浮窗默认往指针上方展开更合理
     let tx = px + 16 + w / 2;
     let ty = py - 16 - h / 2;
 
-    if (tx + w / 2 > width - 8) tx = px - 16 - w / 2;
+    if (tx + w / 2 > width  - 8) tx = px - 16 - w / 2;
     if (ty - h / 2 < 8) ty = py + 16 + h / 2; // 上方放不下就改往下
     if (tx - w / 2 < 8) tx = 8 + w / 2;
     if (ty + h / 2 > height - 8) ty = height - 8 - h / 2;
@@ -2302,7 +2339,7 @@ export class BattleSystem {
     }).setOrigin(0.5);
     panel.add([confirmBg, confirmTxt]);
 
-    panel._hintText = hintText;
+    panel._hintText  = hintText;
     panel._confirmBg = confirmBg;
 
     this._actionMenuPanel = panel;
@@ -2323,10 +2360,10 @@ export class BattleSystem {
     if (canConfirm) {
       panel._confirmBg.setTexture('common_btn_green').setAlpha(1);
       panel._confirmBg.setInteractive({ useHandCursor: true });
-      panel._confirmBg.on('pointerover', () => panel._confirmBg.setAlpha(0.8));
-      panel._confirmBg.on('pointerout', () => panel._confirmBg.setAlpha(1));
-      panel._confirmBg.on('pointerdown', () => panel._confirmBg.setAlpha(0.6));
-      panel._confirmBg.on('pointerup', () => { panel._confirmBg.setAlpha(1); this._confirmTargeting(); });
+      panel._confirmBg.on('pointerover',  () => panel._confirmBg.setAlpha(0.8));
+      panel._confirmBg.on('pointerout',   () => panel._confirmBg.setAlpha(1));
+      panel._confirmBg.on('pointerdown',  () => panel._confirmBg.setAlpha(0.6));
+      panel._confirmBg.on('pointerup',    () => { panel._confirmBg.setAlpha(1); this._confirmTargeting(); });
     } else {
       panel._confirmBg.setTexture('common_btn').setAlpha(0.5);
       panel._confirmBg.disableInteractive();
@@ -2556,7 +2593,7 @@ export class BattleSystem {
   _aiChooseAction(troop) {
     const actionKey = this._aiChooseActionKey(troop);
     const isSkill = actionKey !== 'normal_attack';
-    const isAuto = isSkill && MILITARY_SKILL[actionKey]?.targeting?.auto;
+    const isAuto  = isSkill && MILITARY_SKILL[actionKey]?.targeting?.auto;
 
     // 自动执行的技能不需要计算目标，技能函数内部自己决定打谁
     const targets = isAuto ? [] : this._aiSelectTargets(troop, actionKey);
@@ -2713,6 +2750,41 @@ export class BattleSystem {
           this._endEffect(target);
         },
       });
+    });
+  }
+
+  /**
+   * 在目标兵组头顶生成一条"获得类"飘字（加护盾/回复体力等），视觉表现和
+   * _spawnDamageFloaters 造成的伤害飘字保持一致（同样的起始位置、飘动+淡出方式、
+   * 字号/描边），只是固定显示"+数值"而不是"-数值"，颜色由调用方指定——
+   * 例如护盾用护甲条同款蓝色、回复体力用血条同款绿色，和对应的数值条颜色呼应。
+   *
+   * 和护甲增长动画（_animateArmorGain）一样，这只是装饰性表现，不接入
+   * _beginEffect/_endEffect 的"结算动画"计数：获得类效果不会导致目标阵亡，
+   * 没必要为了等它播完而阻塞回合推进或阵亡结算判定。
+   * @param {Player} target
+   * @param {number} amount - 实际增加的数值（正数），飘字固定显示成"+amount"
+   * @param {string} color - 飘字颜色，如护盾用蓝色、回复体力用绿色
+   */
+  _spawnGainFloater(target, amount, color) {
+    if (!(amount > 0)) return;
+    const record = this._troopRecordMap.get(target.instanceId);
+    if (!record) return;
+
+    const startY = -SLOT_H / 2 - 44; // 和伤害飘字使用同一起始位置，方便和造成伤害的飘字对照
+    const txt = this.scene.add.text(0, startY, `+${amount}`, {
+      fontSize: '16px', color, fontStyle: 'bold', padding: { top: 4 },
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5);
+    record.container.add(txt);
+
+    this.scene.tweens.add({
+      targets: txt,
+      y: txt.y - 42,
+      alpha: 0,
+      duration: 1300,
+      ease: 'Cubic.easeOut',
+      onComplete: () => txt.destroy(),
     });
   }
 
@@ -2882,13 +2954,20 @@ class Player {
    * 就以数组下标为准，不会再去比较顺位数值。分别向前(下标-1,-2,...)、向后(下标+1,+2,...)
    * 各最多找 maxEachSide 个；只要某个方向越过数组边界（没有更多兵组）就在该方向停止，
    * 不会跳到别的位置补位；已阵亡的兵组仍占据自己的站位（计入下标偏移），
-   * 但不会出现在最终返回的可命中目标列表里。
+   * 但不会出现在最终返回的可命中目标列表里——如果紧邻的那一个刚好已经阵亡，
+   * 这一侧就会少命中甚至完全命不中，不会因此去更远处找替补，这是预期行为。
+   *
+   * 调用方约定：技能描述文字里如果没有明确写"溅射几个"（例如召唤火鸦只写了
+   * "同时造成魔法攻击一半的溅射伤害"），maxEachSide 必须用默认值1（前后各波及
+   * 紧邻的一个，总共至多2个）；只有技能描述明确写出了具体数量的（例如宗教审判
+   * 写明"对目标周围至多4个其他角色"，对应 maxEachSide=2、前后合计至多4个），
+   * 才可以传比1更大的值。不要为了让溅射范围更大而随意调高这个参数。
    *
    * @param {Player} target
-   * @param {number} [maxEachSide=2]
+   * @param {number} [maxEachSide=1]
    * @returns {Player[]} 找到的相邻兵组（不含 target 自己），已过滤掉已阵亡的
    */
-  getNearbyTroops(target, maxEachSide = 2) {
+  getNearbyTroops(target, maxEachSide = 1) {
     const lineup = target?.owner?.troops;
     if (!lineup) return [];
     const idx = lineup.indexOf(target);
@@ -2977,10 +3056,13 @@ class Player {
   dealDamage(target, components, options = {}) {
     if (!this.battle || !target) return { hit: false, total: 0, components: components ?? {} };
 
-    // 命中判定钩子：伤害真正结算前，广播给场上所有 buff 一个介入机会——
-    // 未来实装的闪避、无效攻击等效果，可以在自己声明的 trigger.onBeforeDamage 里
-    // 把 ctx.cancelled 置为 true 来"打断"这次攻击（例如目标身上的闪避buff判定命中率后
-    // 决定回避）。目前 MILITARY_BUFF 里还没有任何 buff 声明这个钩子，广播总是原样返回。
+    // 命中判定/伤害修正钩子：伤害真正结算前，广播给场上所有 buff 一个介入机会——
+    // 一是可以把 ctx.cancelled 置为 true 来"打断"这次攻击（例如未来的闪避效果）；
+    // 二是可以整体重新赋值 ctx.components 为一份新的伤害拆分来"修改"这次伤害
+    // （例如凤隐/麟佑这类"受到的XX类型伤害减少N%"的减伤效果）——和 _executeAction
+    // 里 onUseSkill 钩子对 ctx.cost 的重新赋值是同一套约定，这里同样需要把
+    // trigger 可能修改过的 ctx.components 重新读回来，而不是继续用调用方传入的
+    // 原始 components，否则 trigger 里对 ctx.components 的重新赋值会被静默忽略。
     const hookCtx = this.battle._fireBuffTrigger('onBeforeDamage', {
       attacker: this, target, components, cancelled: false,
     });
@@ -2988,6 +3070,20 @@ class Player {
     if (hookCtx.cancelled) {
       return { hit: false, total: 0, components: components ?? {} };
     }
+
+    components = hookCtx.components ?? components;
+
+    // 多个增伤/减伤类 buff 是"乘算"叠加的：基础伤害*(1+n%)*(1+m%)*(1-x%)*(1-y%)...——
+    // 每个 buff 的 trigger（见 military_buff.js 的 onBeforeDamage 说明）只管在当前值
+    // 基础上再乘自己的系数，不做任何中途取整；广播完所有 buff 之后，这里统一对每个
+    // 伤害类型做唯一一次取整（四舍五入，且不低于0）。如果每个 buff 各自提前取整，
+    // 多个 buff 叠加时会因为多次舍入误差而偏离真正的乘算结果，所以取整必须只在这里做一次，
+    // 而不是分散在各个 trigger 函数里。
+    const roundedComponents = {};
+    for (const key of Object.keys(components ?? {})) {
+      roundedComponents[key] = Math.max(0, Math.round(components[key] ?? 0));
+    }
+    components = roundedComponents;
 
     const total = sumDamageComponents(components);
     const ignoreArmor = options.ignoreArmor ?? inferIgnoreArmor(components);
@@ -3003,7 +3099,9 @@ class Player {
 
   /**
    * 给目标增加护甲/护盾值，并播放护甲条的"增长"动画（见 BattleSystem._animateArmorGain）：
-   * 蓝条先瞬间收缩成"旧护甲值/新护甲值"的比例，再补间过渡到满宽，直观展示这次增加了多少。
+   * 蓝条先瞬间收缩成"旧护甲值/新护甲值"的比例，再补间过渡到满宽，直观展示这次增加了多少；
+   * 同时在头顶飘一条蓝色"+n"数字（见 BattleSystem._spawnGainFloater），和造成伤害时的
+   * 红色/淡蓝色"-n"飘字对应，一眼就能看出这次是加护盾还是扣血。
    * 护盾不存在上限，只有当前值——直接叠加到 currentArmor 上即可。
    * 供护盾/增益类技能使用，例如"寒冰盾：给己方1组单位增加10×等级的寒冰护甲"。
    * @param {Player} target
@@ -3016,7 +3114,35 @@ class Player {
     target.currentArmor = oldArmor + amount;
     const record = this.battle._troopRecordMap.get(target.instanceId);
     this.battle._animateArmorGain(record, oldArmor, target.currentArmor);
+    this.battle._spawnGainFloater(target, amount, '#3399ff'); // 蓝色 "+n"，和护甲条同色
     return amount;
+  }
+
+  /**
+   * 给目标恢复体力，不超过其体力上限；播放血条的恢复过渡动画（复用
+   * BattleSystem._updateHpBar 已有的补间效果），同时在头顶飘一条绿色"+n"数字
+   * （见 BattleSystem._spawnGainFloater），和造成伤害时的"-n"飘字对应。
+   * 已经阵亡（不在战场上）的目标不能被恢复。
+   * 供治疗/回复类技能使用。
+   * @param {Player} target
+   * @param {number} amount - 期望恢复的数值
+   * @returns {number} 实际恢复到的数值（可能因为已接近满体力而小于 amount；
+   *   已阵亡或体力已满时返回0，不会生成飘字/动画）
+   */
+  healHp(target, amount) {
+    if (!this.battle || !target || !(amount > 0)) return 0;
+    if (!isOnBattlefield(target)) return 0; // 已阵亡的目标不能被恢复
+
+    const maxHp = target.maxHp ?? target.stats?.hp ?? 0;
+    const oldHp = target.currentHp ?? 0;
+    const actualHeal = Math.min(maxHp, oldHp + amount) - oldHp;
+    if (actualHeal <= 0) return 0; // 已经满体力，无事发生
+
+    target.currentHp = oldHp + actualHeal;
+    const record = this.battle._troopRecordMap.get(target.instanceId);
+    this.battle._updateHpBar(record);
+    this.battle._spawnGainFloater(target, actualHeal, '#2ecc40'); // 绿色 "+n"，和血条同色
+    return actualHeal;
   }
 
   /**
@@ -3144,7 +3270,7 @@ class Player {
   attack(target) {
     const components = {
       physical: Math.max(0, Math.round(this.stats?.physical_attack ?? 0)),
-      magic: Math.max(0, Math.round(this.stats?.spell_attack ?? 0)),
+      magic:    Math.max(0, Math.round(this.stats?.spell_attack ?? 0)),
     };
     this.dealDamage(target, components);
     return components;

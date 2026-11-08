@@ -1517,9 +1517,13 @@ export class AcademySkillProgressViewer {
 
           // 学习技能消耗一格军事行动条，做法和 military_ui.js 里其它军事行动（征集物资/
           // 地形侦查）一致：actionList.military 里占一个坑位，坑位不够时 onFail 提示，
-          // 真正的技能学习效果（learnedSkills/ability 变更）放在 onSuccess 里才执行
+          // 真正的技能学习效果（learnedSkills/ability 变更）放在 onSuccess 里才执行。
+          // config 里额外带上 schoolKey：行动列表（actionList.js）渲染这条记录时要显示
+          // "开始学习XX学派的技能【YY】"，需要学派名，只靠 skillKey 反查不到对应的
+          // 学派（getSkillLevelInfo 是本文件内部的私有缓存，没有导出），所以这里顺手
+          // 把当前查看器自己持有的 schoolKey 一起存进 actionData。
           const actionKey = `academy_skill_learn_${id}_${skillKey}_${Date.now()}`;
-          game.addAction('military', actionKey, { soldierId: id, skillKey }, {
+          game.addAction('military', actionKey, { soldierId: id, skillKey, schoolKey: this.schoolKey }, {
             onSuccess: () => {
               this._pendingLearnKeys.delete(learnKey);
               const result = military.learnSkill(this.saveData, id, skillKey);

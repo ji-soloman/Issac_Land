@@ -8,6 +8,7 @@ import { MilitaryUnitViewer, MilitarySkillViewer } from './militaryUnitView.js';
 import { AcademyViewer, countAcademyDistricts } from './academyView.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { SimBattleSelector } from './simBattleSelector.js';
+import { DungeonListView } from './dungeonListView.js';
 
 // "技能图鉴""学派"菜单项：运行时补进 MILITARY 注册表，而不是直接改 data/military.js——
 // 项目里存在两份同名的 military.js 文档（system/military.js 工具类 和 data/military.js
@@ -27,6 +28,16 @@ if (!MILITARY.academy_school) {
     // 的时间差把本该和学院区数量挂钩的限制骗过去。见 academyView.js 里
     // renderBranches/createBranchCard 对 districtCount 的判断，双重把关。
     filter: ({ saveGrids }) => countAcademyDistricts(saveGrids) > 0,
+  };
+}
+// "副本"菜单项：紧跟在"学派"后面注册，让它在军事行动卡片网格里排在学派卡片
+// 的正后方（这里的注册顺序就是 Object.entries(MILITARY) 的遍历顺序，
+// 也就是 createScrollableContent 里卡片的排列顺序）。目前不设解锁条件，
+// 始终可点击——如果以后需要"通关xx后才解锁副本"之类的条件，在这个 filter 里补。
+if (!MILITARY.dungeon) {
+  MILITARY.dungeon = {
+    name: '副本',
+    filter: () => true,
   };
 }
 
@@ -98,7 +109,7 @@ export class MilitarySystem {
     const totalRowWidth = cardsPerRow * cardWidth + (cardsPerRow - 1) * cardSpacing;
     const startX = sidePadding + (availableWidth - totalRowWidth) / 2 + cardWidth / 2;
 
-    const mapGrids = MAPS.grids || {};
+    const mapGrids  = MAPS.grids  || {};
     const saveGrids = this.saveData.map?.grids || {};
     const actions = Object.entries(MILITARY);
 
@@ -303,6 +314,13 @@ export class MilitarySystem {
       return;
     }
 
+    // 副本：先进入独立的关卡选择界面（一张张关卡缩略图卡片，目前只有第一关），
+    // 玩家选好关卡后再进入该关卡固定boss阵容对应的 DungeonSelector（选兵出战面板）
+    else if (actionId === 'dungeon') {
+      new DungeonListView(this.scene, this.saveData);
+      return;
+    }
+
     // 征集物资
     else if (actionId === 'get_resource') {
       new SoldierSelector(this.scene, this.saveData, {
@@ -378,7 +396,7 @@ export class MilitarySystem {
     }).setOrigin(0.5);
 
     btnBg.on('pointerover', () => btnBg.setFillStyle(0x9a4a4a, 1));
-    btnBg.on('pointerout', () => btnBg.setFillStyle(0x7a3a3a, 0.95));
+    btnBg.on('pointerout',  () => btnBg.setFillStyle(0x7a3a3a, 0.95));
     btnBg.on('pointerdown', () => {
       new SimBattleSelector(this.scene, this.saveData);
     });
@@ -515,7 +533,7 @@ export class SoldierSelector {
     closeHitArea.setInteractive({ useHandCursor: true });
 
     const closeText = this.scene.add.text(0, 0, '×', {
-      fontSize: '32px', color: '#ff4444', fontStyle: 'bold', padding: { top: 2 }
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold',padding: { top: 2 }
     }).setOrigin(0.5);
 
     closeBtnContainer.add([closeHitArea, closeText]);
@@ -558,7 +576,7 @@ export class SoldierSelector {
     // 3. 如果没有数据
     if (validSoldiers.length === 0) {
       const noDataText = this.scene.add.text(0, 50, '无可执行任务的单位', {
-        fontSize: '18px', color: '#999', padding: { top: 2 }
+        fontSize: '18px', color: '#999',padding: { top: 2 }
       }).setOrigin(0.5);
       this.listContainer.add(noDataText);
       return;
@@ -646,7 +664,7 @@ export class SoldierSelector {
     });
 
     const nameText = this.scene.add.text(-width / 2 + 20, 0, MILITARY_UNIT[soldier.name].name, {
-      fontSize: '20px', color: '#fff', fontStyle: 'bold', padding: { top: 2 }
+      fontSize: '20px', color: '#fff', fontStyle: 'bold',padding: { top: 2 }
     }).setOrigin(0, 0.5);
 
     // 属性显示
@@ -657,11 +675,11 @@ export class SoldierSelector {
     }
 
     const statsText = this.scene.add.text(0, 0, statsStr, {
-      fontSize: '14px', color: '#aaaaaa', padding: { top: 2 }
+      fontSize: '14px', color: '#aaaaaa',padding: { top: 2 }
     }).setOrigin(0.5);
 
     const selectBtn = this.scene.add.text(width / 2 - 20, 0, '选择', {
-      fontSize: '16px', color: '#00ff00', padding: { top: 2 }
+      fontSize: '16px', color: '#00ff00',padding: { top: 2 }
     }).setOrigin(1, 0.5);
 
     container.add([bg, border, nameText, statsText, selectBtn]);
@@ -739,7 +757,7 @@ export class ResourceSelector {
     closeHitArea.setInteractive({ useHandCursor: true });
 
     const closeText = this.scene.add.text(0, 0, '×', {
-      fontSize: '32px', color: '#ff4444', fontStyle: 'bold', padding: { top: 2 }
+      fontSize: '32px', color: '#ff4444', fontStyle: 'bold',padding: { top: 2 }
     }).setOrigin(0.5);
 
     closeBtnContainer.add([closeHitArea, closeText]);
@@ -785,7 +803,7 @@ export class ResourceSelector {
       icon.setDisplaySize(80, 80);
 
       const resName = this.scene.add.text(0, 50, get.translation(res), {
-        fontSize: '20px', color: '#fff', fontStyle: 'bold', padding: { top: 2 }
+        fontSize: '20px', color: '#fff', fontStyle: 'bold',padding: { top: 2 }
       }).setOrigin(0.5);
 
       card.add([cardBg, cardBorder, icon, resName]);

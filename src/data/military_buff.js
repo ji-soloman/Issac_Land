@@ -23,14 +23,30 @@
  *         ctx:  { round }
  *         meta: 同上
  *       onBeforeDamage(ctx, meta) — 每次 Player.dealDamage 结算前触发，
- *         用于未来的闪避/无效攻击等"让本次攻击不命中"的效果。
+ *         用于"让本次攻击不命中"的效果（例如未来的闪避），或者修改本次伤害数值
+ *         的增伤/减伤类效果（例如凤隐——受到的魔法伤害-20%）。
  *         ctx:  { attacker, target, components, cancelled }
  *           attacker   — 本次造成伤害的一方（Player 实例）
  *           target     — 本次受到伤害的一方
- *           components — 本次的伤害拆分（未经护甲/免伤加成前的原始值）
+ *           components — 本次的伤害拆分（未经护甲/免伤加成前的原始值）；
+ *                        要修改伤害数值，直接整体重新赋值 ctx.components 为一份
+ *                        新对象即可（和 onUseSkill 对 ctx.cost 的重新赋值是同一套
+ *                        约定），dealDamage 会把 trigger 改过的值读回去实际生效。
  *           cancelled  — 置为 true 可以让这次攻击被判定为"未命中"，
  *                        dealDamage 会直接返回 { hit:false, total:0 }，不结算任何伤害
  *         meta: 同上
+ *
+ *         多个增伤/减伤类 buff 之间是"乘算"叠加的：基础伤害*(1+n%)*(1+m%)*(1-x%)*(1-y%)...
+ *         （n%/m% 是增伤类，如无双+20%、皇威+10%、引雷+25%；x%/y% 是减伤类，
+ *         如凤隐受到魔法伤害-20%、麟佑受到物理伤害-20%、衰弱造成物理伤害-20%、
+ *         溺水造成魔法伤害-20%）。_fireBuffTrigger 会按顺序把同一个 ctx 依次交给
+ *         场上每个持有相关 buff 的 trigger，所以只要每个 trigger 都在"当前"
+ *         ctx.components 的基础上再乘自己的系数（而不是基于某个提前缓存的值），
+ *         多个 buff 自然就会按顺序连乘、等价于上面这个公式。
+ *         另外每个 trigger 都不要自己取整（不要用 Math.round/Math.floor）——
+ *         取整统一由 dealDamage 在广播完所有 buff 之后做唯一一次，如果每个
+ *         trigger 都各自提前取整，多个 buff 叠加时会因为多次舍入误差而偏离
+ *         真正的乘算结果。写法可以参考下面凤隐(15)的实现。
  *
  *     trigger 函数里可以调用 meta.holder 上 Player 类提供的方法
  *     （dealDamage / applyBuff / removeBuff / log 等）来实现具体效果。
@@ -158,12 +174,39 @@ export const MILITARY_BUFF = {
     name: '凤隐',
     des: '受到的魔法伤害减少20%',
     type: 'strengthen',
+    trigger: {
+      /**
+       * 在伤害真正结算前介入：只对"自己承受伤害"的一方生效（本buff的持有者必须
+       * 是这次受伤的目标 ctx.target，而不是造成伤害的一方——同一个兵组身上
+       * 如果同时也在攻击别人，不会影响自己造成的伤害），把本次伤害拆分里的
+       * magic（魔法伤害）再乘0.8，physical/pure 等其他类型不受影响。
+       * 见 battleSystem.js 的 Player.dealDamage：这里对 ctx.components 的重新
+       * 赋值会被读回去实际生效，和 onUseSkill 对 ctx.cost 的重新赋值是同一套约定。
+       *
+       * 注意：这里故意不取整（不用 Math.round/Math.floor）——多个增伤/减伤类
+       * buff 之间是"乘算"叠加的（基础伤害*(1+n%)*(1+m%)*(1-x%)*(1-y%)...，
+       * 例如以后麟佑/无双/皇威/引雷/衰弱/溺水等buff实装后会和凤隐同时生效），
+       * 每个 buff 的 trigger 只管在当前值基础上再乘自己的系数，取整统一交给
+       * dealDamage 在广播完所有 buff 之后做唯一一次——如果每个 buff 都各自提前
+       * 取整，多个 buff 叠加时会因为多次舍入误差而偏离真正的乘算结果。
+       */
+      onBeforeDamage(ctx, meta) {
+        if (ctx.target !== meta.holder) return; // 不是自己在承受这次伤害，凤隐不生效
+        const magic = ctx.components?.magic ?? 0;
+        if (!(magic > 0)) return;
+        ctx.components = { ...ctx.components, magic: magic * 0.8 };
+      },
+    },
   },
 
   16: {
     name: '玄藏',
     des: '免疫控制类异常状态',
     type: 'strengthen',
+    // 这个效果不需要写 trigger：battleSystem.js 里 Player.applyBuff 对
+    // CONTROL_BUFF_KEYS（眩晕/疲惫/恐惧/冰冻）的施加判定，已经统一把玄藏(16)
+    // 和振奋(11)登记进 CONTROL_IMMUNE_BUFF_KEYS——只要持有玄藏且剩余轮次>0，
+    // 任何控制类异常状态都会在 applyBuff 里被直接拦截、不会生效，见该方法的注释。
   },
 
   17: {
