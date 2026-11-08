@@ -1273,6 +1273,11 @@ export class GridPanel {
 
     const curPop = this.gridData.population ?? 0;
 
+    // 住房上限：该城（主城+分城）所有已建成区域/建筑的住房之和（主城区自带 2 点）。
+    // 城池总人口不得超过住房上限，所以本次最多还能繁衍 (上限 - 当前人口) 个。
+    const housingCap = game.getCityHousing(this.data, this.gridId).total;
+    const maxBreed = Math.max(0, housingCap - curPop);
+
     // 按叠加规则逐人口计算总消耗：
     // 第 k 个新人口（k=1..n）的消耗 = max(0, (curPop+k-1)*unit + flatDelta) per resource
     const calcCost = (n) => {
@@ -1349,7 +1354,7 @@ export class GridPanel {
     modal.add(title);
 
     // 当前人口
-    const popLabel = this.scene.add.text(0, -H / 2 + 56, `当前人口：${curPop}`, {
+    const popLabel = this.scene.add.text(0, -H / 2 + 56, `当前人口：${curPop}/${housingCap}`, {
       fontFamily: 'sans-serif', fontSize: '16px', color: '#f5e6c8',
     }).setOrigin(0.5);
     modal.add(popLabel);
@@ -1387,7 +1392,7 @@ export class GridPanel {
       countText.setText(String(breedCount));
       if (breedCount === 0) {
         costText.setText('本次消耗：无');
-        warnText.setText('');
+        warnText.setText(maxBreed <= 0 ? '住房已满，无法繁衍' : '');
         return;
       }
       costText.setText(buildCostDisplay(breedCount));
@@ -1395,7 +1400,15 @@ export class GridPanel {
     };
 
     minusBtn.on('pointerdown', () => { if (breedCount > 0) { breedCount--; updateDisplay(); } });
-    plusBtn.on('pointerdown', () => { breedCount++; updateDisplay(); });
+    plusBtn.on('pointerdown', () => {
+      if (breedCount >= maxBreed) {
+        warnText.setText('住房不足，人口已达上限');
+        return;
+      }
+      breedCount++;
+      updateDisplay();
+    });
+    updateDisplay(); // 初始显示（住房已满时直接提示）
 
     const destroy = () => { modal.destroy(true); overlay.destroy(); };
 
@@ -1420,6 +1433,10 @@ export class GridPanel {
     // 确认：立即扣资源，emit繁衍行动
     addBtn(-70, H / 2 - 36, '确认', 'common_btn_green', () => {
       if (breedCount <= 0) { destroy(); return; }
+      if (breedCount > maxBreed) {
+        warnText.setText('住房不足，人口已达上限');
+        return;
+      }
       if (!canAfford(breedCount)) {
         warnText.setText('资源不足，无法繁衍');
         return;

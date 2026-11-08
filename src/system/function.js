@@ -1,5 +1,7 @@
 import { get } from '../system/i18n.js';
 import { saveSystem } from '../system/saveSystem.js';
+import { REGION } from '../data/region.js';
+import { BUILDING } from '../data/building.js';
 
 export const game = {
   addAction(type, name, config, callbacks = {}) {
@@ -84,6 +86,40 @@ export const game = {
     if (!g) return null;
     if (g.isMain) return gridId;
     return g.hasMain ?? null;
+  },
+
+  /**
+   * 城市总住房量：该城（主城 + 全部分城格点）所有已建成区域、已建成建筑的 effect.normal.housing 之和。
+   * 主城默认的 2 点住房写在 REGION.main.effect.normal.housing 里（主城格点的 region 就是 main）。
+   * housing 支持数值，或 ({ grid }) => 数值 的函数写法。建造中的区域/建筑不计入。
+   * @returns {{ total: number, parts: Array<{ source: string, value: number }> }}
+   */
+  getCityHousing(saveData, gridId) {
+    const grids = saveData?.map?.grids ?? {};
+    const cityId = this.getCityId(grids, gridId);
+    const parts = [];
+    let total = 0;
+    if (!cityId) return { total, parts };
+
+    const calc = (cfg, grid) => {
+      const v = cfg?.effect?.normal?.housing;
+      const n = typeof v === 'function' ? v({ grid }) : v;
+      return typeof n === 'number' && !Number.isNaN(n) ? n : 0;
+    };
+
+    for (const [gid, g] of Object.entries(grids)) {
+      if (this.getCityId(grids, gid) !== cityId) continue;
+      if (g.region && REGION[g.region]) {
+        const n = calc(REGION[g.region], g);
+        if (n) { total += n; parts.push({ source: REGION[g.region].name, value: n }); }
+      }
+      for (const [bKey, built] of Object.entries(g.buildings ?? {})) {
+        if (!built || !BUILDING[bKey]) continue;
+        const n = calc(BUILDING[bKey], g);
+        if (n) { total += n; parts.push({ source: BUILDING[bKey].name, value: n }); }
+      }
+    }
+    return { total, parts };
   },
 
   /**

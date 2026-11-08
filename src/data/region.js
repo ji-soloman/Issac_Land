@@ -1,6 +1,13 @@
 export const REGION = {
   main: {
     name: '主城区',
+    effect_info: '住房+2',
+    // 主城默认提供 2 点住房（与新建主城时的初始人口 2 对应），参与繁衍人口的住房上限计算
+    effect: {
+      normal: {
+        housing: 2,
+      },
+    },
     canBuild() {
       return false;
     },
@@ -238,9 +245,11 @@ export const REGION = {
     requireInfo: '解锁科技【军事化】',
     special_info: '军事改革',
     effect: {
-      infantry: 2,
-      housing: 2,
-      livestock: 1,
+      normal: {
+        infantry: 2,
+        housing: 2,
+        livestock_slot: 1,
+      },
     },
     canBuild: function ({ tech }) {
       return tech.leadership_2;
@@ -392,6 +401,7 @@ export const REGION = {
     special_info: '精灵专属的学院特区',
     effect: {
       normal: {
+        housing: 2,
         magicalItem_slot: 2,
       },
       turn: {
