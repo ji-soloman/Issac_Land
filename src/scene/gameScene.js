@@ -7,6 +7,7 @@ import { TopInfoBar } from '../scene/topInfoBar.js';
 import { saveSystem } from '../system/saveSystem.js';
 import { TurnSystem } from '../system/turnSystem.js';
 import { game } from '../system/function.js';
+import { get } from '../system/i18n.js';
 
 import { MAPS } from '../data/map/EWland/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
@@ -375,6 +376,36 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
+      // 建筑收入：已建成的建筑（grid.buildings = { [key]: true }）的 effect.turn 同区域一样汇总
+      // 支持数值，或 ({ grid }) => 数值 的函数写法；建造中的建筑（createBuilding）不产出
+      for (const grid of Object.values(grids)) {
+        const buildings = grid.buildings;
+        if (!buildings) continue;
+
+        for (const [buildingKey, built] of Object.entries(buildings)) {
+          if (!built) continue;
+
+          const effect = BUILDING?.[buildingKey]?.effect?.turn;
+          if (!effect) continue;
+
+          for (const [res, value] of Object.entries(effect)) {
+            if (!(res in total)) continue;
+
+            let result;
+            try {
+              result = typeof value === 'function' ? value({ grid }) : value;
+            } catch (err) {
+              console.error(`building.effect.turn [${buildingKey}.${res}] 执行出错:`, err);
+              continue;
+            }
+
+            if (typeof result !== 'number' || Number.isNaN(result)) continue;
+
+            total[res] += result;
+          }
+        }
+      }
+
       data.resource ??= {};
 
       // 人口收入：每个人口（gn.population）产生 1 财富，汇总后计入本回合收益
@@ -662,11 +693,45 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    // 建造建筑：区域建造不消耗资源，建筑建造的资源在【确认建造】时立即扣除。
+    // 只有扣除成功，才会把行动计入行动列表（开始建造）；任何一步失败都不扣资源、不计入行动。
     this.events.on('build_building', (result) => {
       console.log('建造建筑信息：', result);
 
-      game.addAction('civil', 'build_building_' + result.gridId + '_' + result.buildingKey, result, {
+      const data = this.saveData;
+      const actionName = 'build_building_' + result.gridId + '_' + result.buildingKey;
+      const cost = BUILDING[result.buildingKey]?.cost ?? {};
+      data.resource ??= {};
+      const res = data.resource;
+
+      // 1) 已在建造队列中，避免重复扣费
+      if (data.actionList?.civil?.[actionName]) {
+        game.showTips(this, '该建筑已在建造中');
+        return;
+      }
+
+      // 2) 行动条是否还有空位
+      if (!game.hasAvailableAction('civil')) {
+        game.showTips(this, '行动数量超过上限');
+        return;
+      }
+
+      // 3) 资源是否足够
+      const lacks = Object.entries(cost).filter(([k, v]) => (res[k] ?? 0) < v);
+      if (lacks.length > 0) {
+        game.showTips(this, '资源不足：' + lacks.map(([k]) => get.translation(k)).join('、'));
+        return;
+      }
+
+      // 4) 立即扣除资源
+      for (const [k, v] of Object.entries(cost)) {
+        res[k] = (res[k] ?? 0) - v;
+      }
+
+      // 5) 扣除成功后才计入行动（开始建造）；若写入失败则退回已扣资源
+      const ok = game.addAction('civil', actionName, result, {
         onSuccess: () => {
+          this.topInfoBar?.refresh();
           // 行动写入成功后刷新 GridPanel，让 pending 状态的建筑条目立即显示
           this.events.emit('refresh_grid_panel', result.gridId);
         },
@@ -676,6 +741,11 @@ export class GameScene extends Phaser.Scene {
           }
         }
       });
+      if (!ok) {
+        for (const [k, v] of Object.entries(cost)) {
+          res[k] = (res[k] ?? 0) + v;
+        }
+      }
     });
 
     // CreateRegion 确认建造后通知 GridPanel 刷新，避免面板信息残留旧数据

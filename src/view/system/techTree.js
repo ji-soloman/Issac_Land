@@ -97,54 +97,93 @@ export class TechTreeSystem {
     }
   }
 
+  // ================= 时代相关 =================
+
+  /** 当前存档所处时代的 order（存档里没有时代信息时按原始时代 1 处理） */
+  getCurrentEraOrder() {
+    const key = this.saveData.process?.era ?? 'primitive';
+    return ERA[key]?.order ?? 1;
+  }
+
+  /**
+   * 科技所属时代的 order：没写 era 的科技按原始时代处理；
+   * era 写了但 ERA 表里找不到的（配置错误）按 Infinity 处理，即永远不显示。
+   */
+  getTechEraOrder(tech) {
+    if (!tech.era) return 1;
+    return ERA[tech.era]?.order ?? Infinity;
+  }
+
+  /** 科技是否显示：只显示当前时代及更早时代的科技，还没到的时代整体隐藏 */
+  isTechVisible(tech) {
+    return this.getTechEraOrder(tech) <= this.getCurrentEraOrder();
+  }
+
+  /**
+   * 计算每个可见科技的显示位置。
+   *
+   * 规则：
+   * 1. 只处理 isTechVisible 的科技（当前时代及之前）；
+   * 2. 科技树严格按时代从左到右排列：先排最早的时代，每个时代内部沿用原来的规则
+   *    ——tech.location 的列号只用来比大小，空缺的列统一向左补齐成连续列；
+   * 3. 上一个时代的最后一列之后固定空出一列（这一列不属于任何科技，也不占 location 的
+   *    列号计数），下一个时代的科技从空列之后开始排；
+   * 4. 没有 location 的科技（初始科技除外）不显示。
+   */
   calculateTechPositions() {
     this.techPositions = {};
 
-    // 第一步：收集所有需要显示的科技的原始位置
-    const rawPositions = {};
-
-    // 1. 初始科技强制为第0列，行数由 initialRows 决定
-    Object.entries(this.initialRows).forEach(([id, row]) => {
-      rawPositions[id] = { col: 0, row: row };
-    });
-
-    // 2. 根据 tech.location 读取其他科技位置
-    // 规则：如果没有 tech.location 或者格式不对，则直接跳过不显示
+    // 第一步：按时代 order 分组收集可见科技的原始位置
+    const rawByEra = new Map(); // eraOrder -> { techId: { col, row } }
     Object.entries(TECH_TREE).forEach(([id, tech]) => {
-      if (this.initialRows[id]) return; // 初始科技已处理，跳过
-      if (!tech.location || !Array.isArray(tech.location) || tech.location.length < 2) return;
+      if (!this.isTechVisible(tech)) return;
 
-      rawPositions[id] = { col: tech.location[0], row: tech.location[1] };
+      let pos;
+      if (this.initialRows[id]) {
+        // 初始科技强制为第0列，行数由 initialRows 决定
+        pos = { col: 0, row: this.initialRows[id] };
+      } else if (Array.isArray(tech.location) && tech.location.length >= 2) {
+        pos = { col: tech.location[0], row: tech.location[1] };
+      } else {
+        return; // 没有 location 或格式不对：不显示
+      }
+
+      const eraOrder = this.getTechEraOrder(tech);
+      if (!rawByEra.has(eraOrder)) rawByEra.set(eraOrder, {});
+      rawByEra.get(eraOrder)[id] = pos;
     });
 
-    // 第二步：处理列数空缺，后续列统一向左补齐
-    const uniqueCols = new Set();
-    Object.values(rawPositions).forEach(pos => uniqueCols.add(pos.col));
-
-    // 将所有存在的列提取并从小到大排序，形成原始列到实际连续列的映射
-    const sortedCols = Array.from(uniqueCols).sort((a, b) => a - b);
-    const colMap = {};
-    sortedCols.forEach((rawCol, denseColIndex) => {
-      colMap[rawCol] = denseColIndex;
-    });
-
-    // 第三步：计算最终的 x 和 y 坐标并存入 techPositions
+    // 第二步：逐个时代排版，时代之间空一列
+    let cursor = 0; // 当前时代的起始列
     let maxCol = 0;
-    Object.entries(rawPositions).forEach(([id, pos]) => {
-      const actualCol = colMap[pos.col];
-      const actualRow = pos.row;
+    const eraOrders = Array.from(rawByEra.keys()).sort((a, b) => a - b);
 
-      maxCol = Math.max(maxCol, actualCol);
+    eraOrders.forEach(eraOrder => {
+      const group = rawByEra.get(eraOrder);
 
-      this.techPositions[id] = {
-        col: actualCol,
-        row: actualRow,
-        x: actualCol * this.COL_SPACING + 140,
-        y:
-          this.TOP_PADDING +
-          (actualRow - 1) * this.ROW_SPACING +
-          this.NODE_HEIGHT / 2
-      };
+      // 本时代内部：原始列号去重排序，映射成从 cursor 开始的连续列
+      const sortedCols = Array.from(new Set(Object.values(group).map(p => p.col)))
+        .sort((a, b) => a - b);
+      const colMap = {};
+      sortedCols.forEach((rawCol, i) => { colMap[rawCol] = cursor + i; });
+
+      Object.entries(group).forEach(([id, pos]) => {
+        const actualCol = colMap[pos.col];
+        this.techPositions[id] = {
+          col: actualCol,
+          row: pos.row,
+          eraOrder,
+          x: actualCol * this.COL_SPACING + 140,
+          y:
+            this.TOP_PADDING +
+            (pos.row - 1) * this.ROW_SPACING +
+            this.NODE_HEIGHT / 2
+        };
+      });
+
+      const eraLastCol = cursor + sortedCols.length - 1;
+      maxCol = Math.max(maxCol, eraLastCol);
+      cursor = eraLastCol + 2; // 最后一列之后空一列，再开始下个时代
     });
 
     // 更新最大可滚动宽度
@@ -242,18 +281,27 @@ export class TechTreeSystem {
   // ================= 连线 =================
 
   // 辅助方法：获取科技的唯一主要连线
+  // 默认状态下不同时代的科技之间不连线，所以只在"同一时代、且当前可见"的前置里选；
+  // 一个同时代的前置都没有（前置全在上个时代）就返回 null，即默认不画线。
+  // 点击科技后的完整连线（包括跨时代前置）由 drawConnections 里的 activeTechId 分支负责。
   getPrimaryRequirement(id, tech) {
     if (!tech.requires || tech.requires.length === 0) return null;
-    if (tech.requires.length === 1) return tech.requires[0];
 
     const b = this.techPositions[id];
-    if (!b) return tech.requires[0];
+    if (!b) return null;
+
+    const candidates = tech.requires.filter(req => {
+      const a = this.techPositions[req];
+      return a && a.eraOrder === b.eraOrder;
+    });
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
 
     let bestReq = null;
     let bestScore = -1;
     let minDistance = Infinity;
 
-    for (const req of tech.requires) {
+    for (const req of candidates) {
       const a = this.techPositions[req];
       if (!a) continue;
 

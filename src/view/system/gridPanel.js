@@ -200,10 +200,12 @@ export class GridPanel {
       return;
     }
 
+    // 第三个页签：主城是"奇迹"（创建奇迹），非主城的附属格点没有奇迹功能，改为"其他"
+    const isMain = !!this.gridData?.isMain;
     const tabNames = [
       { id: 'build', name: '建设' },
       { id: 'product', name: '物产' },
-      { id: 'wonder', name: '奇迹' }
+      isMain ? { id: 'wonder', name: '奇迹' } : { id: 'other', name: '其他' },
     ];
 
     const tabWidth = (this.panelWidth - 40) / 3;
@@ -777,6 +779,8 @@ export class GridPanel {
       this.renderBuildTab();
     } else if (tabId === 'wonder') {
       this.renderWonderTab();
+    } else if (tabId === 'other') {
+      this.renderOtherTab();
     } else if (tabId === 'product') {
       this.renderProductTab();
     }
@@ -913,6 +917,22 @@ export class GridPanel {
     });
 
     this.contentMaxHeight = btnHeight + 40;
+  }
+
+  /**
+   * "其他"页签（仅非主城的附属格点显示，代替主城的"奇迹"页签）。
+   * 目前还没有具体功能，先显示"暂无"占位，以后往这里加按钮即可。
+   */
+  renderOtherTab() {
+    const currentY = this.contentStartY + 20;
+    const centerX = this.panelStartX + this.panelWidth / 2;
+
+    const text = this.scene.add.text(centerX, currentY, get.translation('none'), {
+      fontSize: '18px', color: '#666666', padding: { top: 5 },
+    }).setOrigin(0.5);
+    this.contentContainer.add(text);
+
+    this.contentMaxHeight = 40;
   }
 
   renderProductTab() {
