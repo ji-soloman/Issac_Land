@@ -834,7 +834,7 @@ export class TechTreeSystem {
     const techEra = ERA[tech.era].order;
     const turnsNeeded = techEra || 1;
 
-    // 研究科技消耗 1 个民事行动条目（civil slot）：
+    // 研究科技消耗 1 个民生行动条目（civil slot）：
     // addAction 负责检查上限并写入 actionList.civil 作为本回合记录，
     // 只有添加成功（onSuccess）才扣除资源并写入 tech_tree.researching 参与结算。
     game.addAction('civil', 'research_tech_' + id, {
@@ -843,7 +843,7 @@ export class TechTreeSystem {
       round: turnsNeeded,
     }, {
       onSuccess: () => {
-        // 确认占用民事条目后，扣除资源并启动研发倒计时
+        // 确认占用民生条目后，扣除资源并启动研发倒计时
         if (!this.saveData.resource) this.saveData.resource = {};
         for (const [key, val] of Object.entries(totalCost)) {
           this.saveData.resource[key] = (this.saveData.resource[key] || 0) - val;
@@ -862,7 +862,7 @@ export class TechTreeSystem {
       },
       onFail: (info) => {
         if (info.reason === 'limit') {
-          game.showTips(this.scene, '民事行动数量超过上限');
+          game.showTips(this.scene, '民生行动数量超过上限');
         }
       },
     });

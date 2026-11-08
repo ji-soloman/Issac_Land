@@ -687,7 +687,7 @@ export class GameScene extends Phaser.Scene {
       game.addAction('civil', 'build_region_' + result.gridId, result, {
         onFail: (info) => {
           if (info.reason === 'limit') {
-            game.showTips(this, '行动数量超过上限');
+            game.showTips(this, '民生行动数量超过上限');
           }
         }
       });
@@ -712,7 +712,7 @@ export class GameScene extends Phaser.Scene {
 
       // 2) 行动条是否还有空位
       if (!game.hasAvailableAction('civil')) {
-        game.showTips(this, '行动数量超过上限');
+        game.showTips(this, '民生行动数量超过上限');
         return;
       }
 
@@ -737,7 +737,7 @@ export class GameScene extends Phaser.Scene {
         },
         onFail: (info) => {
           if (info.reason === 'limit') {
-            game.showTips(this, '行动数量超过上限');
+            game.showTips(this, '民生行动数量超过上限');
           }
         }
       });

@@ -478,7 +478,7 @@ export class ActionListSystem {
   }
 
   /**
-   * 创建单个民事行动项
+   * 创建单个民生行动项
    */
   createCivilActionItem(parentContainer, x, y, width, height, key, actionData, color) {
     let markedIntro = key;

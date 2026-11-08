@@ -345,7 +345,7 @@ export class MilitarySystem {
                 },
                 onFail: (info) => {
                   if (info.reason === 'limit') {
-                    game.showTips(this.scene, '民事行动数量超过上限');
+                    game.showTips(this.scene, '军事行动数量超过上限');
                   }
                 },
               });

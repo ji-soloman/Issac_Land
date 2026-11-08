@@ -443,9 +443,9 @@ export class GridPanel {
     };
 
     addBtn(-70, H / 2 - 30, 'common_btn_green', '建造', () => {
-      // 检查民事行动条目
+      // 检查民生行动条目
       if (!game.hasAvailableAction('civil')) {
-        game.showTips(this.scene, '民事行动数量超过上限');
+        game.showTips(this.scene, '民生行动数量超过上限');
         return;
       }
       // 检查资源
@@ -604,7 +604,7 @@ export class GridPanel {
   }
 
   /**
-   * 执行建城：消耗资源、加民事条目、销毁移民星舟、写入主城数据
+   * 执行建城：消耗资源、加民生条目、销毁移民星舟、写入主城数据
    */
   _doFoundCity(cityName, soldierId, resource, COST) {
     // 消耗资源
@@ -612,7 +612,7 @@ export class GridPanel {
     resource.food = (resource.food ?? 0) - COST.food;
     this.scene.topInfoBar?.refresh();
 
-    // 加入民事行动条目
+    // 加入民生行动条目
     const actionKey = `build_new_city_${this.gridId}_${Date.now()}`;
     game.addAction('civil', actionKey, {
       type: 'build_new_city',

@@ -158,7 +158,7 @@ export class TurnSystem {
     // 2. 处理Civil
     this.processCategory('civil', list.civil, (actionType, params) => {
       // CivilLogic.handle(actionType, params, this.saveData);
-      console.log(`执行民事行动: [${actionType}]`, params);
+      console.log(`执行民生行动: [${actionType}]`, params);
       if (actionType.startsWith('build_region')) {
         result.civil[actionType] = params;
       }

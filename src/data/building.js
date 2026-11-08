@@ -1112,7 +1112,7 @@ export const BUILDING = {
 
   city_hall: {
     name: '市政厅',
-    effect_info: '财富+6，文化+2；住房+10；民生条目+1；步兵人口+2；城市唯一',
+    effect_info: '财富+6，文化+2；住房+10；步兵人口+2；民生行动+1，城市唯一',
     tech_info: '雕刻',
     region_info: '主城区',
     require_region(category) {
@@ -1125,6 +1125,10 @@ export const BUILDING = {
       mine: 20,
     },
     effect: {
+      normal: {
+        // 民生行动次数上限 +1（由 system/i18n.js 的 get.actionNum 汇总已建成建筑）
+        civil_action: 1,
+      },
       turn: {
         wealth: 6,
         culture: 2,
