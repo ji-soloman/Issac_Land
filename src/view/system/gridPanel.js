@@ -6,7 +6,7 @@ import { REGION } from '../../data/region.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { game } from '../../system/function.js';
 import { BUILDING } from '../../data/building.js';
-import { RACES, canFoundCityOn, getCityTerrainText } from '../../data/race.js';
+import { RACES, canFoundCityOn, getCityTerrainText, applyRaceCostModsDetailed } from '../../data/race.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { saveSystem } from '../../system/saveSystem.js';
 import { GRID_BTN_IMG } from '../../data/gridButtonImages.js';
@@ -384,7 +384,13 @@ export class GridPanel {
     const soldier = soldierId ? this.data.military?.[soldierId] : null;
 
     // 消耗定义
-    const COST = { culture: 100, food: 100 };
+    // 基础消耗 + 种族修正（钩子 new_city）；显示、判断够不够、真正扣除（_doFoundCity）都用同一份 COST
+    const BASE_COST = { culture: 100, food: 100 };
+    const costInfo = applyRaceCostModsDetailed(
+      'new_city', BASE_COST, this.data.race, this.data.subRace,
+      { data: this.data, gridId: this.gridId }
+    );
+    const COST = { culture: 0, food: 0, ...costInfo.cost };
 
     const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.6)
       .setDepth(DEPTH).setInteractive();
@@ -404,6 +410,8 @@ export class GridPanel {
     // 资源消耗行（图标 + 数字）
     const resRow = (resKey, amount, rowY) => {
       const have = resource[resKey] ?? 0;
+      const baseAmount = BASE_COST[resKey];
+      const amountStr = (baseAmount != null && baseAmount !== amount) ? `×${amount}（原 ${baseAmount}）` : `×${amount}`;
       const enough = have >= amount && have >= 0;
       const iconKey = `icon_${resKey}`;
       let rx = -W / 2 + pad + 12;
@@ -411,7 +419,7 @@ export class GridPanel {
         modal.add(this.scene.add.image(rx, rowY, iconKey).setDisplaySize(24, 24));
         rx += 20;
       }
-      modal.add(this.scene.add.text(rx, rowY, `×${amount}`, {
+      modal.add(this.scene.add.text(rx, rowY, amountStr, {
         fontSize: '16px', color: enough ? '#dddddd' : '#ff5555',
         fontStyle: 'bold', padding: { top: 4 },
       }).setOrigin(0, 0.5));
@@ -424,7 +432,14 @@ export class GridPanel {
     resRow('culture', COST.culture, y);
     y += 28;
     resRow('food', COST.food, y);
-    y += 36;
+    y += 28;
+    if (costInfo.applied.length > 0) {
+      modal.add(this.scene.add.text(-W / 2 + pad, y, `种族修正：${costInfo.applied.map(a => a.label).join('、')}`, {
+        fontSize: '13px', color: '#88ccff', padding: { top: 4 },
+      }).setOrigin(0, 0.5));
+      y += 24;
+    }
+    y += 8;
 
     // 移民星舟条件：找所有 visitedGrids 包含当前格点的 migration 兵组
     const military = this.data.military ?? {};
@@ -1270,7 +1285,7 @@ export class GridPanel {
     }
 
     // 汇总单元修正 → effectiveBreeding（影响每人口的单价）
-    const effectiveBreeding = { ...baseBreeding };
+    let effectiveBreeding = { ...baseBreeding };
     for (const { unitDelta } of breedModifiers) {
       if (!unitDelta) continue;
       for (const [res, d] of Object.entries(unitDelta)) {
@@ -1279,6 +1294,20 @@ export class GridPanel {
         }
       }
     }
+
+    // 种族成本修正（钩子 breed）：作用于"每个新人口的单价"，单价允许小数，所以不取整；
+    // 放在建筑/区域的 unitDelta 之后，这样 -1 之类的种族减免是在建筑修正后的单价上算的
+    const raceBreed = applyRaceCostModsDetailed(
+      'breed', effectiveBreeding, this.data.race, this.data.subRace,
+      { data: this.data, gridId: this.gridId }, { round: false }
+    );
+    // 记录种族修正对每个资源单价的改变量，供下面的费用说明显示来源
+    const raceUnitDiff = {};
+    for (const res of new Set([...Object.keys(effectiveBreeding), ...Object.keys(raceBreed.cost)])) {
+      const d = (raceBreed.cost[res] ?? 0) - (effectiveBreeding[res] ?? 0);
+      if (d !== 0) raceUnitDiff[res] = d;
+    }
+    effectiveBreeding = raceBreed.cost;
 
     // 按资源汇总固定修正，同名建筑来源合并
     const flatSummary = {};  // { res: { total, parts: [{source, d}] } }
@@ -1324,33 +1353,51 @@ export class GridPanel {
       return cost;
     };
 
+    // 返回 { main: 实际总价文字, notes: 修正来源说明（每种资源一行，没有修正时为空串） }
     const buildCostDisplay = (n) => {
-      if (n <= 0) return '本次消耗：无';
+      if (n <= 0) return { main: '本次消耗：无', notes: '' };
       const parts = [];
-      const baseTotals = {};
-      const effectiveTotals = {};
-
+      const noteLines = [];
+      const actual = calcCost(n);          // 实际要扣的总价（含所有修正）
+      const baseTotals = {};               // 不含任何修正的基础总价
+      let popSum = 0;                      // Σ 第 k 个新人口的人口序号，用于换算"单价修正"的总量
       for (let k = 1; k <= n; k++) {
         const pop = curPop + k;
+        popSum += pop;
         for (const [res, baseUnit] of Object.entries(baseBreeding)) {
           if (baseUnit <= 0) continue;
           baseTotals[res] = (baseTotals[res] ?? 0) + pop * baseUnit;
-          const flat = flatSummary[res]?.total ?? 0;
-          effectiveTotals[res] = (effectiveTotals[res] ?? 0) + Math.max(0, pop * baseUnit + flat);
         }
       }
 
-      for (const [res, baseTotal] of Object.entries(baseTotals)) {
-        let str = `${get.translation(res)} ×${Math.ceil(baseTotal - 1e-9)}`;
-        if (flatSummary[res] && flatSummary[res].total !== 0) {
-          const detail = flatSummary[res].parts
-            .map(p => `${p.source}${p.d * n > 0 ? '+' : ''}${p.d * n}`)
-            .join('，');
-          str += `（${detail}）`;
+      const fmt = (v) => (Math.round(v * 100) / 100);
+      const resKeys = new Set([...Object.keys(baseTotals), ...Object.keys(actual)]);
+      for (const res of resKeys) {
+        const baseTotal = Math.ceil((baseTotals[res] ?? 0) - 1e-9);
+        const actualTotal = actual[res] ?? 0;
+        const str = `${get.translation(res)} ×${actualTotal}`;
+
+        // 来源说明：建筑/区域的固定修正 + 建筑/区域的单价修正 + 种族单价修正
+        const notes = [];
+        for (const p of flatSummary[res]?.parts ?? []) {
+          const total = p.d * n;
+          if (total !== 0) notes.push(`${p.source}${total > 0 ? '+' : ''}${total}`);
         }
+        for (const m of breedModifiers) {
+          const d = m.unitDelta?.[res];
+          if (d) notes.push(`${m.source}${d > 0 ? '+' : ''}${fmt(d * popSum)}`);
+        }
+        if (raceUnitDiff[res]) {
+          const label = raceBreed.applied.map(a => a.label).join('、') || '种族';
+          notes.push(`${label}${raceUnitDiff[res] > 0 ? '+' : ''}${fmt(raceUnitDiff[res] * popSum)}`);
+        }
+        if (notes.length > 0) noteLines.push(`${get.translation(res)}：原 ${baseTotal}（${notes.join('，')}）`);
         parts.push(str);
       }
-      return '本次消耗：' + parts.join('，');
+      return {
+        main: '本次消耗：' + (parts.length > 0 ? parts.join('，') : '无'),
+        notes: noteLines.join('\n'),
+      };
     };
 
     const canAfford = (n) => {
@@ -1407,8 +1454,14 @@ export class GridPanel {
     }).setOrigin(0.5);
     modal.add(costText);
 
+    // 消耗修正来源说明（建筑/区域/种族带来的增减，没有修正时为空）
+    const noteText = this.scene.add.text(0, -H / 2 + 166, '', {
+      fontFamily: 'sans-serif', fontSize: '12px', color: '#88ccff', align: 'center',
+    }).setOrigin(0.5, 0);
+    modal.add(noteText);
+
     // 资源不足提示
-    const warnText = this.scene.add.text(0, -H / 2 + 172, '', {
+    const warnText = this.scene.add.text(0, -H / 2 + 204, '', {
       fontFamily: 'sans-serif', fontSize: '14px', color: '#f44336', align: 'center',
     }).setOrigin(0.5);
     modal.add(warnText);
@@ -1417,10 +1470,13 @@ export class GridPanel {
       countText.setText(String(breedCount));
       if (breedCount === 0) {
         costText.setText('本次消耗：无');
+        noteText.setText('');
         warnText.setText(maxBreed <= 0 ? '住房已满，无法繁衍' : '');
         return;
       }
-      costText.setText(buildCostDisplay(breedCount));
+      const costDisplay = buildCostDisplay(breedCount);
+      costText.setText(costDisplay.main);
+      noteText.setText(costDisplay.notes);
       warnText.setText(canAfford(breedCount) ? '' : '资源不足');
     };
 

@@ -11,6 +11,7 @@ import { MILITARY_TERM } from '../../data/military_term.js';
 import { MILITARY_BUFF } from '../../data/military_buff.js';
 import { get } from '../../system/i18n.js';
 import { TECH_TREE } from '../../data/tech_tree.js';
+import { applyRaceCostModsDetailed } from '../../data/race.js';
 
 export class MilitaryUnitViewer {
   constructor(scene, saveData, name) {
@@ -1895,7 +1896,13 @@ class UnitDetailPage {
     y += 10;
 
     // ── 资源要求 ──────────────────────────────────
-    const cost = training.cost ?? {};
+    // 种族修正后的训练成本（钩子 train_unit）：显示、判断够不够、点确认时传给 train_soldier 事件
+    // 扣除都用这一份 cost（gameScene.js 的 train_soldier 直接扣事件里带的 cost）
+    const costInfo = applyRaceCostModsDetailed(
+      'train_unit', training.cost ?? {}, saveData.race, saveData.subRace,
+      { data: saveData, unitKey: this.unitKey }
+    );
+    const cost = costInfo.cost;
     const resource = saveData.resource ?? {};
     c.add(this.scene.add.text(-W / 2, y, '资源要求：', {
       fontSize: '14px', color: '#b8963e', fontStyle: 'bold', padding: { top: 4 },
@@ -1994,6 +2001,17 @@ class UnitDetailPage {
         tx += resText.width + 14;
       }
       y += 32;
+    }
+
+    // 成本被种族修正过时，标出来源和原价
+    if (costInfo.applied.length > 0) {
+      const baseStr = Object.entries(training.cost ?? {})
+        .map(([k, v]) => `${get.translation(k) || k}×${v}`).join(' ');
+      c.add(this.scene.add.text(-W / 2 + pad, y - 6,
+        `种族修正：${costInfo.applied.map(a => a.label).join('、')}（原：${baseStr || '无'}）`, {
+          fontSize: '12px', color: '#3a6ea5', padding: { top: 4 },
+        }).setOrigin(0, 0));
+      y += 20;
     }
 
     // ── 回合数 ───────────────────────────────────

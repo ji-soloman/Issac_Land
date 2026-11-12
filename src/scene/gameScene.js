@@ -28,6 +28,7 @@ import { GreatPeopleSystem } from '../view/system/greatPeople.js';
 import { MILITARY_UNIT } from '../data/military_unit.js';
 import { REGION } from '../data/region.js';
 import { BUILDING } from '../data/building.js';
+import { applyRaceCostMods } from '../data/race.js';
 import { ERA } from '../data/era.js';
 import { WONDER } from '../data/wonder.js';
 import { GREAT_PEOPLE } from '../data/great_people.js';
@@ -700,7 +701,11 @@ export class GameScene extends Phaser.Scene {
 
       const data = this.saveData;
       const actionName = 'build_building_' + result.gridId + '_' + result.buildingKey;
-      const cost = BUILDING[result.buildingKey]?.cost ?? {};
+      // 种族修正后的建筑成本（钩子 build_building，必须和 createBuilding.js 的显示/判足一致）
+      const cost = applyRaceCostMods(
+        'build_building', BUILDING[result.buildingKey]?.cost ?? {}, data.race, data.subRace,
+        { data, gridId: result.gridId, buildingKey: result.buildingKey, isWonder: false }
+      );
       data.resource ??= {};
       const res = data.resource;
 

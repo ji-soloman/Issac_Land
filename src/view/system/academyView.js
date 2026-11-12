@@ -45,6 +45,7 @@ import { REGION } from '../../data/region.js';
 import { ACADEMY_SKILL } from '../../data/academy_skill.js';
 import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
+import { applyRaceCostModsDetailed } from '../../data/race.js';
 
 // ── 兵组"携带技能 / 已学习技能"扩展 ──────────────────────────────────────
 // 兵组存档（saveData.military[soldierId]）原本只有 ability（当前携带、会在战斗里
@@ -65,7 +66,7 @@ import { MILITARY_UNIT } from '../../data/military_unit.js';
 // 也是用的这个办法，这里保持一致，等价但更安全。加存在性判断避免本模块被
 // 多次加载时重复赋值（无副作用，但没必要）。
 const MAX_CARRIED_SKILLS = 4; // 兵组同时能"携带"的主动技能数量上限，和 militaryUnitView.js
-// 技能宫格 2x2 布局（_buildSkillGrid 里的 slice(0,4)）保持一致
+                               // 技能宫格 2x2 布局（_buildSkillGrid 里的 slice(0,4)）保持一致
 
 if (!military.countCarriedActiveSkills) {
   military.countCarriedActiveSkills = function (soldier) {
@@ -406,6 +407,20 @@ export class AcademyViewer {
     return buildActionButton(this.scene, container, x, y, btnWidth, btnHeight, label, enabled);
   }
 
+  /**
+   * 学派分支升级的最终成本：基础文化消耗（getUpgradeCost）再应用种族成本修正（钩子 academy_upgrade）。
+   * 升级按钮的判断、确认弹窗的显示、真正扣除（upgradeCategory）都用这里算出来的文化数量，
+   * 保证三处一致。目前只有文化这一项消耗，所以返回 { culture, applied, base }。
+   */
+  _getUpgradeCostInfo(schoolKey, catKey, level) {
+    const base = getUpgradeCost(level);
+    const info = applyRaceCostModsDetailed(
+      'academy_upgrade', { culture: base }, this.saveData.race, this.saveData.subRace,
+      { data: this.saveData, schoolKey, catKey, level }
+    );
+    return { culture: info.cost.culture ?? 0, applied: info.applied, base };
+  }
+
   /** 存档里的 academy.schools 字典，惰性初始化 */
   get schools() {
     this.saveData.academy ??= { schools: {} };
@@ -722,7 +737,8 @@ export class AcademyViewer {
     // 学派（saveData.academy.schools[schoolKey] 有记录）下才可能为 true，浏览别的学派
     // 时 getCategoryLevel 恒为 0，永远不会走到这里，不需要再额外用 isActiveSchool 判断。
     const btnY = cardHeight / 2 - 44;
-    const cost = getUpgradeCost(level);
+    const costInfo = this._getUpgradeCostInfo(schoolKey, catKey, level);
+    const cost = costInfo.culture;
     const culture = this.saveData.resource?.culture ?? 0;
     const upgradeKey = `${schoolKey}_${catKey}`;
     const pending = this._pendingUpgradeKeys.has(upgradeKey);
@@ -744,7 +760,7 @@ export class AcademyViewer {
       btnBg.setInteractive({ useHandCursor: true });
       btnBg.on('pointerover', () => btnBg.setAlpha(0.85));
       btnBg.on('pointerout', () => btnBg.setAlpha(1));
-      btnBg.on('pointerdown', () => this.showUpgradeConfirm(schoolKey, catKey, category.name, level, cost));
+      btnBg.on('pointerdown', () => this.showUpgradeConfirm(schoolKey, catKey, category.name, level, cost, costInfo));
     } else if (!pending) {
       let reason = '';
       if (!hasDistrict) reason = '没有学院区/特区';
@@ -820,7 +836,7 @@ export class AcademyViewer {
    * overlay/modal 直接加到场景里（不挂在 this.mainContainer 下面），用比 mainContainer
    * 更高的 depth 盖住整个学派界面，和 militaryUnitView.js 里"训练确认"弹窗是同一种做法。
    */
-  showUpgradeConfirm(schoolKey, catKey, categoryName, fromLevel, cost) {
+  showUpgradeConfirm(schoolKey, catKey, categoryName, fromLevel, cost, costInfo = null) {
     // 同一时间只允许一个确认弹窗存在，避免连续点击升级按钮堆出多个弹窗
     if (this._activeModal) {
       this._activeModal.overlay.destroy();
@@ -835,7 +851,9 @@ export class AcademyViewer {
       .setDepth(1150)
       .setInteractive();
 
-    const modalW = 440, modalH = 190;
+    // 成本被种族修正过时多留一行来标注来源
+    const hasRaceNote = (costInfo?.applied?.length ?? 0) > 0;
+    const modalW = 440, modalH = hasRaceNote ? 214 : 190;
     const modal = this.scene.add.container(width / 2, height / 2).setDepth(1151);
 
     const modalBg = this.scene.add.rectangle(0, 0, modalW, modalH, THEME.cardBgHex, 0.98);
@@ -859,6 +877,13 @@ export class AcademyViewer {
       fontSize: '15px', color: THEME.textSecondary,
     }).setOrigin(0.5);
     modal.add(askText);
+
+    if (hasRaceNote) {
+      const noteText = this._text(0, 42, `种族修正：${costInfo.applied.map(a => a.label).join('、')}（原 ${costInfo.base}）`, {
+        fontSize: '12px', color: THEME.accent,
+      }).setOrigin(0.5);
+      modal.add(noteText);
+    }
 
     const closeModal = () => {
       overlay.destroy();

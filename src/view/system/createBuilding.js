@@ -4,6 +4,7 @@ import { get } from '../../system/i18n.js';
 import { BUILDING } from '../../data/building.js';
 import { REGION } from '../../data/region.js';
 import { game } from '../../system/function.js';
+import { applyRaceCostModsDetailed } from '../../data/race.js';
 
 export class CreateBuilding {
   constructor(scene, gridId, data) {
@@ -160,11 +161,25 @@ export class CreateBuilding {
     return config.require_race(race);
   }
 
-  checkAffordable(resource, config) {
-    if (!config.cost) return true;
+  /**
+   * 种族修正后的建筑成本（显示、判断够不够、真正扣除必须用同一份结果，
+   * 扣除在 gameScene.js 的 build_building 里，用的是同一个钩子 build_building）。
+   * 返回 { cost, applied }；建筑没有配置成本时返回 null。
+   */
+  getBuildingCost(key, config = BUILDING[key]) {
+    if (!config?.cost) return null;
+    return applyRaceCostModsDetailed(
+      'build_building', config.cost, this.data.race, this.data.subRace,
+      { data: this.data, gridId: this.gridId, buildingKey: key, isWonder: false }
+    );
+  }
 
-    return Object.entries(config.cost).every(([key, value]) => {
-      return (resource[key] || 0) >= value;
+  checkAffordable(resource, config, key) {
+    const info = this.getBuildingCost(key, config);
+    if (!info) return true;
+
+    return Object.entries(info.cost).every(([k, value]) => {
+      return (resource[k] || 0) >= value;
     });
   }
 
@@ -199,7 +214,7 @@ export class CreateBuilding {
         isBuildable = false;
       }
 
-      if (!this.checkAffordable(this.data.resource, config)) isAffordable = false;
+      if (!this.checkAffordable(this.data.resource, config, key)) isAffordable = false;
 
       // 【城市唯一】建筑：本城（主城+分城）其他格点已有/正在建造时，也不可再建
       const uniqueHit = config.unique ? game.findUniqueBuildingInCity(this.data, this.gridId, key) : null;
@@ -322,22 +337,42 @@ export class CreateBuilding {
 
     if (config.cost) {
       const resource = this.data.resource || {};
+      // 种族修正后的成本（与实际扣除一致）
+      const { cost: finalCost, applied } = this.getBuildingCost(key, config);
       const labelText = this.scene.add.text(centerX, currentY, '建造消耗:', {
         fontSize: '18px', color: '#ffaaaa', align: 'center', padding: { top: 2 },
       }).setOrigin(0.5, 0);
       this.detailContent.add(labelText);
       currentY += labelText.height + 4;
 
-      // 逐项显示，不满足的单项标红
-      for (const [k, v] of Object.entries(config.cost)) {
+      // 逐项显示，不满足的单项标红；被种族修正过的项标注原价
+      const entries = Object.entries(finalCost);
+      if (entries.length === 0) {
+        const noneText = this.scene.add.text(centerX, currentY, '无', {
+          fontSize: '18px', color: '#ffaaaa', align: 'center', padding: { top: 2 },
+        }).setOrigin(0.5, 0);
+        this.detailContent.add(noneText);
+        currentY += noneText.height + 4;
+      }
+      for (const [k, v] of entries) {
         const has = resource[k] ?? 0;
         const enough = has >= v;
         const itemColor = enough ? '#ffaaaa' : '#ff3333';
-        const itemText = this.scene.add.text(centerX, currentY, `${get.translation(k)}: ${v}`, {
+        const base = config.cost[k];
+        const note = (base != null && base !== v) ? `（原 ${base}）` : '';
+        const itemText = this.scene.add.text(centerX, currentY, `${get.translation(k)}: ${v}${note}`, {
           fontSize: '18px', color: itemColor, align: 'center', padding: { top: 2 },
         }).setOrigin(0.5, 0);
         this.detailContent.add(itemText);
         currentY += itemText.height + 4;
+      }
+      // 成本被种族修正过时，标出来源
+      if (applied.length > 0) {
+        const srcText = this.scene.add.text(centerX, currentY, `种族修正：${applied.map(a => a.label).join('、')}`, {
+          fontSize: '14px', color: '#88ccff', align: 'center', padding: { top: 2 },
+        }).setOrigin(0.5, 0);
+        this.detailContent.add(srcText);
+        currentY += srcText.height + 4;
       }
       currentY += 22;
     }

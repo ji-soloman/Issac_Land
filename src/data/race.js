@@ -7,7 +7,9 @@
 //   region     种族起始特区（REGION 表里的 key）
 //   found_terrain 该种族建立主城（初始主城 / 建设新城）允许的地形，值是 terrain.js 里的地形 key 列表
 //   des        种族特点说明（文字）
-//   subraces   子种族：{ name, region（子种族特区）, des（说明）, found_terrain_extra?（额外允许的建城地形） }
+//   subraces   子种族：{ name, region（子种族特区）, des（说明）, found_terrain_extra?（额外允许的建城地形）, cost_mods? }
+//   cost_mods  成本修正规则（种族和子种族都可以写）：{ 钩子名: [ { label, apply(cost, ctx) → 新 cost } ] }
+//              钩子名见下方 COST_HOOKS；先应用种族规则，再应用子种族规则。
 //
 // 被注释掉的种族暂未开放，设定已写好，取消注释即可启用。
 // （注意：building.js 里 require_race 用的种族 key 与这里被注释的 goblin / beastkin / lizardfolk /
@@ -22,6 +24,83 @@ export const BASE_CITY_TERRAINS = ['land', 'hills', 'desert'];
 export const ANY_LAND_TERRAINS = ['land', 'hills', 'desert', 'forest', 'mountain'];
 // 水域：海洋、浅海、海岸、河流
 export const WATER_TERRAINS = ['ocean', 'neritic', 'coastal', 'river'];
+
+
+// ═══════════════════════════════════════════════════════════
+// 种族成本修正钩子
+// ═══════════════════════════════════════════════════════════
+// 游戏里所有"花资源"的地方，在【显示】、【判断够不够】、【真正扣除】三处都必须用同一份
+// 修正后的成本，所以统一走 applyRaceCostMods(钩子名, 原成本, 种族, 子种族, ctx)。
+// 新增一条种族成本规则只需要在对应种族/子种族里写 cost_mods，不用改任何界面代码。
+
+/** 钩子注册表：name 是界面显示名，ctx 说明调用方会传入哪些上下文字段 */
+export const COST_HOOKS = {
+  build_building: {
+    name: '建造建筑',
+    ctx: '{ data, gridId, buildingKey, isWonder }',
+    note: '建筑建造的资源消耗（createBuilding.js 显示/判足 + gameScene.js build_building 扣除）',
+  },
+  breed: {
+    name: '繁衍人口',
+    ctx: '{ data, gridId }',
+    note: '作用于【每个新人口的单价】（不是总价），之后再按人口数叠加；单价允许小数，不在此处取整',
+  },
+  new_city: {
+    name: '建设新城',
+    ctx: '{ data, gridId }',
+    note: '分城建设消耗（gridPanel.js _onBuildNewCity）',
+  },
+  train_unit: {
+    name: '训练兵种',
+    ctx: '{ data, unitKey }',
+    note: '兵种训练消耗，可以把人口消耗换成别的资源（militaryUnitView.js 训练页）',
+  },
+  research_tech: {
+    name: '研究科技',
+    ctx: '{ data, tech }',
+    note: '科技研究消耗（techTree.js getTechTotalCost）',
+  },
+  academy_upgrade: {
+    name: '学派分支升级',
+    ctx: '{ data, schoolKey, catKey, level }',
+    note: '学派分支升级的文化消耗（academyView.js 升级按钮 + 确认弹窗 + 扣除）',
+  },
+};
+
+/** 常用成本运算，供各种族 cost_mods 组合使用；都只读取、不修改传入的 cost，返回新对象 */
+export const COST_OP = {
+  /** 某项资源消耗 + delta（delta 为负就是减免）。该资源本来没有消耗时不增加；结果不低于 0 */
+  add: (res, delta) => (cost) => {
+    if (cost?.[res] == null || !delta) return cost;
+    return { ...cost, [res]: Math.max(0, cost[res] + delta) };
+  },
+  /** 某项资源消耗 × factor（如 0.5 = 减半）；结果不低于 0（取整由 applyRaceCostMods 统一处理） */
+  scale: (res, factor) => (cost) => {
+    if (cost?.[res] == null) return cost;
+    return { ...cost, [res]: Math.max(0, cost[res] * factor) };
+  },
+  /** 把 from 资源的消耗整体换成 to 资源，数量 × rate（如亡灵"不消耗人口只消耗财富"） */
+  convert: (from, to, rate = 1) => (cost) => {
+    const amount = cost?.[from];
+    if (!amount) return cost;
+    const next = { ...cost };
+    delete next[from];
+    next[to] = (next[to] ?? 0) + amount * rate;
+    return next;
+  },
+};
+
+/**
+ * 统计某一类物产的种数（如"每种畜牧物产""每种矿石类物产"）。
+ * 目前游戏里还没有物产系统（gridData.products 始终是空对象），先固定返回 0，
+ * 这样依赖物产数量的种族规则现在不生效、也不会报错；等物产系统做出来后，
+ * 只需要改这一个函数，所有相关种族规则会自动生效。
+ * @param {object} data saveData
+ * @param {string} kind 物产类别：'livestock'（畜牧）/ 'ore'（矿石）…
+ */
+export function countProducts(data, kind) {
+  return 0;
+}
 
 
 export const RACES = {
@@ -107,6 +186,13 @@ export const RACES = {
     region: 'military',
     found_terrain: BASE_CITY_TERRAINS,
     des: '1食物繁育；军事特区；可建造特殊建筑鲜血图腾柱（出产额外的骑兵人口）；每种畜牧物产减少1繁育人口需要的食物和1单位维护费用和购买非资源非材料的财富花费',
+    cost_mods: {
+      // 每种畜牧物产：繁育一个人口需要的食物 -1（物产系统上线前 countProducts 恒为 0，不生效）
+      breed: [{
+        label: '兽人',
+        apply: (unit, ctx) => COST_OP.add('food', -countProducts(ctx.data, 'livestock'))(unit),
+      }],
+    },
     subraces: {
       a: {
         name: '邪刃种',
@@ -162,6 +248,10 @@ export const RACES = {
         name: '帝国种',
         region: 'trade',
         des: '双手武器专精+4 传教每人口文化消耗-2 扩张土地消耗文化减少50% 格斗类角斗类升级+5护甲 每个时代奇迹学派升级+1',
+        cost_mods: {
+          // 扩张土地（建设新城）消耗的文化减半
+          new_city: [{ label: '帝国种', apply: COST_OP.scale('culture', 0.5) }],
+        },
       },
       e: {
         name: '蛮荒种',
@@ -274,6 +364,13 @@ export const RACES = {
         name: '乾元种',
         region: 'main',
         des: '额外政策条+1 建筑矿石消耗-3（不包括奇观） 斥候类单位每个大回合可执行两次任务 每时代游牧学派升级+1',
+        cost_mods: {
+          // 建筑矿石消耗 -3（不包括奇观）
+          build_building: [{
+            label: '乾元种',
+            apply: (cost, ctx) => (ctx?.isWonder ? cost : COST_OP.add('mine', -3)(cost)),
+          }],
+        },
       },
     },
   },
@@ -470,6 +567,12 @@ export const RACES = {
         name: '骷髅国王',
         region: 'military',
         des: '只能招募骸骨类单位，招募单位不消耗人口只消耗财富（骸骨无法装备饰品） 1次可招募最多4组单位 战术宽度+3 无法混血 所有单位自带骸骨效果 全单位升级+3飞羽抗性 每时代变异学派升级+1',
+        cost_mods: {
+          // 招募单位不消耗人口、只消耗财富。
+          // 【假设】财富数量 = 原人口数量（1:1），想改比例只需改下面的 rate；
+          // "只能招募骸骨类单位"的限制属于招募条件，不在成本钩子范围内，尚未实现。
+          train_unit: [{ label: '骷髅国王', apply: COST_OP.convert('population', 'wealth', 1) }],
+        },
       },
       b: {
         name: '鲜血伯爵',
@@ -480,6 +583,12 @@ export const RACES = {
         name: '冤魂女爵',
         region: 'entertainment',
         des: '单位每次升级无法增加物理防御但是增加双倍生命在护盾 单位只有护盾 对应的护甲也会变成护盾 每次升级+3护盾 所有单位自带虚体 只能招募幽魂类单位 招募单位不消耗人口只消耗文化 无法混血 每时代变异学派升级+1',
+        cost_mods: {
+          // 招募单位不消耗人口、只消耗文化。
+          // 【假设】文化数量 = 原人口数量（1:1），想改比例只需改下面的 rate；
+          // "只能招募幽魂类单位"的限制属于招募条件，不在成本钩子范围内，尚未实现。
+          train_unit: [{ label: '冤魂女爵', apply: COST_OP.convert('population', 'culture', 1) }],
+        },
       },
       d: {
         name: '丧尸大公',
@@ -500,6 +609,13 @@ export const RACES = {
     region: 'holy',
     found_terrain: ANY_LAND_TERRAINS,
     des: '0.5矿石0.5文化繁育；圣地特区；无法研究生命变异学派，只能和其他元素生物进行元素融合；每种矿石类物产减少1建筑矿石消耗（包括奇观）；可以在对应元素地区建城（目前地图没有元素地区，按任意陆地处理）；可建造特殊建筑元素母柱（拥有额外的矿石出产）',
+    cost_mods: {
+      // 每种矿石类物产：建筑矿石消耗 -1（包括奇观；物产系统上线前不生效）
+      build_building: [{
+        label: '元灵',
+        apply: (cost, ctx) => COST_OP.add('mine', -countProducts(ctx.data, 'ore'))(cost),
+      }],
+    },
     subraces: {
       a: {
         name: '石灵',
@@ -661,4 +777,49 @@ export function getCityTerrainText(raceKey, subRaceKey) {
     .filter(t => TERRAIN[t])   // terrain.js 里没有的地形（如目前地图没有的沙漠）不显示
     .map(t => TERRAIN[t].name)
     .join('、');
+}
+
+// ── 成本修正：应用入口 ───────────────────────────────
+
+/** 收集某种族（及子种族）在指定钩子下的全部规则：种族规则在前，子种族规则在后 */
+export function getRaceCostRules(hook, raceKey, subRaceKey) {
+  const race = RACES[raceKey];
+  if (!race) return [];
+  const sub = race.subraces?.[subRaceKey];
+  return [
+    ...(race.cost_mods?.[hook] ?? []),
+    ...(sub?.cost_mods?.[hook] ?? []),
+  ];
+}
+
+/**
+ * 应用种族成本修正，返回 { cost, applied }：
+ *   cost    修正后的成本（值 <= 0 的项会被去掉）
+ *   applied 真正改变了成本的规则列表 [{ label, before, after }]，用于在界面上标注来源
+ * opts.round 默认 true：每项成本向上取整（繁育单价这类允许小数的场景传 false）
+ */
+export function applyRaceCostModsDetailed(hook, cost, raceKey, subRaceKey, ctx = {}, opts = {}) {
+  const round = opts.round !== false;
+  let current = { ...(cost ?? {}) };
+  const applied = [];
+  for (const rule of getRaceCostRules(hook, raceKey, subRaceKey)) {
+    if (typeof rule?.apply !== 'function') continue;
+    const before = current;
+    const after = rule.apply(before, ctx) ?? before;
+    if (JSON.stringify(after) !== JSON.stringify(before)) {
+      applied.push({ label: rule.label ?? '', before, after });
+    }
+    current = { ...after };
+  }
+  const result = {};
+  for (const [k, v] of Object.entries(current)) {
+    const n = round ? Math.ceil(v - 1e-9) : v;
+    if (n > 0) result[k] = n;
+  }
+  return { cost: result, applied };
+}
+
+/** 只要修正后的成本时用这个 */
+export function applyRaceCostMods(hook, cost, raceKey, subRaceKey, ctx = {}, opts = {}) {
+  return applyRaceCostModsDetailed(hook, cost, raceKey, subRaceKey, ctx, opts).cost;
 }

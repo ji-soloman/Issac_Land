@@ -4,6 +4,7 @@ import { ERA } from '../../data/era.js';
 import { get } from '../../system/i18n.js';
 import { saveSystem } from '../../system/saveSystem.js';
 import { game } from '../../system/function.js';
+import { applyRaceCostModsDetailed } from '../../data/race.js';
 
 export class TechTreeSystem {
   constructor(scene, saveData) {
@@ -435,8 +436,13 @@ export class TechTreeSystem {
   }
 
   // ================= 资源判定辅助 =================
-  getTechTotalCost(tech) {
-    const totalCost = { ...(tech.cost || {}) };
+  /**
+   * 科技研究的最终成本信息：{ cost, applied }。
+   * 先算基础成本（科技自带 cost + 时代固定文化），再应用种族成本修正（钩子 research_tech）。
+   * 显示、判断够不够（checkCanAfford）、真正扣除（startResearch）都走这里，保证三处一致。
+   */
+  getTechCostInfo(tech) {
+    const baseCost = { ...(tech.cost || {}) };
 
     const techEra = tech.era;
     const eraOrder = (ERA && ERA[techEra] && ERA[techEra].order) ? ERA[techEra].order : 1;
@@ -444,9 +450,16 @@ export class TechTreeSystem {
     const fixedCulture = eraOrder * 5;
 
     // 👉 单独存一下固定文化，后面显示要用
-    totalCost.culture = (totalCost.culture || 0) + fixedCulture;
+    baseCost.culture = (baseCost.culture || 0) + fixedCulture;
 
-    return totalCost;
+    return applyRaceCostModsDetailed(
+      'research_tech', baseCost, this.saveData.race, this.saveData.subRace,
+      { data: this.saveData, tech }
+    );
+  }
+
+  getTechTotalCost(tech) {
+    return this.getTechCostInfo(tech).cost;
   }
 
   getTechDsiplayCost(tech) {
@@ -634,9 +647,12 @@ export class TechTreeSystem {
         padding: textPad
       });
 
-      const costStrings = Object.entries(totalCost)
+      const costInfoApplied = this.getTechCostInfo(tech).applied;
+      let costStrings = Object.entries(totalCost)
         .map(([key, val]) => `${get.translation(key) || key}: ${val}`)
         .join('  ');
+      if (Object.keys(totalCost).length === 0) costStrings = '无';
+      if (costInfoApplied.length > 0) costStrings += `\n（种族修正：${costInfoApplied.map(a => a.label).join('、')}）`;
 
       // 已解锁的科技消耗颜色保持正常，不因资源不足变红
       const isUnlockedAlready = !!this.saveData.tech_tree?.unlocked?.[id];
