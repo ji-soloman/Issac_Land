@@ -6,7 +6,7 @@ import { REGION } from '../../data/region.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { game } from '../../system/function.js';
 import { BUILDING } from '../../data/building.js';
-import { RACES } from '../../data/race.js';
+import { RACES, canFoundCityOn, getCityTerrainText } from '../../data/race.js';
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { saveSystem } from '../../system/saveSystem.js';
 import { GRID_BTN_IMG } from '../../data/gridButtonImages.js';
@@ -293,8 +293,20 @@ export class GridPanel {
       y += 15;
     }
 
-    // 建设新城：与所有已存在主城的最短格点距离都 > 8
-    if (this._isFarFromAllCities()) {
+    // 建设新城：与所有已存在主城的最短格点距离都 > 8，且该种族允许在这种地形上建城（见 race.js 的 found_terrain）
+    const farEnough = this._isFarFromAllCities();
+    const terrainOk = this._canFoundCityHere();
+    if (farEnough && !terrainOk) {
+      const raceName = RACES[this.data.race]?.name ?? '该种族';
+      const terrainName = terrain[this.terrainInfo?.type]?.name ?? '此地形';
+      this.contentContainer.add(this.scene.add.text(centerX, y + 10,
+        `${raceName}无法在【${terrainName}】建城\n可建城地形：${getCityTerrainText(this.data.race, this.data.subRace)}`, {
+          fontSize: '13px', color: '#884444', padding: { top: 4 }, align: 'center',
+          wordWrap: { width: btnWidth },
+        }).setOrigin(0.5, 0));
+      y += 60;
+    }
+    if (farEnough && terrainOk) {
       this.createActionButton(
         '建设新城', centerX, y, btnWidth, btnHeight,
         0x1565c0, true,
@@ -349,7 +361,18 @@ export class GridPanel {
     return true;
   }
 
+  /** 该种族（及子种族）能否在当前格点的地形上建城 */
+  _canFoundCityHere() {
+    const terrainKey = MAPS.grids?.[this.gridId]?.type;
+    return canFoundCityOn(terrainKey, this.data.race, this.data.subRace);
+  }
+
   _onBuildNewCity() {
+    // 兜底校验：地形不允许建城时直接拒绝（正常情况下按钮不会出现）
+    if (!this._canFoundCityHere()) {
+      game.showTips(this.scene, '该种族无法在此地形建城');
+      return;
+    }
     const { width, height } = this.scene.scale;
     const W = 360, H = 280;
     const cx = width / 2, cy = height / 2;
@@ -1294,7 +1317,9 @@ export class GridPanel {
         }
       }
       for (const res of Object.keys(cost)) {
-        if (cost[res] === 0) delete cost[res];
+        // 繁育单价可以是小数（如 0.5 文化），总价向上取整，避免资源出现小数
+        cost[res] = Math.ceil(cost[res] - 1e-9);
+        if (cost[res] <= 0) delete cost[res];
       }
       return cost;
     };
@@ -1316,7 +1341,7 @@ export class GridPanel {
       }
 
       for (const [res, baseTotal] of Object.entries(baseTotals)) {
-        let str = `${get.translation(res)} ×${baseTotal}`;
+        let str = `${get.translation(res)} ×${Math.ceil(baseTotal - 1e-9)}`;
         if (flatSummary[res] && flatSummary[res].total !== 0) {
           const detail = flatSummary[res].parts
             .map(p => `${p.source}${p.d * n > 0 ? '+' : ''}${p.d * n}`)

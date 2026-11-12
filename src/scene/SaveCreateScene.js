@@ -61,14 +61,20 @@ export class SaveCreateScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     confirmBtn.add([btnBg, btnText]);
+    // 保存引用，供 setConfirmEnabled 切换灰色/可用状态
+    confirmBtn.btnBg = btnBg;
+    confirmBtn.btnText = btnText;
+    confirmBtn.isDisabled = false;
 
     btnBg.setInteractive({ useHandCursor: true });
 
     btnBg.on('pointerover', () => {
+      if (confirmBtn.isDisabled) return;
       btnBg.setTint(0xcccccc);
     });
 
     btnBg.on('pointerout', () => {
+      if (confirmBtn.isDisabled) return;
       btnBg.clearTint();
     });
 
@@ -79,6 +85,44 @@ export class SaveCreateScene extends Phaser.Scene {
     });
 
     return confirmBtn;
+  }
+
+  /**
+   * 切换确认按钮的可用状态：不可用时整体变灰（类似 grayscale），可用时恢复原色。
+   * WebGL 下用 ColorMatrix 做真正的灰度；不支持时退化为灰色着色 + 降低透明度。
+   */
+  setConfirmEnabled(confirmBtn, enabled) {
+    if (!confirmBtn || !confirmBtn.btnBg) return;
+    const { btnBg, btnText } = confirmBtn;
+    confirmBtn.isDisabled = !enabled;
+
+    // 懒创建灰度滤镜（只创建一次）
+    if (confirmBtn.grayFx === undefined) {
+      confirmBtn.grayFx = null;
+      try {
+        if (btnBg.postFX && typeof btnBg.postFX.addColorMatrix === 'function') {
+          confirmBtn.grayFx = btnBg.postFX.addColorMatrix();
+        }
+      } catch (e) {
+        confirmBtn.grayFx = null;
+      }
+    }
+
+    btnBg.clearTint();
+    if (enabled) {
+      if (confirmBtn.grayFx) confirmBtn.grayFx.reset();
+      btnBg.setAlpha(1);
+      btnText.setAlpha(1);
+    } else {
+      if (confirmBtn.grayFx) {
+        confirmBtn.grayFx.grayscale(0.75); // 灰度强度 75%
+        btnBg.setAlpha(0.85);
+      } else {
+        btnBg.setTint(0x777777);
+        btnBg.setAlpha(0.7);
+      }
+      btnText.setAlpha(0.6);
+    }
   }
 
   createReturnBtn(x, y, text, onClickCallback) {
@@ -191,6 +235,7 @@ export class SaveCreateScene extends Phaser.Scene {
 
     let selectedRaceId = null;
     let currentHighlight = null;
+    let confirmBtn = null; // 确认按钮：未选择种族时显示为灰色
 
     // ====== 横向容器 ======
     const container = this.add.container(0, 0);
@@ -230,12 +275,21 @@ export class SaveCreateScene extends Phaser.Scene {
       ).setInteractive();
 
       hit.on('pointerdown', () => {
+        // 再次点击已选中的种族 -> 取消选择，确认按钮重新置灰
+        if (selectedRaceId === id) {
+          highlight.setVisible(false);
+          currentHighlight = null;
+          selectedRaceId = null;
+          this.setConfirmEnabled(confirmBtn, false);
+          return;
+        }
         if (currentHighlight) {
           currentHighlight.setVisible(false);
         }
         highlight.setVisible(true);
         currentHighlight = highlight;
         selectedRaceId = id;
+        this.setConfirmEnabled(confirmBtn, true); // 选中后恢复按钮颜色
       });
 
       // --- text ---
@@ -313,7 +367,7 @@ export class SaveCreateScene extends Phaser.Scene {
     const cx = width / 2;
     const cy = height / 2;
 
-    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+    confirmBtn = this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
       if (!selectedRaceId) {
         this.cameras.main.shake(100, 0.005);
         return;
@@ -321,10 +375,54 @@ export class SaveCreateScene extends Phaser.Scene {
       this.selectedRace = selectedRaceId;
       this.startSubRaceSelect();
     });
+    this.setConfirmEnabled(confirmBtn, false); // 初始未选择，按钮置灰
     this.createReturnBtn(cx + 180, cy + 200, '返回', function () {
       this.createName();
     });
 
+  }
+
+  /**
+   * 按“每行最多 maxChars 个字符”手动换行（中文没有空格，不能依赖 Phaser 的 wordWrap）。
+   * 汉字、标点、数字、字母都计入字数，每行严格不超过 maxChars。
+   * 换行规则：
+   *  - 原文里的空格（半角/全角）和 \n 都视为强制换行，空格本身不显示；
+   *  - 避头：标点不能出现在行首，遇到时把上一行末尾的字符一并挪到下一行；
+   *  - 避尾：开括号/开引号（（《“ 等）不能出现在行尾，遇到时挪到下一行行首。
+   */
+  wrapText(text, maxChars) {
+    const NO_HEAD = new Set('，。、；：！？）》」』】”’,.;:!?)]}…—·～~');
+    const NO_TAIL = new Set('（《「『【“‘([{');
+    const lines = [];
+
+    // 先按换行符和空格切成片段，每个片段单独按字数折行
+    String(text ?? '').split(/[\n \u3000]+/).forEach(paragraph => {
+      const chars = Array.from(paragraph);
+      if (chars.length === 0) {
+        lines.push('');
+        return;
+      }
+      let i = 0;
+      while (i < chars.length) {
+        let end = Math.min(i + maxChars, chars.length);
+
+        if (end < chars.length) {
+          // 避头：下一行首字是标点/空格 -> 本行回退，让前一个字符陪它一起去下一行
+          while (end > i + 1 && NO_HEAD.has(chars[end])) {
+            end--;
+          }
+          // 避尾：本行末字是开括号 -> 挪到下一行
+          while (end > i + 1 && NO_TAIL.has(chars[end - 1])) {
+            end--;
+          }
+        }
+
+        lines.push(chars.slice(i, end).join(''));
+        i = end;
+      }
+    });
+
+    return lines.join('\n');
   }
 
   startSubRaceSelect() {
@@ -334,9 +432,11 @@ export class SaveCreateScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
 
-    const CARD_WIDTH = 200;
-    const CARD_HEIGHT = 300;
+    // 子种族说明文字较长（见 race.js 的 subraces.des），卡片比以前更宽，说明字号略小
+    const CARD_WIDTH = 240;
+    const CARD_HEIGHT = 400;
     const CARD_SPACING = 20; // 卡片间距
+    const DES_CHARS_PER_LINE = 14; // 说明文字每行最多字符数（含标点、数字；空格处强制换行；标点不会出现在行首）
 
     // 获取选中种族的子种族数据
     const selectedRaceData = RACES[this.selectedRace];
@@ -344,6 +444,7 @@ export class SaveCreateScene extends Phaser.Scene {
 
     let selectedSubRaceId = null;
     let currentHighlight = null;
+    let confirmBtn = null; // 确认按钮：未选择子种族时显示为灰色
 
     // ====== 计算总宽度和起始位置 ======
     const totalCardsWidth = subraces.length * CARD_WIDTH + (subraces.length - 1) * CARD_SPACING;
@@ -405,7 +506,7 @@ export class SaveCreateScene extends Phaser.Scene {
 
       // --- 地区 ---
       const districtText = this.add.text(
-        0, -CARD_HEIGHT / 2 + 70,
+        0, -CARD_HEIGHT / 2 + 66,
         ` ${REGION[subrace.region].name}`,
         {
           fontSize: '16px',
@@ -417,17 +518,25 @@ export class SaveCreateScene extends Phaser.Scene {
 
       // --- 描述（自动换行） ---
       const desText = this.add.text(
-        0, -CARD_HEIGHT / 2 + 110,
-        subrace.des,
+        0, -CARD_HEIGHT / 2 + 92,
+        this.wrapText(subrace.des, DES_CHARS_PER_LINE),
         {
-          fontSize: '14px',
+          fontSize: '13px',
           color: '#ffffff',
           stroke: '#000000',
           strokeThickness: 2,
           align: 'center',
-          wordWrap: { width: CARD_WIDTH - 20 }
+          lineSpacing: 3
         }
       ).setOrigin(0.5, 0);
+
+      // 文字过长时自动缩小字号，保证不超出卡片底部
+      const desMaxHeight = CARD_HEIGHT - 92 - 12;
+      let desFont = 13;
+      while (desText.height > desMaxHeight && desFont > 9) {
+        desFont -= 1;
+        desText.setFontSize(desFont);
+      }
 
       // --- 交互区域 ---
       const hit = this.add.rectangle(
@@ -443,6 +552,7 @@ export class SaveCreateScene extends Phaser.Scene {
         highlight.setVisible(true);
         currentHighlight = highlight;
         selectedSubRaceId = id;
+        this.setConfirmEnabled(confirmBtn, true); // 选中后恢复按钮颜色
       });
 
       // --- 添加到卡片 ---
@@ -487,11 +597,12 @@ export class SaveCreateScene extends Phaser.Scene {
     // ====== 确认按钮 ======
     const cx = width / 2;
     const cy = height / 2;
-    this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
+    confirmBtn = this.createConfirmBtn(cx - 180, cy + 200, '确认', function () {
       if (!selectedSubRaceId) return;
       this.selectedSubRace = selectedSubRaceId;
       this.startTarotSelect();
     });
+    this.setConfirmEnabled(confirmBtn, false); // 初始未选择，按钮置灰
 
     // ====== 返回按钮 ======
     this.createReturnBtn(cx + 180, cy + 200, '返回', function () {

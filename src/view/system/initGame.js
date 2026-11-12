@@ -1,6 +1,7 @@
 import { terrain as TERRAIN } from '../../data/terrain.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { saveSystem } from '../../system/saveSystem.js';
+import { RACES, canFoundCityOn, getCityTerrainText } from '../../data/race.js';
 
 /**
  * InitGame — 游戏初始化流程（saveData.status == 0 时触发）
@@ -10,12 +11,13 @@ import { saveSystem } from '../../system/saveSystem.js';
  *  2. 显示"请选择你的初始主城" + 底部"点击屏幕任何位置继续"
  *  3. 点击任意位置 → 提示消失，地图进入格点选择（不属于开发者编辑模式）
  *  4. 点击格点 → 弹出地形浮窗（图片 + 地形名，不显示格点编号）+ 确认按钮
- *     水域/无地形格点不可建城
+ *     该种族不能建城的地形（见 race.js 的 found_terrain：如人类不能在山脉建城、
+ *     人鱼只能在水域建城）显示原因，不出现确认按钮
  *  5. 点击确认 → 弹出"是否在当前位置（地形名）建城？" + 确认/取消
  *  6. 确认建城 → 写入 saveData，保存，还原 UI，销毁 InitGame
  *
  * MAPS 结构：{ grids: { g1: { type: 'ocean', isWater: true }, ... } }
- * TERRAIN 结构：{ ocean: { name: '海洋', image: '...' }, ... }
+ * TERRAIN 结构：{ ocean: { name: '深海', image: '...' }, ... }
  *
  * @param {Phaser.Scene} scene
  * @param {Object}       saveData
@@ -34,6 +36,7 @@ export class InitGame {
 
     // UI 节点引用
     this.titleText = null;
+    this.subText = null;
     this.hintText = null;
     this.terrainCard = null;
     this.confirmModal = null;
@@ -86,6 +89,21 @@ export class InitGame {
       }
     ).setOrigin(0.5).setDepth(this.UI_DEPTH).setAlpha(0);
 
+    // 副标题：告诉玩家本种族可以在哪些地形建城
+    const raceName = RACES[this.saveData.race]?.name ?? '';
+    const terrainText = getCityTerrainText(this.saveData.race, this.saveData.subRace);
+    this.subText = this.scene.add.text(
+      width / 2, height / 2 + 44,
+      `${raceName}可在【${terrainText}】建城`,
+      {
+        fontFamily: 'serif',
+        fontSize: '20px',
+        color: '#d9c9a3',
+        stroke: '#2c1a0e',
+        strokeThickness: 4,
+      }
+    ).setOrigin(0.5).setDepth(this.UI_DEPTH).setAlpha(0);
+
     this.hintText = this.scene.add.text(
       width / 2, height - 18,
       '点击屏幕任何位置继续',
@@ -93,7 +111,7 @@ export class InitGame {
     ).setOrigin(0.5, 1).setDepth(this.UI_DEPTH).setAlpha(0);
 
     this.scene.tweens.add({
-      targets: [this.titleText, this.hintText],
+      targets: [this.titleText, this.subText, this.hintText],
       alpha: 1, duration: 500, ease: 'Power2',
       onComplete: () => {
         this.scene.tweens.add({
@@ -114,10 +132,11 @@ export class InitGame {
   // ─────────────────────────────────────────────────────
   _onContinue() {
     this.scene.tweens.add({
-      targets: [this.titleText, this.hintText],
+      targets: [this.titleText, this.subText, this.hintText],
       alpha: 0, duration: 280, ease: 'Linear',
       onComplete: () => {
         this.titleText?.destroy(); this.titleText = null;
+        this.subText?.destroy(); this.subText = null;
         this.hintText?.destroy(); this.hintText = null;
       },
     });
@@ -138,8 +157,9 @@ export class InitGame {
     // 地形数据来自 MAPS.grids[gridId].type，不显示格点编号（gn）
     const gridMeta = MAPS.grids?.[gridId];
     const terrainKey = gridMeta?.type;
-    const isWater = gridMeta?.isWater === true;
-    const info = (terrainKey && !isWater) ? TERRAIN[terrainKey] : null;
+    const info = terrainKey ? TERRAIN[terrainKey] : null;
+    // 是否允许该种族在这种地形上建城（规则见 race.js 的 found_terrain）
+    const allowed = !!info && canFoundCityOn(terrainKey, this.saveData.race, this.saveData.subRace);
 
     const { width, height } = this.scene.scale;
     const W = 320, H = 140;
@@ -171,17 +191,32 @@ export class InitGame {
       ).setOrigin(0, 0.5);
       this.terrainCard.add(nameText);
 
-      // ── 确认按钮 ──────────────────────────────────────
-      this._addCardButton(
-        this.terrainCard, -W / 2 + 200, 22,
-        '确认', 'common_btn_green',
-        () => this._showConfirmModal(gridId, info.name)
-      );
+      if (allowed) {
+        // ── 确认按钮 ──────────────────────────────────────
+        this._addCardButton(
+          this.terrainCard, -W / 2 + 200, 22,
+          '确认', 'common_btn_green',
+          () => this._showConfirmModal(gridId, info.name)
+        );
+      } else {
+        // ── 该种族不能在此地形建城：说明原因和可建城地形 ────
+        const raceName = RACES[this.saveData.race]?.name ?? '该种族';
+        const terrainText = getCityTerrainText(this.saveData.race, this.saveData.subRace);
+        this.terrainCard.add(
+          this.scene.add.text(
+            -W / 2 + 128, 8,
+            `${raceName}无法在此建城\n可建城地形：${terrainText}`,
+            {
+              fontFamily: 'sans-serif', fontSize: '14px', color: '#cc6666',
+              wordWrap: { width: W / 2 + 20 }, lineSpacing: 4,
+            }
+          ).setOrigin(0, 0)
+        );
+      }
     } else {
-      // 水域或无地形数据，不可建城
-      const reason = isWater ? '水域地块，不可建城' : '此处地形未知，不可建城';
+      // 无地形数据，不可建城
       this.terrainCard.add(
-        this.scene.add.text(0, 0, reason, {
+        this.scene.add.text(0, 0, '此处地形未知，不可建城', {
           fontFamily: 'sans-serif', fontSize: '18px', color: '#666666',
         }).setOrigin(0.5)
       );
@@ -255,6 +290,13 @@ export class InitGame {
   // Step 5：写入存档，还原 UI，结束初始化
   // ─────────────────────────────────────────────────────
   _saveMainCity(gridId) {
+    // 兜底再校验一次：该种族不能在这种地形上建城时直接拒绝（正常流程里确认按钮根本不会出现）
+    const terrainKey = MAPS.grids?.[gridId]?.type;
+    if (!canFoundCityOn(terrainKey, this.saveData.race, this.saveData.subRace)) {
+      this._destroyConfirmModal();
+      return;
+    }
+
     this.saveData.map.grids[gridId] = {
       region: 'main',
       buildings: {},
@@ -315,6 +357,7 @@ export class InitGame {
   destroy() {
     this.scene.input.off('pointerdown', this._promptClick);
     this.titleText?.destroy();
+    this.subText?.destroy();
     this.hintText?.destroy();
     this._destroyTerrainCard();
     this._destroyConfirmModal();
