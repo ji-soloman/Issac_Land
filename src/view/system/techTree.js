@@ -34,6 +34,9 @@ export class TechTreeSystem {
     this.maxScrollX = 0;
     this.isDragging = false;
 
+    // 科技节点的显示对象，按科技 id 索引，用于研发状态变化时刷新样式
+    this.techNodes = {};
+
     this.create();
   }
 
@@ -271,10 +274,45 @@ export class TechTreeSystem {
     }).setOrigin(0.5, 0.5);
     c.add(label);
 
-    const isUnlocked = this.saveData.tech_tree?.unlocked?.[id];
-    if (!isUnlocked) c.setAlpha(0.45);
+    // “研发中”标记：在左侧图标的镜像位置（右侧）放一个圆形小徽章，里面是剩余研发回合数，
+    // 直径比左边图标小一圈（图标约为节点高度的 70%，徽章取 50%）；平时隐藏，研发中才显示
+    const iconCenterX = -this.NODE_WIDTH / 2 + this.NODE_HEIGHT * 0.5 + this.ICON_OFFSET_X;
+    const badgeR = this.NODE_HEIGHT * 0.25;
+    const badgeBg = this.scene.add.circle(-iconCenterX, 0, badgeR, 0x2a1a00, 0.92)
+      .setStrokeStyle(2, 0xffc94d, 1);
+    const badgeText = this.scene.add.text(-iconCenterX, 0, '', {
+      fontSize: '15px', color: '#ffe9a8', fontStyle: 'bold', padding: { top: 3 },
+    }).setOrigin(0.5);
+    c.add([badgeBg, badgeText]);
+
+    this.techNodes[id] = { container: c, parts: [bg, icon, label], badge: [badgeBg, badgeText] };
+    this.refreshTechNodeStyle(id);
 
     this.contentContainer.add(c);
+  }
+
+  /**
+   * 按科技当前状态刷新节点样式（三种状态透明度不同）：
+   *   已解锁   完全不透明
+   *   研发中   中等透明度 + 右侧（与左侧图标对称）显示圆形徽章，里面是剩余回合数
+   *   未解锁   最淡
+   */
+  refreshTechNodeStyle(id) {
+    const node = this.techNodes[id];
+    if (!node) return;
+
+    const isUnlocked = !!this.saveData.tech_tree?.unlocked?.[id];
+    const isResearching = !isUnlocked && this.saveData.tech_tree?.researching?.[id] !== undefined;
+
+    const alpha = isUnlocked ? 1 : (isResearching ? 0.7 : 0.45);
+    // 透明度设在节点各部件上而不是整个容器上，这样“研发中”标签本身保持清晰
+    node.container.setAlpha(1);
+    node.parts.forEach(o => o.setAlpha(alpha));
+    node.badge.forEach(o => o.setVisible(isResearching));
+    if (isResearching) {
+      // 徽章里显示剩余回合数
+      node.badge[1].setText(String(this.saveData.tech_tree.researching[id]));
+    }
   }
 
   // ================= 连线 =================
@@ -871,6 +909,8 @@ export class TechTreeSystem {
           this.saveData.tech_tree.researching = {};
         }
         this.saveData.tech_tree.researching[id] = turnsNeeded;
+
+        this.refreshTechNodeStyle(id);
 
         saveSystem.save().then(() => {
           this.showTechInfo(id, tech, targetImage);
