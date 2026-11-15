@@ -147,6 +147,7 @@ export class GameScene extends Phaser.Scene {
     this.createBottomBar();
     this.createLeftSideBar();
     this.createTopInfoBar();
+    this.createGmPanel();
     this.bindEvents();
 
     this.currentSystem = null;
@@ -467,8 +468,12 @@ export class GameScene extends Phaser.Scene {
         military: {},
         others: {},
       }
-      // 8.回合增加
-      data.process.turn++;
+      // 8.回合增加（GM【进入下个回合（不计入回合）】会跳过这一步：上面的结算照常做，只是回合数不+1）
+      if (this._gmSkipTurnIncrement) {
+        this._gmSkipTurnIncrement = false;
+      } else {
+        data.process.turn++;
+      }
 
       // 9.【Trigger 类事件结算】
       // 在 turn++ 之后执行，保证效果在新回合数据环境下生效
@@ -582,6 +587,71 @@ export class GameScene extends Phaser.Scene {
 
   createTopInfoBar() {
     this.topInfoBar = new TopInfoBar(this);
+  }
+
+  // ── GM 面板（调试用）────────────────────────────────
+  // 屏幕左下角的常驻小面板，两个按钮都可以【空行动】直接进入下个回合：
+  //   · 进入下个回合（计入回合）    完整结算，回合数 +1（等同玩家点“下一回合”，只是不要求有行动）
+  //   · 进入下个回合（不计入回合）  完整结算（收入、各种倒计时、时代判定都照常），但回合数不 +1
+  // 位置想调整只改 GM_PANEL_MARGIN；面板在各系统全屏界面（深度 1000+）之下，打开那些界面时点不到。
+  createGmPanel() {
+    const W = 220, BTN_H = 30, GAP = 8, PAD = 10, TITLE_H = 22, GM_PANEL_MARGIN = 12;
+    const H = PAD + TITLE_H + 2 * BTN_H + GAP + PAD;
+
+    const panel = this.add.container(0, 0).setDepth(900).setScrollFactor(0);
+    const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.6)
+      .setOrigin(0, 0).setStrokeStyle(1, 0x888888, 0.8).setInteractive();
+    // 悬停在面板上时锁住地图的拖动/滚轮，避免误操作地图
+    bg.on('pointerover', () => {
+      const mv = this.mapView;
+      if (mv && mv.interactionEnabled) { mv.disableInteraction(); this._gmMapLocked = true; }
+    });
+    bg.on('pointerout', () => {
+      if (this._gmMapLocked) { this._gmMapLocked = false; this.mapView?.enableInteraction(); }
+    });
+    panel.add(bg);
+    panel.add(this.add.text(W / 2, PAD + TITLE_H / 2, 'GM', {
+      fontSize: '14px', color: '#ffcc00', fontStyle: 'bold', padding: { top: 3 },
+    }).setOrigin(0.5));
+
+    const addBtn = (idx, label, color, onClick) => {
+      const y = PAD + TITLE_H + idx * (BTN_H + GAP);
+      const btn = this.add.rectangle(PAD, y, W - PAD * 2, BTN_H, color, 1)
+        .setOrigin(0, 0).setStrokeStyle(1, 0xffffff, 0.5).setInteractive({ useHandCursor: true });
+      const txt = this.add.text(W / 2, y + BTN_H / 2, label, {
+        fontSize: '13px', color: '#ffffff', fontStyle: 'bold', padding: { top: 3 },
+      }).setOrigin(0.5);
+      btn.on('pointerover', () => btn.setAlpha(0.8));
+      btn.on('pointerout', () => btn.setAlpha(1));
+      btn.on('pointerdown', () => btn.setAlpha(0.6));
+      btn.on('pointerup', () => { btn.setAlpha(1); onClick(); });
+      panel.add([btn, txt]);
+    };
+    addBtn(0, '进入下个回合（计入回合）', 0x27ae60, () => this.gmNextTurn(true));
+    addBtn(1, '进入下个回合（不计入回合）', 0x2980b9, () => this.gmNextTurn(false));
+
+    const place = (w, h) => panel.setPosition(GM_PANEL_MARGIN, h - H - GM_PANEL_MARGIN);
+    place(this.scale.width, this.scale.height);
+    this.scale.on('resize', (size) => place(size.width, size.height));
+    this.gmPanel = panel;
+  }
+
+  /**
+   * GM：空行动直接进入下个回合。
+   * @param {boolean} countTurn true = 回合数 +1；false = 完整结算但回合数不变
+   */
+  gmNextTurn(countTurn) {
+    const data = this.saveData;
+    data.actionList ??= {};
+    for (const k of ['civil', 'military', 'others']) data.actionList[k] ??= {};
+
+    this._gmSkipTurnIncrement = !countTurn;
+    try {
+      this.events.emit('END_TURN');
+    } finally {
+      // 即使结算中途抛错也不能把“跳过回合+1”的标记带到下一次
+      this._gmSkipTurnIncrement = false;
+    }
   }
 
   bindEvents() {
