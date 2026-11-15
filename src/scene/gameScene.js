@@ -29,7 +29,7 @@ import { MILITARY_UNIT } from '../data/military_unit.js';
 import { REGION } from '../data/region.js';
 import { BUILDING } from '../data/building.js';
 import { applyRaceCostMods } from '../data/race.js';
-import { ERA } from '../data/era.js';
+import { ERA, getNextEraMissions } from '../data/era.js';
 import { WONDER } from '../data/wonder.js';
 import { GREAT_PEOPLE } from '../data/great_people.js';
 import { military } from '../system/military.js';
@@ -471,6 +471,15 @@ export class GameScene extends Phaser.Scene {
           if (gn) gn.population = (gn.population ?? 0) + count;
         }
         this.pendingBreed = [];
+      }
+
+      // 10.5【时代晋升】所有结算（行动、倒计时、trigger、人口增加）都完成之后统一判断：
+      // 下一个时代的所有要求都完成了就晋升。放在保存之前，保证晋升结果一起存档。
+      // 顺序：先刷新右上角的时代任务面板（让玩家看到本回合的完成情况），再结算晋升；
+      // 晋升之后再刷新一次，面板切换成新时代的任务。
+      this.topInfoBar?.refreshMissionPanel();
+      if (this.checkEraPromotion(data)) {
+        this.topInfoBar?.refreshMissionPanel();
       }
 
       // 11.保存数据
@@ -1008,6 +1017,24 @@ export class GameScene extends Phaser.Scene {
     } catch (err) {
       console.error(`trigger.${type} [${key}] 执行出错:`, err);
     }
+  }
+
+  /**
+   * 时代晋升判断：在每个回合所有结算完成之后调用（见 TURN_FINALISED 的 10.5 步）。
+   * 规则：取当前时代的下一个时代（order+1），它的 mission（见 era.js）里所有要求的
+   * filter 都返回 true 才晋升；每回合最多晋升一个时代。
+   * 下一个时代没有配置 mission、或者某条要求没有 filter 函数时，视为条件不满足，不会晋升。
+   * @returns {boolean} 本次是否发生了晋升
+   */
+  checkEraPromotion(data) {
+    data.process ??= {};
+    const info = getNextEraMissions(data, this);
+    if (!info || info.missions.length === 0) return false;
+    if (!info.missions.every(m => m.done)) return false;
+
+    data.process.era = info.nextKey;
+    this.showEraAnnouncement(info.nextEra.name);
+    return true;
   }
 
   /**

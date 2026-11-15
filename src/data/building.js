@@ -810,17 +810,6 @@ export const BUILDING = {
       normal: {
         housing: 4,
       },
-      trigger: {
-        onComplete({ savedata, scene }) {
-          // 若当前时代 order 低于小亚细亚之战（asiaMinor），升级到小亚细亚之战（与圣地进入奴隶时代的写法一致）
-          const targetKey = 'asiaMinor';
-          const currentKey = savedata.process.era ?? 'primitive';
-          if ((scene.ERA[currentKey]?.order ?? 0) < (scene.ERA[targetKey]?.order ?? 0)) {
-            savedata.process.era = targetKey;
-            scene.showEraAnnouncement(scene.ERA[targetKey].name);
-          }
-        },
-      },
     },
     round: 4,
   },
