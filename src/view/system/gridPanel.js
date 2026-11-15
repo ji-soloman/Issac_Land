@@ -890,6 +890,17 @@ export class GridPanel {
       // 待移除时显示"被拆除"标签 + 灰色蒙版
       this.createListItem(rObj ? rObj.name : rId, null, currentY, bColor, rObj, isPendingRemove ? 'removing' : null);
       currentY += 40;
+
+      // 升级中（createRegion.upgrade）或已加入行动列表尚未结算的区域升级
+      const upCreate = this.gridData.createRegion;
+      const upPending = this.data.actionList?.civil?.['upgrade_region_' + this.gridId];
+      const upKey = upCreate?.upgrade ? upCreate.targetRegion : upPending?.regionKey;
+      if (upKey) {
+        const upObj = REGION[upKey];
+        this.createListItem('升级为' + (upObj?.name ?? upKey), upCreate?.upgrade ? upCreate.num : 'pending',
+          currentY, upObj ? colorMap[upObj.color] : 0xcccccc, upObj);
+        currentY += 40;
+      }
     } else if (this.gridData.createRegion) {
       const rId = this.gridData.createRegion.targetRegion;
       const rObj = REGION[rId];

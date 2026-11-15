@@ -165,6 +165,9 @@ export class TurnSystem {
       else if (actionType.startsWith('build_building')) {
         result.civil[actionType] = params;
       }
+      else if (actionType.startsWith('upgrade_region')) {
+        result.civil[actionType] = params;
+      }
       else if (actionType.startsWith('remove_region')) {
         result.civil[actionType] = params;
       }

@@ -31,6 +31,15 @@ export const get = {
       }
       result.military += extraMilitary;
 
+      // 已建成的区域：effect.normal.civil_action / military_action 同样直接叠加（不受上面“最多3个”限制，
+      // 例如铁血要塞的“军事改革额外+1”）
+      for (const grid of Object.values(grids)) {
+        const normal = grid?.region ? REGION?.[grid.region]?.effect?.normal : null;
+        if (!normal) continue;
+        if (typeof normal.civil_action === 'number') result.civil += normal.civil_action;
+        if (typeof normal.military_action === 'number') result.military += normal.military_action;
+      }
+
       // 已建成的建筑：effect.normal.civil_action / military_action 直接叠加到对应行动上限
       // （建造中的建筑不计入；同一建筑每建成一座生效一次）
       for (const grid of Object.values(grids)) {

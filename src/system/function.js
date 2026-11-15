@@ -78,6 +78,27 @@ export const game = {
   },
 
   /**
+   * 汇总全部已建成区域（grid.region）的 effect.normal[key]（全局，不分城市）。
+   * 用于“科技研究回合数-1”“训练回合数-1”“科技文化消耗-5”这类全局数值加成（王城特区使用）。
+   * 值支持数值，或 ({ grid }) => 数值 的函数写法；建造中的区域（createRegion）不计入。
+   * @returns {{ total: number, parts: Array<{ source: string, value: number }> }}
+   */
+  getRegionNormalSum(saveData, key) {
+    const parts = [];
+    let total = 0;
+    for (const g of Object.values(saveData?.map?.grids ?? {})) {
+      const cfg = g?.region ? REGION[g.region] : null;
+      const v = cfg?.effect?.normal?.[key];
+      const n = typeof v === 'function' ? v({ grid: g }) : v;
+      if (typeof n === 'number' && !Number.isNaN(n) && n !== 0) {
+        total += n;
+        parts.push({ source: cfg.name, value: n });
+      }
+    }
+    return { total, parts };
+  },
+
+  /**
    * 返回某个格点所属城市的主城格点 id：
    *   主城自己 → 自己的 gridId；分城格点 → hasMain（所属主城）；野地/未知格点 → null
    */

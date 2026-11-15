@@ -580,4 +580,233 @@ export const REGION = {
     round: 5,
     color: 'special',
   },
+  imperial_capital: {
+    name: '荣耀之都',
+    terrainInfo: '升级的主城区',
+    effect_info: '每回合财富+1，食物+1，文化+1，矿石+1；住房+5；所在的主城每有5人口，额外增加1财富税收',
+    effect: {
+      normal: {
+        housing: 5,
+      },
+      turn: {
+        // 基础财富+1；所在的主城每有 5 人口，额外 +1 财富税收（向下取整，按该主城格点的人口算）
+        wealth: ({ grid }) => 1 + Math.floor((grid?.population ?? 0) / 5),
+        food: 1,
+        culture: 1,
+        mine: 1,
+      },
+    },
+    category: {
+      main: true,
+    },
+    round: 6,
+    color: 'living',
+    update: 1,
+    // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
+    upgrade_group: 'capital',
+    upgrade_from: ['main'],
+  },
+  academy_capital: {
+    name: '奥术之城',
+    terrainInfo: '主城区和学院区融合的特区',
+    effect_info: '每回合财富+1，文化+2，魔石+1；住房+3；学院可选择数量+1；科技研究回合数-1（至少为1）',
+    effect: {
+      normal: {
+        housing: 3,
+        // 学院可选择数量+1：奥术之城 category.academy = true，已按“学院区/特区”计入 academyView.countAcademyDistricts，无需额外字段
+        research_round: -1,      // 科技研究回合数-1（至少为1，techTree.getTechResearchRounds 结算）
+      },
+      turn: {
+        wealth: 1,
+        culture: 2,
+        magic: 1,
+      },
+    },
+    category: {
+      main: true,
+      academy: true,
+    },
+    round: 6,
+    color: 'academy',
+    update: 1,
+    // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
+    upgrade_group: 'capital',
+    upgrade_from: ['main'],
+  },
+  military_capital: {
+    name: '铁血要塞',
+    terrainInfo: '主城区和军事区融合的特区',
+    effect_info: '每回合食物+2，矿石+2，魔石+1；住房+3；军事改革额外+1；所有兵组人口+2，训练兵组回合数-1',
+    effect: {
+      normal: {
+        housing: 3,
+        // 军事改革额外+1：这里的 military_action 直接叠加军事行动上限，不受军事区“最多叠加3个”的限制
+        // （铁血要塞 category.military = true，本身还会作为一个军事区计入那 3 个名额，见 i18n.js actionNum）
+        military_action: 1,
+        // 所有兵组人口+2（各兵种类别的人口上限；兵种人口系统接入后读取这些字段，写法同军事区的 infantry）
+        scout: 2,
+        fighting: 2,
+        ranged: 2,
+        boat: 2,
+        cavalry: 2,
+        infantry: 2,
+        beast: 2,
+        special_type: 2,
+        train_round: -1,         // 训练兵组回合数-1（至少为1，militaryUnitView 训练页结算）
+      },
+      turn: {
+        food: 2,
+        mine: 2,
+        magic: 1,
+      },
+    },
+    category: {
+      main: true,
+      military: true,
+    },
+    round: 6,
+    color: 'military',
+    update: 1,
+    // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
+    upgrade_group: 'capital',
+    upgrade_from: ['main'],
+  },
+  holy_capital: {
+    name: '天启之城',
+    terrainInfo: '主城区和圣地融合的特区',
+    effect_info: '每回合财富+2，魔石+2；住房+5；科技研究消耗的文化-5（至少为1）；宗教信仰条目+1',
+    effect: {
+      normal: {
+        housing: 5,
+        research_culture: -5,    // 科技研究消耗的文化-5（至少为1，techTree.getTechCostInfo 结算）
+        religion_entry: 1,       // 宗教信仰条目+1（宗教系统接入后读取该字段）
+      },
+      turn: {
+        wealth: 2,
+        magic: 2,
+      },
+    },
+    category: {
+      main: true,
+      holy: true,
+    },
+    round: 6,
+    color: 'holy',
+    update: 1,
+    // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
+    upgrade_group: 'capital',
+    upgrade_from: ['main'],
+  },
+}
+
+// ═══════════════════════════════════════════════════
+// 区域升级（主城【其他功能】→【升级区域】使用）
+// ═══════════════════════════════════════════════════
+//
+// REGION 条目上的相关字段：
+//   update            区域等级，缺省为 0（主城区/普通区域都是 0）；升级必须 目标.update > 原区域.update
+//   upgrade_group     所属升级组（见 REGION_UPGRADE_GROUP）；缺省 = 无组，无科技要求、无次数限制
+//   upgrade_from      白名单：只允许从这些区域 key 升级（王城只能从 main 升级）；缺省 = 不限
+//
+// 升级判定规则（canUpgradeRegion）：
+//   1. 目标必须有 update 且 > 原区域 update
+//   2. 目标的类别（含 inherit_category）必须包含原区域的全部类别
+//   3. 若目标声明了 upgrade_from，则原区域必须在白名单内
+//   4. 目标所属组需解锁对应科技，且未用尽次数
+//   5. 目标的 special({race}) 若返回 false 则不可选
+export const REGION_UPGRADE_GROUP = {
+  capital: {
+    name: '王城',
+    tech: 'gov_2',   // 中央集权
+    limit: 1,        // 永久限 1 次（记录在 saveData.region_upgrade_used[group]）
+  },
+};
+
+/** 区域等级，缺省为 0 */
+export function getRegionLevel(key) {
+  return REGION[key]?.update ?? 0;
+}
+
+/** 区域参与升级判定的类别 key 集合 */
+export function getRegionUpgradeCategories(key) {
+  const r = REGION[key];
+  return new Set(Object.keys(r?.category ?? {}).filter(k => r.category[k]));
+}
+
+/**
+ * 某升级组是否已被占用：
+ *   - 永久记录 saveData.region_upgrade_used[group]（回合结算开始建造时写入）
+ *   - 或行动列表里有尚未结算的同组升级行动（取消行动前可撤回，不算用掉）
+ */
+export function isUpgradeGroupUsed(saveData, group) {
+  const cfg = REGION_UPGRADE_GROUP[group];
+  if (!cfg?.limit) return false;
+  let used = saveData?.region_upgrade_used?.[group] ? 1 : 0;
+  for (const [k, v] of Object.entries(saveData?.actionList?.civil ?? {})) {
+    if (k.startsWith('upgrade_region') && v?.group === group) used++;
+  }
+  return used >= cfg.limit;
+}
+
+/** 升级组所需科技是否已解锁 */
+export function isUpgradeGroupUnlocked(saveData, group) {
+  const tech = REGION_UPGRADE_GROUP[group]?.tech;
+  if (!tech) return true;
+  return !!saveData?.tech_tree?.unlocked?.[tech];
+}
+
+/**
+ * 判断 oldKey → newKey 能否升级（只看区域本身的规则 + 组规则，不看格点是否空闲）
+ * @returns {string|null} null = 可以；否则返回不可升级的原因
+ */
+export function getRegionUpgradeBlockReason(oldKey, newKey, saveData) {
+  const oldR = REGION[oldKey];
+  const newR = REGION[newKey];
+  if (!oldR || !newR) return '区域不存在';
+  if (newR.update == null) return '该区域不是升级目标';
+  if (getRegionLevel(newKey) <= getRegionLevel(oldKey)) return '目标区域等级不高于原区域';
+
+  const oldCats = getRegionUpgradeCategories(oldKey);
+  const newCats = getRegionUpgradeCategories(newKey);
+  for (const c of oldCats) {
+    if (!newCats.has(c)) return '目标区域的类别未包含原区域的全部类别';
+  }
+
+  if (Array.isArray(newR.upgrade_from) && !newR.upgrade_from.includes(oldKey)) {
+    return '该区域不能从此区域升级';
+  }
+
+  const group = newR.upgrade_group;
+  if (group) {
+    if (!isUpgradeGroupUnlocked(saveData, group)) return '尚未解锁所需科技';
+    if (isUpgradeGroupUsed(saveData, group)) return `${REGION_UPGRADE_GROUP[group]?.name ?? group}升级次数已用尽`;
+  }
+
+  if (typeof newR.special === 'function' && !newR.special({ race: saveData?.race })) {
+    return '当前种族无法使用该区域';
+  }
+  return null;
+}
+
+/**
+ * 某个主城（含其附属格点）当前所有可用的区域升级方案
+ * 排除：建造中 / 已有待结算升级 / 待移除的格点
+ * @returns {{gridId:string, fromKey:string, toKey:string}[]}
+ */
+export function getRegionUpgradeOptions(saveData, mainGridId) {
+  const grids = saveData?.map?.grids ?? {};
+  const civil = saveData?.actionList?.civil ?? {};
+  const cityGridIds = [mainGridId, ...Object.keys(grids).filter(g => grids[g]?.hasMain === mainGridId)];
+  const options = [];
+  for (const gid of cityGridIds) {
+    const g = grids[gid];
+    if (!g?.region || g.createRegion) continue;
+    if (civil['upgrade_region_' + gid] || civil['remove_region_' + gid] || civil['build_region_' + gid]) continue;
+    for (const toKey of Object.keys(REGION)) {
+      if (getRegionUpgradeBlockReason(g.region, toKey, saveData) === null) {
+        options.push({ gridId: gid, fromKey: g.region, toKey });
+      }
+    }
+  }
+  return options;
 }

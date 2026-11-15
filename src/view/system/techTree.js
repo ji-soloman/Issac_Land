@@ -490,10 +490,32 @@ export class TechTreeSystem {
     // 👉 单独存一下固定文化，后面显示要用
     baseCost.culture = (baseCost.culture || 0) + fixedCulture;
 
-    return applyRaceCostModsDetailed(
+    const info = applyRaceCostModsDetailed(
       'research_tech', baseCost, this.saveData.race, this.saveData.subRace,
       { data: this.saveData, tech }
     );
+
+    // 区域加成：已建成区域的 effect.normal.research_culture（如天启之城 -5），文化消耗至少为 1
+    const cultureMod = game.getRegionNormalSum(this.saveData, 'research_culture');
+    if (cultureMod.total !== 0 && info.cost.culture != null) {
+      const before = info.cost;
+      const after = { ...before, culture: Math.max(1, before.culture + cultureMod.total) };
+      if (after.culture !== before.culture) {
+        info.cost = after;
+        info.applied = [...info.applied, { label: cultureMod.parts.map(p => p.source).join('、'), before, after }];
+      }
+    }
+    return info;
+  }
+
+  /**
+   * 科技研究所需回合数：时代序号（至少 1），再叠加已建成区域的 effect.normal.research_round（如奥术之城 -1），最终至少为 1。
+   * 显示和真正开始研究（startResearch）都走这里。
+   */
+  getTechResearchRounds(tech) {
+    const base = ERA[tech.era]?.order || 1;
+    const mod = game.getRegionNormalSum(this.saveData, 'research_round').total;
+    return Math.max(1, base + mod);
   }
 
   getTechTotalCost(tech) {
@@ -690,7 +712,7 @@ export class TechTreeSystem {
         .map(([key, val]) => `${get.translation(key) || key}: ${val}`)
         .join('  ');
       if (Object.keys(totalCost).length === 0) costStrings = '无';
-      if (costInfoApplied.length > 0) costStrings += `\n（种族修正：${costInfoApplied.map(a => a.label).join('、')}）`;
+      if (costInfoApplied.length > 0) costStrings += `\n（成本修正：${costInfoApplied.map(a => a.label).join('、')}）`;
 
       // 已解锁的科技消耗颜色保持正常，不因资源不足变红
       const isUnlockedAlready = !!this.saveData.tech_tree?.unlocked?.[id];
@@ -885,8 +907,7 @@ export class TechTreeSystem {
     const techSlot = this.saveData.tech_tree?.tech_research_slot ?? 1;
     if (researchingCount >= techSlot) return;
 
-    const techEra = ERA[tech.era].order;
-    const turnsNeeded = techEra || 1;
+    const turnsNeeded = this.getTechResearchRounds(tech);
 
     // 研究科技消耗 1 个民生行动条目（civil slot）：
     // addAction 负责检查上限并写入 actionList.civil 作为本回合记录，

@@ -486,6 +486,10 @@ export class ActionListSystem {
     if (markedIntro.startsWith('build_region')) {
       markedIntro = '在' + this.getGridName(actionData.gridId) + '建造特区【' + REGION[actionData.regionKey].name + '】';
     }
+    else if (markedIntro.startsWith('upgrade_region')) {
+      markedIntro = '将' + this.getGridName(actionData.gridId) + '的【' + (REGION[actionData.fromRegion]?.name ?? actionData.fromRegion)
+        + '】升级为【' + (REGION[actionData.regionKey]?.name ?? actionData.regionKey) + '】';
+    }
     else if (markedIntro.startsWith('remove_region')) {
       // desc 由 gridPanel._showRemoveRegionConfirm 写入，格式为"移除XX"
       markedIntro = actionData.desc ?? `移除区域`;

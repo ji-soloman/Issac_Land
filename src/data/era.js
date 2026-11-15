@@ -32,6 +32,11 @@ function isHolyGrid(gn) {
   return !!(gn?.region && REGION[gn.region]?.category?.holy);
 }
 
+/** 该区域是否是【王城】（REGION 里 upgrade_group 为 capital 的特区：荣耀之都/奥术之城/铁血要塞/天启之城） */
+function isCapitalRegion(regionKey) {
+  return REGION[regionKey]?.upgrade_group === 'capital';
+}
+
 export const ERA = {
   primitive: {
     name: '原始时代',
@@ -70,12 +75,17 @@ export const ERA = {
     order: 4,
     mission: {
       1: {
-        info: '解锁科技【王权】',
-        filter: function () { },
+        info: '解锁科技【中央集权】',
+        filter({ savedata }) {
+          return !!savedata?.tech_tree?.unlocked?.gov_2;
+        },
       },
       2: {
-        info: '将任意主城升级为任意首都王城',
-        filter: function () { },
+        info: '建都：将任意主城升级为任意首都王城',
+        // 已建成（升级完成）的主城，其区域属于 capital 升级组（四个王城）
+        filter({ savedata }) {
+          return allGrids(savedata).some(([, gn]) => gn?.isMain && isCapitalRegion(gn.region));
+        },
       }
     }
   },

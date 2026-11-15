@@ -10,6 +10,7 @@ import { MILITARY_TRANSLATE } from '../../data/military_translate.js';
 import { MILITARY_TERM } from '../../data/military_term.js';
 import { MILITARY_BUFF } from '../../data/military_buff.js';
 import { get } from '../../system/i18n.js';
+import { game } from '../../system/function.js';
 import { TECH_TREE } from '../../data/tech_tree.js';
 import { applyRaceCostModsDetailed } from '../../data/race.js';
 
@@ -2015,8 +2016,14 @@ class UnitDetailPage {
     }
 
     // ── 回合数 ───────────────────────────────────
-    const round = training.round ?? 1;
-    c.add(this.scene.add.text(-W / 2, y, `训练时间：${round} 回合`, {
+    // 区域加成：已建成区域的 effect.normal.train_round（如铁血要塞 -1）；
+    // 基础回合 >= 1 的兵种最低保留 1 回合，基础为 0 的（如骷髅）保持不变
+    const baseRound = training.round ?? 1;
+    const roundMod = game.getRegionNormalSum(saveData, 'train_round');
+    const round = baseRound >= 1 ? Math.max(1, baseRound + roundMod.total) : baseRound;
+    const roundNote = round !== baseRound
+      ? `（原 ${baseRound} 回合，${roundMod.parts.map(p => p.source).join('、')}）` : '';
+    c.add(this.scene.add.text(-W / 2, y, `训练时间：${round} 回合${roundNote}`, {
       fontSize: '14px', color: '#6b4c1e', padding: { top: 4 },
     }).setOrigin(0, 0));
     y += 36;

@@ -337,7 +337,7 @@ export const TECH_TREE = {
     effect: [],
     requires: ['construction_6'],
     era: 'asiaMinor',
-    color: 'purple',
+    color: 'blue',
   },
   convey_2: {
     name: '天文导航',
@@ -358,5 +358,15 @@ export const TECH_TREE = {
     requires: ['religion_3', 'literature_1'],
     era: 'asiaMinor',
     color: 'blue',
-  }
+  },
+  gov_2: {
+    name: '中央集权',
+    info: '解锁升级区域【王城】',
+    location: [11, 3],
+    cost: {},
+    effect: [],
+    requires: ['gov_1','art_1'],
+    era: 'asiaMinor',
+    color: 'purple',
+  },
 };

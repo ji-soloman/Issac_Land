@@ -271,6 +271,22 @@ export class GameScene extends Phaser.Scene {
                   num: REGION[param.regionKey].round,
                 }
               }
+              // 【升级区域】：沿用 createRegion 倒计时，完工时 grid.region 直接替换为新区域；
+              // 倒计时期间原区域继续生效。有升级次数限制的组（如王城）在这里永久记录已使用。
+              else if (actionCivil.startsWith('upgrade_region')) {
+                const upGrid = data.map.grids[param.gridId];
+                upGrid.createRegion = {
+                  targetRegion: param.regionKey,
+                  num: REGION[param.regionKey].round,
+                  upgrade: true,
+                  from: upGrid.region,
+                };
+                const upGroup = REGION[param.regionKey]?.upgrade_group;
+                if (upGroup) {
+                  if (!data.region_upgrade_used) data.region_upgrade_used = {};
+                  data.region_upgrade_used[upGroup] = true;
+                }
+              }
               // 【建造建筑】
               else if (actionCivil.startsWith('build_building')) {
                 const gn = data.map.grids[param.gridId];
