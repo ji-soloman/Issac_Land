@@ -609,11 +609,13 @@ export const REGION = {
   academy_capital: {
     name: '奥术之城',
     terrainInfo: '主城区和学院区融合的特区',
-    effect_info: '每回合财富+1，文化+2，魔石+1；住房+3；学院可选择数量+1；科技研究回合数-1（至少为1）',
+    effect_info: '每回合财富+1，文化+2，魔石+1；住房+3；额外可选择1个学派；学院可选择数量+1；科技研究回合数-1（至少为1）',
     effect: {
       normal: {
         housing: 3,
         // 学院可选择数量+1：奥术之城 category.academy = true，已按“学院区/特区”计入 academyView.countAcademyDistricts，无需额外字段
+        // 额外可选择1个学派：学派数量上限 +1（academyView.schoolSlotTotal）。分支名额仍由所有学派共用、受学院数量限制
+        school_slot: 1,
         research_round: -1,      // 科技研究回合数-1（至少为1，techTree.getTechResearchRounds 结算）
       },
       turn: {

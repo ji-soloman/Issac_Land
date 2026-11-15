@@ -1,8 +1,12 @@
 /**
  * 学派系统：场上存在建造完成的【学院区/特区】（REGION.category.academy === true 的已完工地块）
- * 时解锁"学派"入口。玩家先从全部学派种类里选择一个（一旦选择不可更换——目前一名玩家只能
- * 拥有一个学派，"学完全部学派"是后续奇观等系统才会解锁的能力，见 storage 设计说明），
+ * 时解锁"学派"入口。玩家先从全部学派种类里选择一个（一旦选择不可更换），
  * 再依次选择/升级该学派下的分支（至多4条）。
+ *
+ * 学派数量：基础只能拥有 1 个学派；已建成区域的 effect.normal.school_slot 会增加可拥有的学派数
+ * （目前只有【奥术之城】+1，即最多 2 个学派）。额外的学派同样选定后不可更换。
+ * 分支名额由所有已选学派【共用】：能解锁的分支总数 = min(学院区/特区数量, 已选学派的分支总数)，
+ * 例如 2 个学派、4 座学院，最多只能解锁 4 条分支，想继续解锁就需要更多学院。
  *
  * 重要：这个解锁判断是"实时"的，不是"曾经满足过就永久解锁"——一旦场上已完工的
  * 学院区/特区数量降到 0（被拆除），学派的所有功能（包括继续升级已经选好的分支）都会
@@ -428,16 +432,48 @@ export class AcademyViewer {
     return this.saveData.academy.schools;
   }
 
+  /** 已选择的全部学派 key（按选择顺序） */
+  get ownedSchoolKeys() {
+    return Object.keys(this.schools);
+  }
+
   /**
-   * 当前生效的学派 key；未选择时为 null。
-   * 目前规则是"一名玩家只能有一个学派"，所以这里直接取字典里唯一的 key；
-   * 后续如果奇观等系统解锁了多学派并存，这个 getter（以及下面选择学派时的
-   * "已选择过就不能再选"判断）需要按那套系统的规则重新设计，但 schools 字典
-   * 本身的存储结构已经支持多学派，不需要迁移数据。
+   * 默认展示的学派 key（已选学派里的第一个）；一个都没选时为 null。
+   * 多学派并存时，具体正在看哪个由 viewingSchoolKey 决定。
    */
   get activeSchoolKey() {
-    const keys = Object.keys(this.schools);
+    const keys = this.ownedSchoolKeys;
     return keys.length > 0 ? keys[0] : null;
+  }
+
+  /** 可拥有的学派总数：基础 1 个 + 已建成区域的 effect.normal.school_slot（如奥术之城 +1） */
+  get schoolSlotTotal() {
+    return 1 + game.getRegionNormalSum(this.saveData, 'school_slot').total;
+  }
+
+  /** 还能不能再选一个学派（已选数量 < 学派总数） */
+  get canChooseMoreSchool() {
+    return this.ownedSchoolKeys.length < this.schoolSlotTotal;
+  }
+
+  isOwnedSchool(schoolKey) {
+    return !!this.schools[schoolKey];
+  }
+
+  /**
+   * 分支名额（所有已选学派共用）：
+   *   districtCount 已完工的学院区/特区数量；selected 已解锁分支总数；
+   *   max 最多能解锁的分支总数 = min(学院数量, 已选学派的分支总数)
+   */
+  _getBranchQuota() {
+    const districtCount = countAcademyDistricts(this.saveData.map?.grids);
+    let selected = 0;
+    let totalBranches = 0;
+    for (const key of this.ownedSchoolKeys) {
+      selected += Object.keys(this.schools[key]?.categories ?? {}).length;
+      totalBranches += Object.keys(ACADEMY_SKILL[key]?.category ?? {}).length;
+    }
+    return { districtCount, selected, max: Math.min(districtCount, totalBranches) };
   }
 
   render() {
@@ -453,10 +489,10 @@ export class AcademyViewer {
       this.renderChooseSchool(true);
       return;
     }
-    // viewingSchoolKey 为 null 表示当前没有在浏览别的学派，显示自己真正选择的学派；
-    // 不为 null 时显示正在浏览的那个学派（可能等于自己的学派，也可能是别的学派）
+    // viewingSchoolKey 为 null 表示当前没有在浏览别的学派，显示自己的第一个学派；
+    // 不为 null 时显示正在浏览的那个学派（可能是自己的某个学派，也可能是没选的学派——只读）
     const viewKey = this.viewingSchoolKey ?? schoolKey;
-    this.renderBranches(viewKey, viewKey === schoolKey);
+    this.renderBranches(viewKey, this.isOwnedSchool(viewKey));
   }
 
   // ── 第一步：选择学派 ──────────────────────────────────────────────
@@ -474,7 +510,7 @@ export class AcademyViewer {
     // （createSchoolCard 的 isOwn 分支）同样能退出这个列表，回到自己的学派
     const hint = this._text(
       width / 2, 100,
-      browseMode ? '查看其他学院的分支与技能（只能查看，无法选择或升级）' : '请选择一个学派（选定后无法更换或重选）',
+      browseMode ? '查看学院的分支与技能（未选择的学派只能查看，无法升级）' : '请选择一个学派（选定后无法更换或重选）',
       { fontSize: '18px', color: THEME.accent, fontStyle: 'bold' }
     ).setOrigin(0.5);
     this.contentContainer.add(hint);
@@ -499,7 +535,7 @@ export class AcademyViewer {
   createSchoolCard(schoolKey, school, x, y, cardWidth, cardHeight, browseMode = false) {
     // 浏览模式下，玩家自己真正选择的那个学派单独标出来（isOwn），点击它只是
     // 把 viewingSchoolKey 清空、回到"查看自己学派"的状态，不会走 chooseSchool
-    const isOwn = browseMode && schoolKey === this.activeSchoolKey;
+    const isOwn = browseMode && this.isOwnedSchool(schoolKey);
 
     const container = this.scene.add.container(x, y);
     // 选学派这一步原本统一用未解锁底板；浏览模式下额外用已解锁底板把"当前学派"
@@ -512,7 +548,7 @@ export class AcademyViewer {
     container.add(nameText);
 
     if (isOwn) {
-      const tagText = this._text(0, -cardHeight / 2 + 58, '（当前学派）', {
+      const tagText = this._text(0, -cardHeight / 2 + 58, '（已选学派）', {
         fontSize: '13px', color: THEME.accent, fontStyle: 'bold',
       }).setOrigin(0.5);
       container.add(tagText);
@@ -526,7 +562,7 @@ export class AcademyViewer {
 
     const hintText = this._text(
       0, cardHeight / 2 - 26,
-      browseMode ? (isOwn ? '点击返回' : '点击查看') : '点击选择',
+      browseMode ? (isOwn ? '点击进入' : '点击查看') : '点击选择',
       { fontSize: '14px', color: THEME.success, fontStyle: 'bold' }
     ).setOrigin(0.5);
     container.add(hintText);
@@ -541,7 +577,7 @@ export class AcademyViewer {
         // 浏览模式下点击卡片只是切换"正在查看"的学派，绝不会调用 chooseSchool——
         // 真正绑定学派的入口始终只有非浏览模式（首次选择）下的这一处，保证学派
         // 一旦选定就不可更改
-        this.viewingSchoolKey = isOwn ? null : schoolKey;
+        this.viewingSchoolKey = schoolKey;
         this._showSchoolList = false;
         this.render();
         return;
@@ -553,13 +589,17 @@ export class AcademyViewer {
   }
 
   chooseSchool(schoolKey) {
-    if (this.activeSchoolKey) return; // 已经选过学派了，正常情况下这个按钮不会出现，双重保险
     if (!ACADEMY_SKILL[schoolKey]) return;
+    if (this.isOwnedSchool(schoolKey)) return; // 已经选过这个学派
+    // 双重保险：第一个学派随时可选；再选就要有空余的学派名额（如奥术之城提供的额外 1 个）
+    if (this.ownedSchoolKeys.length > 0 && !this.canChooseMoreSchool) return;
 
     this.saveData.academy ??= { schools: {} };
     this.saveData.academy.schools ??= {};
     this.saveData.academy.schools[schoolKey] = { categories: {} };
-    // 选择学派本身不消耗行动条，直接写入存档
+    // 选择学派本身不消耗行动条，直接写入存档；选完直接进入这个学派的分支页
+    this.viewingSchoolKey = schoolKey;
+    this._showSchoolList = false;
     saveSystem.save();
     this.render();
   }
@@ -609,9 +649,11 @@ export class AcademyViewer {
     this.contentContainer.add(subTitle);
 
     const categoryEntries = Object.entries(school.category ?? {});
-    const districtCount = countAcademyDistricts(this.saveData.map?.grids);
-    const selectedCount = Object.keys(this.schools[schoolKey]?.categories ?? {}).length;
-    const maxSelectable = Math.min(districtCount, categoryEntries.length, 4);
+    // 分支名额由所有已选学派共用（见文件头说明）
+    const quota = this._getBranchQuota();
+    const districtCount = quota.districtCount;
+    const selectedCount = quota.selected;
+    const maxSelectable = quota.max;
 
     // 学院区/特区被拆到 0 个：整套学派功能（选分支、升级分支）暂时锁住，顶部给一条
     // 醒目提示；这条提示、以及上面的"已解锁分支"统计，只在查看自己真正的学派时显示——
@@ -620,7 +662,7 @@ export class AcademyViewer {
     if (isActiveSchool) {
       const infoText = this._text(
         width / 2, 125,
-        `已解锁分支：${selectedCount} / ${maxSelectable}　（每建成 1 座学院区/特区，可选择的分支数 +1，上限4条）`,
+        `已解锁分支：${selectedCount} / ${maxSelectable}　（每建成 1 座学院区/特区，可选择的分支数 +1${this.ownedSchoolKeys.length > 1 ? '；所有学派共用这个名额' : ''}）`,
         { fontSize: '14px', color: THEME.textSecondary }
       ).setOrigin(0.5);
       this.contentContainer.add(infoText);
@@ -635,12 +677,34 @@ export class AcademyViewer {
         topY = 195;
       }
     } else {
+      const canPick = this.canChooseMoreSchool;
       const browseInfoText = this._text(
         width / 2, 125,
-        '正在查看该学派的分支与技能，无法选择或升级',
+        canPick ? '你还有 1 个空余的学派名额，可以选择这个学派（选定后无法更换）' : '正在查看该学派的分支与技能，无法选择或升级',
         { fontSize: '14px', color: THEME.textSecondary }
       ).setOrigin(0.5);
       this.contentContainer.add(browseInfoText);
+
+      // 有空余学派名额（如奥术之城）时，浏览别的学派可以直接选为自己的学派
+      if (canPick) {
+        const pickBtn = this._text(width / 2, 150, '【选择该学派】', {
+          fontSize: '16px', color: THEME.success, fontStyle: 'bold',
+        }).setOrigin(0.5)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerover', () => pickBtn.setColor(THEME.accent))
+          .on('pointerout', () => pickBtn.setColor(THEME.success))
+          .on('pointerdown', () => this.chooseSchool(schoolKey));
+        this.contentContainer.add(pickBtn);
+        topY = 185;
+      }
+    }
+
+    // 学派名额：可拥有多个学派时显示“已选 n / 总数”
+    if (this.schoolSlotTotal > 1) {
+      this.contentContainer.add(this._text(
+        40, 70, `学派：${this.ownedSchoolKeys.length} / ${this.schoolSlotTotal}`,
+        { fontSize: '15px', color: THEME.textSecondary, fontStyle: 'bold' }
+      ).setOrigin(0, 0.5));
     }
 
     // 卡片宽度按屏幕宽度自适应收缩（学派最多4条分支，窄屏/小窗口时避免整排卡片超出屏幕），
@@ -784,11 +848,9 @@ export class AcademyViewer {
     school.categories ??= {};
     if (school.categories[catKey] != null) return; // 已选择过，不能重选
 
-    const categoryCount = Object.keys(ACADEMY_SKILL[schoolKey]?.category ?? {}).length;
-    const districtCount = countAcademyDistricts(this.saveData.map?.grids);
-    const maxSelectable = Math.min(districtCount, categoryCount, 4);
-    const selectedCount = Object.keys(school.categories).length;
-    if (selectedCount >= maxSelectable) return; // 双重保险，按钮理论上已不可点
+    // 名额由所有已选学派共用
+    const quota = this._getBranchQuota();
+    if (quota.selected >= quota.max) return; // 双重保险，按钮理论上已不可点
 
     school.categories[catKey] = 1;
     saveSystem.save();
