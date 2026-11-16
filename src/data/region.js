@@ -605,6 +605,8 @@ export const REGION = {
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
     upgrade_from: ['main'],
+    // 地图上显示的都城立绘：assets/region/map/<区域key>.png（见 gameScene 预加载、mapView.createHexagon）
+    map_image: { scale: 1, x: 0, y: 2 },
   },
   academy_capital: {
     name: '奥术之城',
@@ -634,6 +636,8 @@ export const REGION = {
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
     upgrade_from: ['main'],
+    // 地图上显示的都城立绘：assets/region/map/<区域key>.png（见 gameScene 预加载、mapView.createHexagon）
+    map_image: { scale: 1.05, x: 0.8, y: 5.8 },
   },
   military_capital: {
     name: '铁血要塞',
@@ -672,6 +676,8 @@ export const REGION = {
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
     upgrade_from: ['main'],
+    // 地图上显示的都城立绘：assets/region/map/<区域key>.png（见 gameScene 预加载、mapView.createHexagon）
+    map_image: { scale: 1.03, x: 1.5, y: 4 },
   },
   holy_capital: {
     name: '天启之城',
@@ -698,6 +704,8 @@ export const REGION = {
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
     upgrade_from: ['main'],
+    // 地图上显示的都城立绘：assets/region/map/<区域key>.png（见 gameScene 预加载、mapView.createHexagon）
+    map_image: { scale: 1, x: 0.2, y: 7.4 },
   },
 }
 
@@ -708,6 +716,10 @@ export const REGION = {
 // REGION 条目上的相关字段：
 //   update            区域等级，缺省为 0（主城区/普通区域都是 0）；升级必须 目标.update > 原区域.update
 //   upgrade_group     所属升级组（见 REGION_UPGRADE_GROUP）；缺省 = 无组，无科技要求、无次数限制
+//   map_image         地图上用 assets/region/map/<区域key>.png 作为该区域的立绘（缺省没有）。
+//                     可写 true，或 { scale, x, y } 微调参数：scale 在“宽度刚好等于六边形宽度”的基础上再乘的倍数，
+//                     x / y 是相对默认位置（底边中心对齐六边形下顶点）的偏移，单位是地图坐标。
+//                     参数用 GM 面板里的【调整都城图片】拖出来，点【复制参数】粘贴到这里。
 //   upgrade_from      白名单：只允许从这些区域 key 升级（王城只能从 main 升级）；缺省 = 不限
 //
 // 升级判定规则（canUpgradeRegion）：

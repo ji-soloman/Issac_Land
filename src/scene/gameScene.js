@@ -129,6 +129,13 @@ export class GameScene extends Phaser.Scene {
         this.load.image(`wonder_${key}`, value.image);
       }
     });
+    // 地图上的区域立绘（都城）：REGION 里标了 map_image 的区域，素材 assets/region/map/<区域key>.png，
+    // 纹理 key 为 region_map_<区域key>（mapView.createHexagon 里按这个 key 取图）
+    Object.entries(REGION).forEach(([key, value]) => {
+      if (value.map_image) {
+        this.load.image(`region_map_${key}`, `assets/region/map/${key}.png`);
+      }
+    });
     Object.entries(GREAT_PEOPLE).forEach(([key, value]) => {
       if (value.image) {
         this.load.image(`great_people_${key}`, value.image);
@@ -596,7 +603,7 @@ export class GameScene extends Phaser.Scene {
   // 位置想调整只改 GM_PANEL_MARGIN；面板在各系统全屏界面（深度 1000+）之下，打开那些界面时点不到。
   createGmPanel() {
     const W = 220, BTN_H = 30, GAP = 8, PAD = 10, TITLE_H = 22, GM_PANEL_MARGIN = 12;
-    const H = PAD + TITLE_H + 2 * BTN_H + GAP + PAD;
+    const H = PAD + TITLE_H + 3 * BTN_H + 2 * GAP + PAD;
 
     const panel = this.add.container(0, 0).setDepth(900).setScrollFactor(0);
     const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.6)
@@ -629,11 +636,144 @@ export class GameScene extends Phaser.Scene {
     };
     addBtn(0, '进入下个回合（计入回合）', 0x27ae60, () => this.gmNextTurn(true));
     addBtn(1, '进入下个回合（不计入回合）', 0x2980b9, () => this.gmNextTurn(false));
+    addBtn(2, '调整都城图片（大小 / 偏移）', 0xd35400, () => this.toggleRegionImageAdjust());
 
     const place = (w, h) => panel.setPosition(GM_PANEL_MARGIN, h - H - GM_PANEL_MARGIN);
     place(this.scale.width, this.scale.height);
     this.scale.on('resize', (size) => place(size.width, size.height));
     this.gmPanel = panel;
+  }
+
+  /**
+   * GM：调整都城图片（地图上区域立绘的大小和位置偏移）。
+   * 打开后：拖动地图上的都城图片 = 改偏移；鼠标悬浮在图片上滚轮 = 改缩放（也可以点面板里的按钮微调）；
+   * 品红色六边形是目标范围，黄 / 青框是图片边界。调好后点【复制参数】，粘贴到 region.js 对应区域的 map_image 里。
+   */
+  toggleRegionImageAdjust() {
+    if (this._regionAdjustPanel) { this._closeRegionImageAdjust(); return; }
+    const mv = this.mapView;
+    if (!mv) return;
+    if (!mv.regionImages.length) {
+      game.showTips(this, '地图上没有都城图片可调整');
+      return;
+    }
+
+    const W = 300, H = 294, PAD = 10, MARGIN = 12;
+    const panel = this.add.container(0, 0).setDepth(901).setScrollFactor(0);
+    const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.7)
+      .setOrigin(0, 0).setStrokeStyle(1, 0xd35400, 0.9).setInteractive();
+    // 悬停在面板上时锁住地图的拖动/滚轮
+    bg.on('pointerover', () => { if (mv.interactionEnabled) { mv.disableInteraction(); this._regionPanelLocked = true; } });
+    bg.on('pointerout', () => { if (this._regionPanelLocked) { this._regionPanelLocked = false; mv.enableInteraction(); } });
+    panel.add(bg);
+
+    const txt = (x, y, s, size = '13px', color = '#ffffff', bold = false) => {
+      const t = this.add.text(x, y, s, {
+        fontSize: size, color, fontStyle: bold ? 'bold' : 'normal', padding: { top: 3 },
+        wordWrap: { width: W - PAD * 2 },
+      });
+      panel.add(t);
+      return t;
+    };
+    txt(PAD, PAD, '调整都城图片', '14px', '#ffcc00', true);
+    const nameLine = txt(PAD, PAD + 22, '', '13px', '#aaddff');
+    const valueLine = txt(PAD, PAD + 42, '', '14px', '#ffffff', true);
+    txt(PAD, PAD + 66, '拖动图片 = 移动　滚轮（悬浮在图片上）= 缩放\n品红六边形 = 目标范围，点图片可切换选中的图片', '12px', '#bbbbbb');
+
+    const refresh = (key, adj) => {
+      if (!key || !adj) { nameLine.setText('（没有选中的都城图片）'); valueLine.setText(''); return; }
+      nameLine.setText(`当前：${key}`);
+      valueLine.setText(`缩放 ${adj.scale}　X ${adj.x}　Y ${adj.y}`);
+    };
+
+    const cur = () => mv.selectedRegionImageKey;
+    const adjBy = (patch) => {
+      const k = cur(); if (!k) return;
+      const a = mv.getRegionImageAdjust(k);
+      mv.adjustRegionImage(k, {
+        ...(patch.scale != null ? { scale: a.scale + patch.scale } : {}),
+        ...(patch.x != null ? { x: a.x + patch.x } : {}),
+        ...(patch.y != null ? { y: a.y + patch.y } : {}),
+      });
+    };
+
+    const addBtn = (x, y, w, label, color, onClick) => {
+      const h = 26;
+      const b = this.add.rectangle(x, y, w, h, color, 1).setOrigin(0, 0)
+        .setStrokeStyle(1, 0xffffff, 0.5).setInteractive({ useHandCursor: true });
+      const t = this.add.text(x + w / 2, y + h / 2, label, {
+        fontSize: '12px', color: '#ffffff', fontStyle: 'bold', padding: { top: 3 },
+      }).setOrigin(0.5);
+      b.on('pointerover', () => b.setAlpha(0.8));
+      b.on('pointerout', () => b.setAlpha(1));
+      b.on('pointerdown', () => b.setAlpha(0.6));
+      b.on('pointerup', () => { b.setAlpha(1); onClick(); });
+      panel.add([b, t]);
+    };
+    const bw = 64, gap = 6;
+    let by = 118;
+    // 手动在四个都城立绘之间轮流切换显示（只是预览，不改存档；关闭面板后还原）
+    addBtn(PAD, by, bw * 2 + gap, '◀ 上一张立绘', 0x2c7a7b, () => mv.cycleRegionImagePreview(-1));
+    addBtn(PAD + 2 * (bw + gap), by, bw * 2 - 10 + gap, '下一张立绘 ▶', 0x2c7a7b, () => mv.cycleRegionImagePreview(1));
+    by += 32;
+    // 缩放 / X / Y 微调（按住不连发，点一下一步）
+    addBtn(PAD, by, bw, '缩放 −', 0x555555, () => adjBy({ scale: -0.01 }));
+    addBtn(PAD + (bw + gap), by, bw, '缩放 +', 0x555555, () => adjBy({ scale: 0.01 }));
+    addBtn(PAD + 2 * (bw + gap), by, bw, 'X −', 0x555555, () => adjBy({ x: -1 }));
+    addBtn(PAD + 3 * (bw + gap), by, bw - 10, 'X +', 0x555555, () => adjBy({ x: 1 }));
+    by += 32;
+    addBtn(PAD, by, bw, 'Y −（上）', 0x555555, () => adjBy({ y: -1 }));
+    addBtn(PAD + (bw + gap), by, bw, 'Y +（下）', 0x555555, () => adjBy({ y: 1 }));
+    addBtn(PAD + 2 * (bw + gap), by, bw * 2 - 10 + gap, '应用到全部都城', 0x7d3c98, () => { const k = cur(); if (k) mv.applyRegionImageAdjustToAll(k); });
+    by += 32;
+    addBtn(PAD, by, bw, '重置', 0x8e3b3b, () => { const k = cur(); if (k) mv.resetRegionImageAdjust(k); });
+    addBtn(PAD + (bw + gap), by, bw * 2 + gap, '复制参数', 0x27ae60, () => this._copyRegionImageParams());
+    addBtn(PAD + 3 * (bw + gap) - 0, by, bw - 10, '关闭', 0x2980b9, () => this._closeRegionImageAdjust());
+    by += 32;
+    this._regionParamsLine = txt(PAD, by, '', '11px', '#9fe29f');
+
+    const place = (w, h) => panel.setPosition(MARGIN + 220 + MARGIN, h - H - MARGIN);
+    place(this.scale.width, this.scale.height);
+    this._regionAdjustResize = (size) => place(size.width, size.height);
+    this.scale.on('resize', this._regionAdjustResize);
+
+    mv.setRegionImageEditMode(true, refresh);
+    this._regionAdjustPanel = panel;
+  }
+
+  _closeRegionImageAdjust() {
+    this.mapView?.setRegionImageEditMode(false);
+    if (this._regionPanelLocked) { this._regionPanelLocked = false; this.mapView?.enableInteraction(); }
+    if (this._regionAdjustResize) { this.scale.off('resize', this._regionAdjustResize); this._regionAdjustResize = null; }
+    this._regionAdjustPanel?.destroy(true);
+    this._regionAdjustPanel = null;
+    this._regionParamsLine = null;
+  }
+
+  /** 复制调整好的参数（优先写系统剪贴板，失败时退回 execCommand；同时在面板里和控制台显示，方便手动复制） */
+  async _copyRegionImageParams() {
+    const text = this.mapView?.getRegionImageParamsText() ?? '';
+    if (!text) { game.showTips(this, '没有可复制的参数'); return; }
+    console.log('都城图片参数：\n' + text);
+    if (this._regionParamsLine) this._regionParamsLine.setText(text.replace(/\n/g, ' '));
+
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch (e) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        ta.remove();
+      } catch (e2) { ok = false; }
+    }
+    game.showTips(this, ok ? '参数已复制到剪贴板' : '复制失败，参数已显示在面板里，可以手动复制');
   }
 
   /**

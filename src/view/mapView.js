@@ -19,6 +19,77 @@ const REGION_COLOR_MAP = {
   special: 0x7D3C98,
 };
 
+// 区域立绘（都城图片）鼠标悬浮时的透明度
+const REGION_IMAGE_HOVER_ALPHA = 0.5;
+
+/**
+ * 为大尺寸素材生成"带 mipmap 的 2 的幂次尺寸纹理"，解决大图缩小显示时的锯齿 / 发糊。
+ * 原因：WebGL1 只有 2 的幂次尺寸的纹理才能用 mipmap，而 Phaser 默认又只用 LINEAR 过滤，
+ *       1258px 的图缩到 ~170px（缩小 7 倍以上）时，双线性采样只会取到相邻 4 个像素，必然出现锯齿 / 闪烁。
+ * 做法：先用 canvas 逐级对半缩小到 ≤ maxW 的 2 的幂次尺寸（用 high 质量平滑），
+ *       再把纹理的缩小过滤改成 LINEAR_MIPMAP_LINEAR（三线性过滤）。
+ * 返回 { key, srcW, srcH, texW, texH }；不支持（Canvas 渲染 / 纹理不存在）时返回 null，调用方继续用原图。
+ */
+function ensureMipmapTexture(scene, srcKey, maxW = 1024) {
+  const textures = scene.textures;
+  if (!textures.exists(srcKey)) return null;
+  const mipKey = `${srcKey}__mip`;
+  const srcImg = textures.get(srcKey).getSourceImage();
+  const srcW = srcImg.width;
+  const srcH = srcImg.height;
+  if (!srcW || !srcH) return null;
+
+  const pow2Floor = (n) => Math.pow(2, Math.floor(Math.log2(Math.max(1, n))));
+  const pow2Round = (n) => Math.pow(2, Math.round(Math.log2(Math.max(1, n))));
+  const texW = Math.min(maxW, pow2Floor(srcW));
+  const texH = Math.max(16, Math.min(maxW, pow2Round(srcH * texW / srcW)));
+  const info = { key: mipKey, srcW, srcH, texW, texH };
+
+  if (textures.exists(mipKey)) return info;
+
+  const renderer = scene.game && scene.game.renderer;
+  const gl = renderer && renderer.gl;
+  if (!gl) return null; // Canvas 渲染没有 mipmap，直接用原图
+
+  // 逐级对半缩小，避免一步缩太多时 drawImage 丢像素
+  let cur = srcImg, cw = srcW, ch = srcH;
+  const drawTo = (img, w, h) => {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, 0, 0, w, h);
+    return c;
+  };
+  while (cw > texW * 2 || ch > texH * 2) {
+    const nw = Math.max(texW, Math.round(cw / 2));
+    const nh = Math.max(texH, Math.round(ch / 2));
+    cur = drawTo(cur, nw, nh);
+    cw = nw; ch = nh;
+  }
+  const finalCanvas = drawTo(cur, texW, texH);
+  const tex = textures.addCanvas(mipKey, finalCanvas);
+  if (!tex) return null;
+
+  // Phaser 对 2 的幂次尺寸的纹理已经 generateMipmap 了，只是缩小过滤默认是 LINEAR（用不上），这里改成三线性
+  const wrapper = tex.source[0] && tex.source[0].glTexture;
+  if (wrapper && wrapper.webGLTexture) {
+    gl.activeTexture(gl.TEXTURE0);
+    const prev = gl.getParameter(gl.TEXTURE_BINDING_2D);
+    gl.bindTexture(gl.TEXTURE_2D, wrapper.webGLTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // 有的显卡支持各向异性过滤，倾斜缩小时更清晰（不支持就忽略）
+    const ext = gl.getExtension('EXT_texture_filter_anisotropic');
+    if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(4, gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    wrapper.minFilter = gl.LINEAR_MIPMAP_LINEAR;
+    wrapper.magFilter = gl.LINEAR;
+    if (prev) gl.bindTexture(gl.TEXTURE_2D, prev);
+  }
+  return info;
+}
+
 export class MapView {
   constructor(scene, mapConfig, saveData) {
     this.scene = scene;
@@ -41,14 +112,26 @@ export class MapView {
 
     // --- 缩放配置 ---
     this.minZoom = 0.3;
-    this.maxZoom = 0.66;
+    this.maxZoom = 1.2; // 原来是 0.66；大地图在所有模式下都能进一步放大
     this.currentZoom = 0.4;
-    this.zoomStep = 0.02;
+    // 每格滚轮的缩放倍率（按比例缩放：放大后每格的绝对步长也随之变大，0.3 → 1.2 大约 24 格）
+    this.zoomFactor = 1.06;
 
     // --- 拖拽状态 ---
     this.isDragging = false;
     this.dragStartX = 0;
     this.dragStartY = 0;
+
+    // --- 区域立绘（都城图片）微调 ---
+    // regionImageAdjust: { 区域key: { scale, x, y } }，初始值来自 REGION[key].map_image，GM 调整模式里可以实时修改；
+    // regionImages: 当前地图上所有立绘 { key, image, cell, ... }（refreshMap 时重建）；
+    // regionImageEditing: 是否处于 GM【调整都城图片】模式（可拖动 / 滚轮缩放）
+    this.regionImageAdjust = {};
+    this.regionImages = [];
+    this.regionImageEditing = false;
+    this.selectedRegionImageKey = null;
+    this.touchedRegionImageKeys = new Set();
+    this.onRegionImageChange = null;
 
     // --- 回调 ---
     this.onGridClick = null;
@@ -99,7 +182,8 @@ export class MapView {
     // ----------------------------------------------------
 
     this.mapBg.setPipeline('TextureTintPipeline');
-    this.mapBg.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    // 底图是大图（缩小显示），用 LINEAR 双线性过滤；原来的 NEAREST（最近邻）缩小时会有明显锯齿 / 闪烁
+    this.mapBg.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     this.container.add(this.mapBg);
 
     // 3. 创建格子容器
@@ -435,12 +519,21 @@ export class MapView {
   }
 
   drawGrids() {
+    this.regionImages = [];
     // 只绘制存档（saveData.grids）中存在的格子编号，数据表（mapConfig.grids）
     // 仅用于提供 wonder 等附加信息，不再提供坐标（主城判定改为 saveGridData.isMain）
     const savedGrids = this.saveData.grids || {};
     const templates = this.mapConfig.grids || {};
 
-    Object.keys(savedGrids).forEach((gridId) => {
+    // 按格子的 y 坐标从上到下依次创建（同一行按 x），这样下面的格子永远盖在上面的格子之前面——
+    // 带立绘的区域/奇观会向上超出六边形，必须用这个顺序才能正确遮挡
+    const sortedIds = Object.keys(savedGrids).sort((a, b) => {
+      const la = this.gridLayout?.[a], lb = this.gridLayout?.[b];
+      if (!la || !lb) return 0;
+      return la.y - lb.y || la.x - lb.x;
+    });
+
+    sortedIds.forEach((gridId) => {
       const layout = this.gridLayout?.[gridId];
       if (!layout) {
         // 存档中的格子编号超出了自动生成的网格范围，跳过并提示
@@ -495,6 +588,11 @@ export class MapView {
     // 提前检查当前格子是否有奇观显示
     const hasWonder = wonder && WONDER[wonder] && WONDER[wonder].image;
 
+    // 区域立绘（都城图片）：纹理 key 为 region_map_<区域key>，由 gameScene 预加载；
+    // 没有对应纹理的区域不受影响
+    const regionImageKey = region ? `region_map_${region}` : null;
+    const hasRegionImage = !!(regionImageKey && this.scene.textures.exists(regionImageKey));
+
     // 是否被选中（点击后高亮，再次点击取消），由外部通过 setSelected() 控制
     let isSelected = false;
 
@@ -505,8 +603,8 @@ export class MapView {
       let currentFillAlpha = isHover ? 0.9 : fillAlpha;
       let currentStrokeAlpha = 1.0;
 
-      // 如果有奇观，且鼠标没有悬浮在格子上，将格子和边框的透明度降为 0.1
-      if (hasWonder && !isHover) {
+      // 如果有奇观或区域立绘，且鼠标没有悬浮在格子上，将格子和边框的透明度降为 0.1
+      if ((hasWonder || hasRegionImage) && !isHover) {
         currentFillAlpha = 0.1;
         currentStrokeAlpha = 0.1;
       }
@@ -534,6 +632,69 @@ export class MapView {
     };
 
     cellContainer.add(graphics);
+
+    // 区域立绘（都城图片）：
+    //   · 素材的底边顶点、左右两侧边与六边形严丝合缝，所以宽度缩放到六边形宽度（2 × APOTHEM），
+    //     底边中心对齐六边形下顶点（y = 半高）；上方高度随素材不同自动向上延伸。
+    //   · 图片本身不可交互——点击/悬浮的有效区域始终是下面的纯色六边形，图片不会挡住点击。
+    //   · 鼠标悬浮在六边形上，或者悬浮在图片的不透明像素上时，图片变半透明（见 regionImageHover）。
+    let regionImage = null;
+    let hexHovered = false;
+    let imageHovered = false;
+    const applyRegionImageFade = () => {
+      if (regionImage) {
+        // 调整模式下始终完全不透明，方便对着六边形调
+        regionImage.setAlpha((!this.regionImageEditing && (hexHovered || imageHovered)) ? REGION_IMAGE_HOVER_ALPHA : 1);
+      }
+    };
+    if (hasRegionImage) {
+      // 显示用"带 mipmap 的 2 的幂次尺寸纹理"（缩小不锯齿），点击 / 像素透明度判定仍然用原图（regionImageKey）
+      const mip = ensureMipmapTexture(this.scene, regionImageKey);
+      regionImage = this.scene.add.image(0, this.HEX_RADIUS * this.TILT_FACTOR, mip ? mip.key : regionImageKey);
+      if (mip) regionImage.setData('mip', mip);
+      regionImage.setOrigin(0.5, 1.0);
+      cellContainer.add(regionImage);
+
+      // 登记到立绘注册表，并按微调参数（缩放 / 偏移）摆放
+      const entry = { key: region, baseKey: region, image: regionImage, cell: cellContainer, hexPoints, outline: null, handlers: null };
+      this.regionImages.push(entry);
+      this._layoutRegionImage(entry);
+      this._applyRegionImageClip(entry);
+      regionImage.once('destroy', () => {
+        this._detachRegionImageEdit(entry);
+        this.regionImages = this.regionImages.filter(e => e !== entry);
+      });
+      if (this.regionImageEditing) this._attachRegionImageEdit(entry);
+
+      // 悬浮在图片（超出六边形的部分）上时也半透明：图片不是交互对象，所以用全局 pointermove
+      // 自己判断鼠标下的图片像素是否不透明（和 pixelPerfect 的做法一致）
+      const onPointerMove = (pointer) => {
+        if (!regionImage || !regionImage.active) return;
+        let over = false;
+        // 被遮罩切掉的部分（六边形左 / 右 / 左下 / 右下边之外）不显示，也不触发悬浮半透明
+        const inClip = this.interactionEnabled && this._pointInRegionImageClip(cellContainer, pointer.worldX, pointer.worldY);
+        if (inClip) {
+          const p = regionImage.getWorldTransformMatrix().applyInverse(pointer.worldX, pointer.worldY);
+          const m = regionImage.getData('mip');
+          const kx = m ? m.srcW / m.texW : 1;
+          const ky = m ? m.srcH / m.texH : 1;
+          const px = Math.floor((p.x + regionImage.displayOriginX) * kx);
+          const py = Math.floor((p.y + regionImage.displayOriginY) * ky);
+          const srcW = m ? m.srcW : regionImage.width;
+          const srcH = m ? m.srcH : regionImage.height;
+          if (px >= 0 && py >= 0 && px < srcW && py < srcH) {
+            over = this.scene.textures.getPixelAlpha(px, py, `region_map_${entry.key}`) > 20;
+          }
+        }
+        if (over !== imageHovered) {
+          imageHovered = over;
+          applyRegionImageFade();
+        }
+      };
+      this.scene.input.on('pointermove', onPointerMove);
+      // refreshMap 会销毁整个格子容器，图片销毁时顺带移除监听，避免越积越多
+      regionImage.once('destroy', () => this.scene.input.off('pointermove', onPointerMove));
+    }
 
     // 处理奇观图片
     let wonderImage = null;
@@ -609,6 +770,8 @@ export class MapView {
     };
 
     const onOver = () => {
+      hexHovered = true;
+      applyRegionImageFade();
       if (this.editMode && this.editMode.active) {
         drawEditHover(true);
         this.scene.input.setDefaultCursor('pointer');
@@ -620,6 +783,8 @@ export class MapView {
     };
 
     const onOut = () => {
+      hexHovered = false;
+      applyRegionImageFade();
       if (this.editMode && this.editMode.active) {
         drawEditHover(false);
         this.scene.input.setDefaultCursor('default');
@@ -644,6 +809,290 @@ export class MapView {
     };
 
     return { graphics, setSelected };
+  }
+
+  // ════════════════════════════════════════════════
+  // 区域立绘（都城图片）微调：GM【调整都城图片】使用
+  // ════════════════════════════════════════════════
+
+  /** 取（并惰性初始化）某区域立绘的微调参数 { scale, x, y }，初始值来自 REGION[key].map_image */
+  getRegionImageAdjust(key) {
+    if (!this.regionImageAdjust[key]) {
+      const cfg = REGION?.[key]?.map_image;
+      const c = (cfg && typeof cfg === 'object') ? cfg : {};
+      this.regionImageAdjust[key] = { scale: c.scale ?? 1, x: c.x ?? 0, y: c.y ?? 0 };
+    }
+    return this.regionImageAdjust[key];
+  }
+
+  /** 按微调参数摆放立绘：基础缩放让图片宽度 = 六边形宽度，底边中心对齐六边形下顶点，再叠加 scale / x / y */
+  _layoutRegionImage(entry) {
+    const adj = this.getRegionImageAdjust(entry.key);
+    const img = entry.image;
+    if (!img || !img.active) return;
+    const dispW = this.HEX_APOTHEM * 2 * adj.scale;
+    const m = img.getData('mip');
+    if (m) {
+      // mip 纹理是 2 的幂次尺寸（比例被拉伸过），X / Y 分开缩放，还原成原图比例
+      img.setScale(dispW / m.texW, (dispW * m.srcH / m.srcW) / m.texH);
+    } else {
+      img.setScale(dispW / img.width);
+    }
+    img.setPosition(adj.x, this.HEX_RADIUS * this.TILT_FACTOR + adj.y);
+    this._drawRegionImageOutline(entry);
+  }
+
+  /** 调整模式下的辅助框：品红色六边形（目标范围）+ 图片边界框（选中的是黄色，其它是青色） */
+  _drawRegionImageOutline(entry) {
+    if (!entry.outline) return;
+    const g = entry.outline;
+    const img = entry.image;
+    g.clear();
+    g.lineStyle(2, 0xff00ff, 1);
+    g.strokePoints(entry.hexPoints, true);
+    const selected = entry.key === this.selectedRegionImageKey;
+    g.lineStyle(selected ? 3 : 1, selected ? 0xffff00 : 0x00ffff, 1);
+    g.strokeRect(img.x - img.displayWidth / 2, img.y - img.displayHeight, img.displayWidth, img.displayHeight);
+  }
+
+  _notifyRegionImageChange() {
+    if (typeof this.onRegionImageChange === 'function') {
+      const key = this.selectedRegionImageKey;
+      this.onRegionImageChange(key, key ? this.getRegionImageAdjust(key) : null);
+    }
+  }
+
+  /** 修改某区域的微调参数（会同步到地图上所有该区域的立绘） */
+  adjustRegionImage(key, patch) {
+    if (!key) return;
+    const adj = this.getRegionImageAdjust(key);
+    if (patch.scale != null) adj.scale = Math.max(0.1, Math.round(patch.scale * 1000) / 1000);
+    if (patch.x != null) adj.x = Math.round(patch.x * 10) / 10;
+    if (patch.y != null) adj.y = Math.round(patch.y * 10) / 10;
+    this.touchedRegionImageKeys.add(key);
+    this.regionImages.filter(e => e.key === key).forEach(e => this._layoutRegionImage(e));
+    this._notifyRegionImageChange();
+  }
+
+  /** 把某个区域的当前参数复制给地图上所有出现过立绘的区域（想一次调好所有都城时用） */
+  applyRegionImageAdjustToAll(key) {
+    const src = this.getRegionImageAdjust(key);
+    const keys = new Set(this.regionImages.map(e => e.key));
+    keys.forEach(k => {
+      Object.assign(this.getRegionImageAdjust(k), { scale: src.scale, x: src.x, y: src.y });
+      this.touchedRegionImageKeys.add(k);
+    });
+    this.regionImages.forEach(e => this._layoutRegionImage(e));
+    this._notifyRegionImageChange();
+  }
+
+  /** 恢复某区域的参数到 region.js 里的初始值 */
+  resetRegionImageAdjust(key) {
+    delete this.regionImageAdjust[key];
+    this.touchedRegionImageKeys.delete(key);
+    this.regionImages.filter(e => e.key === key).forEach(e => this._layoutRegionImage(e));
+    this._notifyRegionImageChange();
+  }
+
+  /**
+   * 立绘的显示范围（相对格子中心）：六边形的 左边、左下边、右边、右下边 是硬边界，超出部分被切掉；
+   * 只有上方两条边不限制，图片可以向上延伸出去。形状 = 往上无限延伸的"五边形"（两条竖边 + 底部 V 形）。
+   */
+  _regionImageClipPoints(top = 6000) {
+    const A = this.HEX_APOTHEM;
+    const RT = this.HEX_RADIUS * this.TILT_FACTOR;
+    return [
+      { x: -A, y: -top },
+      { x: A, y: -top },
+      { x: A, y: RT * 0.5 },   // 右边下端 = 六边形右下顶点
+      { x: 0, y: RT },         // 底部顶点
+      { x: -A, y: RT * 0.5 },  // 左下顶点
+    ];
+  }
+
+  /** 世界坐标的点是否落在立绘的有效显示范围内（cell = 格子容器） */
+  _pointInRegionImageClip(cell, worldX, worldY) {
+    if (!cell || !cell.active) return false;
+    const p = cell.getWorldTransformMatrix().applyInverse(worldX, worldY);
+    const A = this.HEX_APOTHEM;
+    const RT = this.HEX_RADIUS * this.TILT_FACTOR;
+    if (Math.abs(p.x) > A) return false;
+    // 底部 V 形：y ≤ RT − |x| × (RT / 2) / A
+    return p.y <= RT - Math.abs(p.x) * (RT * 0.5) / A;
+  }
+
+  /**
+   * 给立绘加几何遮罩（见 _regionImageClipPoints）。
+   * 遮罩图形不在显示列表里，不会跟着容器（地图缩放 / 拖动）一起变换，所以每帧按格子容器的世界变换同步一次位置和缩放。
+   */
+  _applyRegionImageClip(entry) {
+    const scene = this.scene;
+    const img = entry.image;
+    if (!img || !img.active) return;
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0xffffff, 1);
+    g.fillPoints(this._regionImageClipPoints(), true);
+    img.setMask(g.createGeometryMask());
+
+    const m = new Phaser.GameObjects.Components.TransformMatrix();
+    const pm = new Phaser.GameObjects.Components.TransformMatrix();
+    const sync = () => {
+      if (!entry.cell || !entry.cell.active || !g.scene) return;
+      entry.cell.getWorldTransformMatrix(m, pm);
+      g.setPosition(m.tx, m.ty);
+      g.setScale(m.scaleX, m.scaleY);
+    };
+    sync();
+    scene.events.on(Phaser.Scenes.Events.POST_UPDATE, sync);
+    img.once('destroy', () => {
+      scene.events.off(Phaser.Scenes.Events.POST_UPDATE, sync);
+      g.destroy();
+    });
+  }
+
+  /** 可用于预览切换的立绘 key 列表（REGION 里配置了 map_image 且素材已加载的区域，即四个都城） */
+  getRegionImagePreviewKeys() {
+    return Object.keys(REGION).filter(k => REGION[k]?.map_image && this.scene.textures.exists(`region_map_${k}`));
+  }
+
+  /** 把某个立绘实例换成另一个区域的立绘（仅预览显示，不改存档；refreshMap / 退出调整模式会还原） */
+  _setRegionImageArt(entry, artKey) {
+    const srcKey = `region_map_${artKey}`;
+    if (!entry.image?.active || !this.scene.textures.exists(srcKey)) return;
+    const mip = ensureMipmapTexture(this.scene, srcKey);
+    entry.key = artKey;
+    entry.image.setTexture(mip ? mip.key : srcKey);
+    entry.image.setData('mip', mip || null);
+    this._layoutRegionImage(entry);
+  }
+
+  /**
+   * GM 预览：把当前选中的那个立绘，在四个都城立绘之间手动轮流切换。
+   * @param {number} step 1 = 下一张，-1 = 上一张
+   */
+  cycleRegionImagePreview(step = 1) {
+    const entry = this.regionImages.find(e => e.key === this.selectedRegionImageKey) || this.regionImages[0];
+    const keys = this.getRegionImagePreviewKeys();
+    if (!entry || keys.length < 2) return;
+    const i = keys.indexOf(entry.key);
+    const next = keys[(i + step + keys.length * 2) % keys.length];
+    this._setRegionImageArt(entry, next);
+    this.selectedRegionImageKey = next;
+    this.regionImages.forEach(e => this._drawRegionImageOutline(e));
+    this._notifyRegionImageChange();
+  }
+
+  selectRegionImage(key) {
+    this.selectedRegionImageKey = key;
+    this.regionImages.forEach(e => this._drawRegionImageOutline(e));
+    this._notifyRegionImageChange();
+  }
+
+  /** 可复制的参数文本：粘贴到 region.js 对应区域的 map_image 即可（只输出调整过的；一个都没调就输出当前选中的） */
+  getRegionImageParamsText() {
+    const keys = this.touchedRegionImageKeys.size > 0
+      ? [...this.touchedRegionImageKeys]
+      : (this.selectedRegionImageKey ? [this.selectedRegionImageKey] : []);
+    return keys.map(k => {
+      const a = this.getRegionImageAdjust(k);
+      return `// ${k}\nmap_image: { scale: ${a.scale}, x: ${a.x}, y: ${a.y} },`;
+    }).join('\n');
+  }
+
+  /**
+   * 开 / 关调整模式：
+   *   · 拖动图片 = 改偏移；鼠标悬浮在图片上滚轮 = 改缩放（此时地图的拖动 / 滚轮缩放被临时锁住）；
+   *   · 图片完全不透明，并显示辅助框（品红六边形 = 目标范围，黄 / 青框 = 图片边界）。
+   * @param {boolean} enabled
+   * @param {(key:string|null, adj:{scale:number,x:number,y:number}|null)=>void} [onChange] 参数变化 / 选中变化回调
+   */
+  setRegionImageEditMode(enabled, onChange) {
+    this.regionImageEditing = !!enabled;
+    this.onRegionImageChange = enabled ? (onChange ?? null) : null;
+    if (enabled) {
+      if (!this.selectedRegionImageKey || !this.regionImages.some(e => e.key === this.selectedRegionImageKey)) {
+        this.selectedRegionImageKey = this.regionImages[0]?.key ?? null;
+      }
+      this.regionImages.forEach(e => this._attachRegionImageEdit(e));
+      this._notifyRegionImageChange();
+    } else {
+      this.regionImages.forEach(e => this._detachRegionImageEdit(e));
+      // 还原预览切换过的立绘
+      this.regionImages.forEach(e => { if (e.key !== e.baseKey) this._setRegionImageArt(e, e.baseKey); });
+      if (this.selectedRegionImageKey && !this.regionImages.some(e => e.key === this.selectedRegionImageKey)) {
+        this.selectedRegionImageKey = this.regionImages[0]?.key ?? null;
+      }
+      if (this._regionEditMapLocked) { this._regionEditMapLocked = false; this.enableInteraction(); }
+    }
+    this.regionImages.forEach(e => e.image.setAlpha(1));
+  }
+
+  _attachRegionImageEdit(entry) {
+    if (entry.handlers || !entry.image?.active) return;
+    const img = entry.image;
+    const scene = this.scene;
+    img.setInteractive({ useHandCursor: true });
+
+    entry.outline = scene.add.graphics();
+    entry.cell.add(entry.outline);
+    this._drawRegionImageOutline(entry);
+
+    let drag = null;
+    const lock = () => {
+      if (this.interactionEnabled) { this.disableInteraction(); this._regionEditMapLocked = true; }
+    };
+    const unlock = () => {
+      if (this._regionEditMapLocked && !drag) { this._regionEditMapLocked = false; this.enableInteraction(); }
+    };
+    const onOver = () => lock();
+    const onOut = () => unlock();
+    const onDown = (pointer) => {
+      lock();
+      this.selectRegionImage(entry.key);
+      const a = this.getRegionImageAdjust(entry.key);
+      drag = { px: pointer.x, py: pointer.y, ox: a.x, oy: a.y };
+    };
+    const onMove = (pointer) => {
+      if (!drag) return;
+      // 容器只有“地图缩放”这一层缩放，屏幕像素 / 缩放 = 地图坐标
+      this.adjustRegionImage(entry.key, {
+        x: drag.ox + (pointer.x - drag.px) / this.currentZoom,
+        y: drag.oy + (pointer.y - drag.py) / this.currentZoom,
+      });
+    };
+    const onUp = () => { drag = null; };
+    const onWheel = (pointer, over, dx, dy) => {
+      if (!over || !over.includes(img)) return;
+      this.selectRegionImage(entry.key);
+      const a = this.getRegionImageAdjust(entry.key);
+      this.adjustRegionImage(entry.key, { scale: a.scale + (dy < 0 ? 0.01 : -0.01) });
+    };
+
+    img.on('pointerover', onOver);
+    img.on('pointerout', onOut);
+    img.on('pointerdown', onDown);
+    scene.input.on('pointermove', onMove);
+    scene.input.on('pointerup', onUp);
+    scene.input.on('wheel', onWheel);
+    entry.handlers = { onOver, onOut, onDown, onMove, onUp, onWheel };
+  }
+
+  _detachRegionImageEdit(entry) {
+    const h = entry.handlers;
+    if (!h) return;
+    const img = entry.image;
+    const scene = this.scene;
+    scene.input.off('pointermove', h.onMove);
+    scene.input.off('pointerup', h.onUp);
+    scene.input.off('wheel', h.onWheel);
+    if (img && img.active) {
+      img.off('pointerover', h.onOver);
+      img.off('pointerout', h.onOut);
+      img.off('pointerdown', h.onDown);
+      img.disableInteractive();
+    }
+    if (entry.outline) { entry.outline.destroy(); entry.outline = null; }
+    entry.handlers = null;
   }
 
   // --- 计算带有立体倾斜效果的六边形顶点 ---
@@ -672,8 +1121,8 @@ export class MapView {
     this.scene.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
       if (!this.interactionEnabled) return;
       const oldZoom = this.currentZoom;
-      if (deltaY < 0) this.currentZoom += this.zoomStep;
-      else this.currentZoom -= this.zoomStep;
+      if (deltaY < 0) this.currentZoom *= this.zoomFactor;
+      else this.currentZoom /= this.zoomFactor;
 
       this.currentZoom = Phaser.Math.Clamp(this.currentZoom, this.minZoom, this.maxZoom);
 
