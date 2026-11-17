@@ -105,6 +105,14 @@ export class GridMainOtherFunctions {
         locked_tip: () => this._upgradeRegionLockedTip(),
         action: () => this._openUpgradeRegion(),
       },
+      // 【驻扎管理】建成过首都（王城）之后才出现；手动开关本城区域 / 建筑的驻扎，不占用任何行动
+      ...(game.hasCapitalBuilt(this.saveData, this.gridId) ? [{
+        key: 'garrison_manage',
+        name: '驻扎管理',
+        desc: '管理区域内的驻扎情况',
+        available: () => true,
+        action: () => new GarrisonManagePanel(this.scene, this.saveData, this.gridId),
+      }] : []),
     ];
 
     funcs.forEach((fn, i) => {
@@ -722,5 +730,179 @@ export class GridMainOtherFunctions {
         this.overlay.destroy();
       },
     });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 驻扎管理面板
+//
+// 入口：主城 gridPanel →“其他功能”→“驻扎管理”；非主城格点 gridPanel →“其他”页签 →“驻扎管理”
+// （建成过首都 / 王城之后才会出现，见 game.hasCapitalBuilt）。
+// 列出【当前这个格点自己】区域里所有已建成、需要驻扎人口的区域 / 建筑（同属一个主城的其它格点不管，
+// 主城也只管主城格点自己），每项一个开关：
+//   · 关闭后：不再消耗驻扎资源，每回合收益 / buff 等效果同样关闭（和“消耗不足”一样的失效规则，
+//     永久效果如住房、槽位、兵种人口上限不受影响）；驻扎的人口仍然锁定。
+//   · 开关不占用任何行动，立即生效（收入会马上重算）。
+//   · 关闭的区域 / 建筑在 gridPanel 里会显示圆圈“关”字，悬浮详情第一行右侧显示红色“已关闭”。
+// ═══════════════════════════════════════════════════════════════
+export class GarrisonManagePanel {
+  constructor(scene, saveData, gridId) {
+    this.scene = scene;
+    this.saveData = saveData;
+    this.gridId = gridId;
+    this._build();
+  }
+
+  _gridName(gridId) {
+    const g = this.saveData.map?.grids?.[gridId];
+    if (g?.isMain) return g.name || this.saveData.capital || '主城';
+    return `格点${gridId}`;
+  }
+
+  /** { food:4, culture:1 } → “食物×4　文化×1” */
+  _costText(cost) {
+    const parts = Object.entries(cost ?? {}).map(([r, v]) => `${get.translation(r)}×${v}`);
+    return parts.length ? parts.join('　') : '无';
+  }
+
+  _build() {
+    const { width, height } = this.scene.scale;
+    const DEPTH = 1300;
+    const W = Math.min(600, width - 40);
+    const PAD = 14, ROW_H = 70, ROW_GAP = 10;
+    const HEAD_H = 76, FOOT_H = 64;
+    this._W = W; this._PAD = PAD; this._ROW_H = ROW_H; this._ROW_GAP = ROW_GAP;
+
+    const count = Math.max(1, game.getGridGarrisonObjects(this.saveData, this.gridId).length);
+    const contentH = count * (ROW_H + ROW_GAP) - ROW_GAP;
+    const viewH = Math.min(contentH, height - 80 - HEAD_H - FOOT_H);
+    const H = HEAD_H + viewH + FOOT_H;
+    const cx = width / 2, cy = height / 2;
+    this._cx = cx; this._cy = cy; this._H = H;
+    this._listTop = -H / 2 + HEAD_H;
+
+    this.overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.6)
+      .setDepth(DEPTH).setInteractive();
+    this.modal = this.scene.add.container(cx, cy).setDepth(DEPTH + 1);
+    this.modal.add(this.scene.add.rectangle(0, 0, W, H, 0x12111e, 0.97).setStrokeStyle(1.5, 0xffd700, 0.7));
+    this.modal.add(this.scene.add.text(0, -H / 2 + 24, '驻扎管理', {
+      fontSize: '18px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5));
+    // 合计行（随开关刷新）
+    this.sumText = this.scene.add.text(0, -H / 2 + 52, '', {
+      fontSize: '13px', color: '#aaaaaa', padding: { top: 4 },
+    }).setOrigin(0.5);
+    this.modal.add(this.sumText);
+
+    this.list = this.scene.add.container(0, this._listTop);
+    this.modal.add(this.list);
+
+    // 超出时用遮罩 + 滚轮滚动（和“升级区域”弹窗同一套做法）
+    this._wheelFn = null;
+    this._maskGfx = null;
+    this._scrollY = 0;
+    if (contentH > viewH) {
+      this._maskGfx = this.scene.make.graphics({ x: 0, y: 0, add: false });
+      this._maskGfx.fillStyle(0xffffff).fillRect(cx - W / 2, cy + this._listTop, W, viewH);
+      this.list.setMask(this._maskGfx.createGeometryMask());
+      const maxScroll = contentH - viewH;
+      this._wheelFn = (pointer, objs, dx, dy) => {
+        this._scrollY = Phaser.Math.Clamp(this._scrollY + dy * 0.5, 0, maxScroll);
+        this.list.y = this._listTop - this._scrollY;
+      };
+      this.scene.input.on('wheel', this._wheelFn);
+    }
+
+    // 关闭
+    const btnY = H / 2 - 30;
+    const closeBg = this.scene.add.image(0, btnY, 'common_btn').setDisplaySize(110, 34)
+      .setInteractive({ useHandCursor: true });
+    const closeTxt = this.scene.add.text(0, btnY, '关闭', {
+      fontSize: '15px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+    }).setOrigin(0.5);
+    closeBg.on('pointerover', () => closeBg.setAlpha(0.8));
+    closeBg.on('pointerout', () => closeBg.setAlpha(1));
+    closeBg.on('pointerdown', () => closeBg.setAlpha(0.6));
+    closeBg.on('pointerup', () => { closeBg.setAlpha(1); this.destroy(); });
+    this.modal.add([closeBg, closeTxt]);
+
+    this._render();
+
+    this.modal.setAlpha(0); this.overlay.setAlpha(0);
+    this.scene.tweens.add({ targets: [this.modal, this.overlay], alpha: 1, duration: 160 });
+  }
+
+  /** 按当前存档重画列表（切换开关后也走这里） */
+  _render() {
+    const { _W: W, _PAD: PAD, _ROW_H: ROW_H, _ROW_GAP: ROW_GAP } = this;
+    this.list.removeAll(true);
+    const objs = game.getGridGarrisonObjects(this.saveData, this.gridId);
+
+    // 合计：当前开着的项每回合的总消耗
+    const sum = {};
+    for (const o of objs) if (!o.off) for (const [r, v] of Object.entries(o.cost)) sum[r] = (sum[r] ?? 0) + v;
+    this.sumText.setText(objs.length ? `每回合驻扎消耗合计：${this._costText(sum)}` : '');
+
+    if (!objs.length) {
+      this.list.add(this.scene.add.text(0, ROW_H / 2, '暂无需要驻扎的区域 / 建筑', {
+        fontSize: '15px', color: '#888888', padding: { top: 4 },
+      }).setOrigin(0.5));
+      return;
+    }
+
+    objs.forEach((o, i) => {
+      const y = i * (ROW_H + ROW_GAP);
+      const status = this.saveData.garrison_status?.[o.gridId];
+      const failed = !o.off && (o.kind === 'region' ? status?.region === false : status?.buildings?.[o.key] === false);
+
+      const rowBg = this.scene.add.rectangle(0, y + ROW_H / 2, W - PAD * 2, ROW_H, 0x1e1d2e, 0.95)
+        .setStrokeStyle(1.5, o.off ? 0x555555 : 0xffd700, o.off ? 0.6 : 0.5);
+      const name = this.scene.add.text(-W / 2 + PAD * 2, y + 8, `${o.cfg.name}`, {
+        fontSize: '17px', color: o.off ? '#888888' : '#ffffff', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0, 0);
+      let detail, detailColor = '#aaaaaa';
+      if (o.off) { detail = `驻扎 ${o.count} 人　已关闭：不消耗资源，收益效果关闭`; detailColor = '#cc6666'; }
+      else {
+        detail = `驻扎 ${o.count} 人　每回合消耗：${this._costText(o.cost)}`;
+        if (failed) { detail += '　（上回合资源不足，已失效）'; detailColor = '#ff8a65'; }
+      }
+      const info = this.scene.add.text(-W / 2 + PAD * 2, y + 40, detail, {
+        fontSize: '13px', color: detailColor, padding: { top: 4 },
+      }).setOrigin(0, 0);
+
+      // 开关按钮
+      const BW = 72, BH = 32;
+      const bx = W / 2 - PAD * 2 - BW / 2, by = y + ROW_H / 2;
+      const btn = this.scene.add.rectangle(bx, by, BW, BH, o.off ? 0x3a2222 : 0x1f3a22, 1)
+        .setStrokeStyle(2, o.off ? 0xc62828 : 0x4caf50, 1)
+        .setInteractive({ useHandCursor: true });
+      const btnTxt = this.scene.add.text(bx, by, o.off ? '已关闭' : '已开启', {
+        fontSize: '14px', color: o.off ? '#ef5350' : '#81c784', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      btn.on('pointerover', () => btn.setAlpha(0.8));
+      btn.on('pointerout', () => btn.setAlpha(1));
+      btn.on('pointerup', () => this._toggle(o));
+
+      this.list.add([rowBg, name, info, btn, btnTxt]);
+    });
+  }
+
+  _toggle(o) {
+    const sd = this.saveData;
+    game.setGarrisonManualOff(sd, o.gridId, o.kind, o.key, !o.off);
+    game.refreshTurnIncome(sd);          // 收益立刻按新的开关状态重算
+    saveSystem.save();
+    this.scene.topInfoBar?.refresh();
+    // 刷新正在显示的 gridPanel，让“关”标记立即出现 / 消失
+    const gp = this.scene.currentGridPanel;
+    if (gp?.switchTab && gp.currentTab) gp.switchTab(gp.currentTab);
+    this._render();
+  }
+
+  destroy() {
+    if (this._wheelFn) { this.scene.input.off('wheel', this._wheelFn); this._wheelFn = null; }
+    if (this._maskGfx) { this.list.clearMask(true); this._maskGfx = null; }
+    this.modal.destroy(true);
+    this.overlay.destroy();
   }
 }

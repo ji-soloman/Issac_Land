@@ -24,6 +24,11 @@ export const get = {
       // 驻扎消耗付不起的区域 / 建筑（见 function.js settleGarrison 写入的 data.garrison_status）本回合不提供行动条
       // （这里不能 import function.js —— 它反过来依赖本文件，所以直接读状态）
       const garrisonOff = (gridId, kind, key) => {
+        // 玩家在“驻扎管理”里手动关闭的（见 function.js isGarrisonManualOff）同样不提供
+        const off = data?.garrison_off?.[gridId];
+        if (off) {
+          if (kind === 'region' ? (!!off.region && off.region === grids[gridId]?.region) : !!off.buildings?.[key]) return true;
+        }
         const st = data?.garrison_status?.[gridId];
         if (!st) return false;
         return kind === 'region' ? st.region === false : st.buildings?.[key] === false;

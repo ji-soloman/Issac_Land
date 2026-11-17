@@ -10,6 +10,7 @@ import { RACES, canFoundCityOn, getCityTerrainText, applyRaceCostModsDetailed } 
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { saveSystem } from '../../system/saveSystem.js';
 import { GRID_BTN_IMG } from '../../data/gridButtonImages.js';
+import { GarrisonManagePanel } from './gridMainOtherFunctions.js';
 
 const colorMap = {
   living: 0xF2D8A7,
@@ -178,7 +179,15 @@ export class GridPanel {
       padding: { top: 5 },
     }).setOrigin(0.5);
 
-    this.tooltipContainer = this.scene.add.container(0, 0, [this.ttBg, this.ttText]);
+    // 第一行最右侧的红色“已关闭”标签（驻扎被手动关闭的区域 / 建筑才显示）；ttMeasure 只用来量第一行名字的宽度
+    this.ttTag = this.scene.add.text(0, 0, '已关闭', {
+      fontSize: '14px', color: '#e53935', fontStyle: 'bold', padding: { top: 5 },
+    }).setOrigin(1, 0).setVisible(false);
+    this.ttMeasure = this.scene.add.text(0, 0, '', {
+      fontSize: '14px', fontStyle: 'bold', padding: { top: 5 },
+    }).setVisible(false);
+
+    this.tooltipContainer = this.scene.add.container(0, 0, [this.ttBg, this.ttText, this.ttTag, this.ttMeasure]);
     this.tooltipContainer.setDepth(2000);
     this.tooltipContainer.setVisible(false);
     this.container.add(this.tooltipContainer);
@@ -888,7 +897,8 @@ export class GridPanel {
       const rObj = REGION[rId];
       const bColor = rObj ? colorMap[rObj.color] : 0xcccccc;
       // 待移除时显示"被拆除"标签 + 灰色蒙版
-      this.createListItem(rObj ? rObj.name : rId, null, currentY, bColor, rObj, isPendingRemove ? 'removing' : null);
+      this.createListItem(rObj ? rObj.name : rId, null, currentY, bColor, rObj, isPendingRemove ? 'removing' : null,
+        { off: game.isGarrisonManualOff(this.data, this.gridId, 'region') });
       currentY += 40;
 
       // 升级中（createRegion.upgrade）或已加入行动列表尚未结算的区域升级
@@ -927,7 +937,8 @@ export class GridPanel {
     if (buildings && typeof buildings === 'object') {
       for (const bKey of Object.keys(buildings)) {
         const bObj = BUILDING?.[bKey];
-        this.createListItem(bObj?.name ?? bKey, null, currentY, null, bObj, isPendingRemove ? 'removing' : null);
+        this.createListItem(bObj?.name ?? bKey, null, currentY, null, bObj, isPendingRemove ? 'removing' : null,
+          { off: game.isGarrisonManualOff(this.data, this.gridId, 'building', bKey) });
         currentY += 40;
       }
     }
@@ -975,6 +986,17 @@ export class GridPanel {
   renderOtherTab() {
     const currentY = this.contentStartY + 20;
     const centerX = this.panelStartX + this.panelWidth / 2;
+    const btnWidth = this.panelWidth * 0.8;
+    const btnHeight = 45;
+
+    // 本城建成过首都（王城）后出现【驻扎管理】：手动开关本城区域 / 建筑的驻扎，不占用行动
+    if (game.hasCapitalBuilt(this.data, this.gridId)) {
+      this.createActionButton('驻扎管理', centerX, currentY, btnWidth, btnHeight, 0x607d8b, true, () => {
+        new GarrisonManagePanel(this.scene, this.data, this.gridId);
+      });
+      this.contentMaxHeight = btnHeight + 40;
+      return;
+    }
 
     const text = this.scene.add.text(centerX, currentY, get.translation('none'), {
       fontSize: '18px', color: '#666666', padding: { top: 5 },
@@ -1069,11 +1091,23 @@ export class GridPanel {
   }
 
   // 统一的悬浮窗计算展示方法
-  showTooltip(textStr, targetCenterX, targetCenterY, objWidth, objHeight) {
+  // tag：可选，第一行最右侧的红色小标签文字（目前只有“已关闭”）
+  showTooltip(textStr, targetCenterX, targetCenterY, objWidth, objHeight, tag) {
     this.ttText.setText(textStr);
-    const tw = this.ttText.width + 16;
+    let tw = this.ttText.width + 16;
     const th = this.ttText.height + 12;
+
+    if (tag) {
+      // 标签放在第一行（名字行）最右边：窗口至少要放得下 名字 + 间距 + 标签
+      this.ttTag.setText(tag);
+      this.ttMeasure.setText(textStr.split('\n')[0]);
+      tw = Math.max(tw, this.ttMeasure.width + 20 + this.ttTag.width + 16);
+    }
     this.ttBg.setSize(tw, th);
+    // 加宽后文字靠左对齐（窗口左内边距 8）；标签右对齐到窗口右内边距，顶部和第一行对齐
+    this.ttText.setX(tag ? -tw / 2 + 8 + this.ttText.width / 2 : 0);
+    this.ttTag.setVisible(!!tag);
+    if (tag) this.ttTag.setPosition(tw / 2 - 8, -this.ttText.height / 2);
 
     let targetX = targetCenterX;
     let targetY = targetCenterY - objHeight / 2 - th / 2 - 5; // 默认展示在上方
@@ -1096,7 +1130,8 @@ export class GridPanel {
   }
 
   // 修改了入参，增加 tooltipData 用于接收区域特有数据，status='removing' 时显示拆除状态
-  createListItem(nameStr, countdown, y, borderColor, tooltipData, status) {
+  // opts.off：该区域 / 建筑的驻扎被玩家手动关闭 → 行右侧加圆圈“关”，悬浮详情第一行最右边加红色“已关闭”
+  createListItem(nameStr, countdown, y, borderColor, tooltipData, status, opts = {}) {
     const leftX = this.panelStartX + 20;
     const rightX = this.panelStartX + this.panelWidth - 20;
     const centerX = this.panelStartX + this.panelWidth / 2;
@@ -1134,7 +1169,7 @@ export class GridPanel {
         const globalX = nameText.x + nameText.width / 2;
         const globalY = y + this.contentContainer.y;
 
-        this.showTooltip(ttStr.trim(), globalX, globalY, nameText.width, nameText.height);
+        this.showTooltip(ttStr.trim(), globalX, globalY, nameText.width, nameText.height, opts.off ? '已关闭' : null);
       });
 
       nameText.on('pointerout', () => {
@@ -1143,6 +1178,7 @@ export class GridPanel {
     }
 
     // ====== removing 状态：右侧"被拆除"红字 + 整行浅灰蒙版 ======
+    let removingW = 0;
     if (status === 'removing') {
       const removingText = this.scene.add.text(rightX - 10, y, '被拆除', {
         fontSize: '15px', color: '#e53935', fontStyle: 'bold', padding: { top: 3 },
@@ -1150,6 +1186,17 @@ export class GridPanel {
       // 浅灰色蒙版叠在行上，不影响下方元素的交互（tooltip 等）
       const dimOverlay = this.scene.add.rectangle(centerX, y, this.panelWidth * 0.9, 36, 0x888888, 0.35);
       this.contentContainer.add([removingText, dimOverlay]);
+      removingW = removingText.width + 8;
+    }
+
+    // ====== 驻扎手动关闭：右侧带圆圈的“关”字（被拆除时让到“被拆除”左边） ======
+    if (opts.off) {
+      const mx = rightX - 21 - removingW;
+      const ring = this.scene.add.circle(mx, y, 11, 0xffffff, 0.75).setStrokeStyle(2, 0xc62828);
+      const mark = this.scene.add.text(mx, y, '关', {
+        fontSize: '13px', color: '#c62828', fontStyle: 'bold', padding: { top: 3 },
+      }).setOrigin(0.5);
+      this.contentContainer.add([ring, mark]);
     }
 
     // ====== 倒计时与沙漏悬浮窗逻辑（removing 状态下不显示）======

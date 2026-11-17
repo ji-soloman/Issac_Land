@@ -294,24 +294,93 @@ export const game = {
   getGarrisonUpkeepTotal(saveData) {
     const total = {};
     const parts = [];
-    const add = (gridId, cfg) => {
+    const add = (gridId, kind, key, cfg) => {
       if (!this.getGarrisonCount(cfg)) return;
+      if (this.isGarrisonManualOff(saveData, gridId, kind, key)) return; // 手动关闭的不消耗
       const cost = this.getGarrisonUpkeep(saveData, gridId, cfg);
       if (!Object.keys(cost).length) return;
       for (const [r, v] of Object.entries(cost)) total[r] = (total[r] ?? 0) + v;
       parts.push({ source: cfg.name, cost });
     };
     for (const [gid, g] of Object.entries(saveData?.map?.grids ?? {})) {
-      if (g.region && REGION[g.region]) add(gid, REGION[g.region]);
+      if (g.region && REGION[g.region]) add(gid, 'region', g.region, REGION[g.region]);
       for (const [bKey, built] of Object.entries(g.buildings ?? {})) {
-        if (built && BUILDING[bKey]) add(gid, BUILDING[bKey]);
+        if (built && BUILDING[bKey]) add(gid, 'building', bKey, BUILDING[bKey]);
       }
     }
     return { total, parts };
   },
 
-  /** 某区域 / 建筑本回合是否生效（驻扎消耗付得起；没有驻扎、或还没结算过 = 生效） */
+  // ── 驻扎手动开关（玩家在“驻扎管理”里关闭：不再消耗资源，收益 / buff 类效果同样关闭；不占用行动） ──
+  // 存档：saveData.garrison_off = { [gridId]: { region: '<区域key>', buildings: { [建筑key]: true } } }
+  // region 里记的是关闭时的区域 key：区域被拆除 / 升级成别的区域后，旧的“关闭”标记自动失效。
+
+  /** 某已建成的区域 / 建筑是否被玩家手动关闭驻扎 */
+  isGarrisonManualOff(saveData, gridId, kind, key) {
+    const off = saveData?.garrison_off?.[gridId];
+    if (!off) return false;
+    if (kind === 'region') return !!off.region && off.region === saveData?.map?.grids?.[gridId]?.region;
+    return !!off.buildings?.[key];
+  },
+
+  /** 设置手动开关（只改存档，调用方负责保存 / 刷新界面；记得再调 refreshTurnIncome 让收入立刻变化） */
+  setGarrisonManualOff(saveData, gridId, kind, key, isOff) {
+    saveData.garrison_off ??= {};
+    const o = (saveData.garrison_off[gridId] ??= {});
+    if (kind === 'region') {
+      if (isOff) o.region = saveData.map?.grids?.[gridId]?.region;
+      else delete o.region;
+    } else {
+      o.buildings ??= {};
+      if (isOff) o.buildings[key] = true;
+      else delete o.buildings[key];
+    }
+    if (!o.region && !Object.keys(o.buildings ?? {}).length) delete saveData.garrison_off[gridId];
+  },
+
+  /**
+   * 是否建过首都（王城）——“驻扎管理”的永久解锁时间节点，全局生效（所有城、所有格点都支持）。
+   * 和王城升级共用同一份存储 saveData.region_upgrade_used.capital（王城升级“永久限1次”的记录，
+   * 升级行动结算开始时写入、之后拆除王城也不会清除），所以一旦建过就永久解锁。
+   * 另外兜底：地图上现存任何首都区域（如 GM / 老存档直接放置的）也算已解锁。
+   * gridId 参数保留只是为了兼容调用方，不再参与判断。
+   */
+  hasCapitalBuilt(saveData, gridId) {
+    if (saveData?.region_upgrade_used?.capital) return true;
+    return Object.values(saveData?.map?.grids ?? {}).some(g =>
+      g?.region && REGION[g.region]?.category?.capital === true);
+  },
+
+
+  /**
+   * gridId 这个格点自己的【已建成】且需要驻扎人口的区域 / 建筑（“驻扎管理”的列表）。
+   * 每个格点只管理自己区域里的驻扎，同属一个主城的其它格点不算（主城也只管主城格点自己）。
+   * @returns {Array<{ gridId, kind: 'region'|'building', key, cfg, count, cost, off }>}
+   */
+  getGridGarrisonObjects(saveData, gridId) {
+    const grids = saveData?.map?.grids ?? {};
+    const list = [];
+    if (!grids[gridId]) return list;
+    const push = (gid, kind, key, cfg) => {
+      const count = this.getGarrisonCount(cfg);
+      if (!count) return;
+      list.push({
+        gridId: gid, kind, key, cfg, count,
+        cost: this.getGarrisonUpkeep(saveData, gid, cfg),
+        off: this.isGarrisonManualOff(saveData, gid, kind, key),
+      });
+    };
+    const g = grids[gridId];
+    if (g.region && REGION[g.region]) push(gridId, 'region', g.region, REGION[g.region]);
+    for (const [bKey, built] of Object.entries(g.buildings ?? {})) {
+      if (built && BUILDING[bKey]) push(gridId, 'building', bKey, BUILDING[bKey]);
+    }
+    return list;
+  },
+
+  /** 某区域 / 建筑本回合是否生效（没被手动关闭，且驻扎消耗付得起；没有驻扎、或还没结算过 = 生效） */
   isGarrisonActive(saveData, gridId, kind, key) {
+    if (this.isGarrisonManualOff(saveData, gridId, kind, key)) return false;
     const st = saveData?.garrison_status?.[gridId];
     if (!st) return true;
     return kind === 'region' ? st.region !== false : st.buildings?.[key] !== false;
@@ -330,6 +399,8 @@ export const game = {
 
     const pay = (gridId, kind, key, cfg) => {
       if (!this.getGarrisonCount(cfg)) return;
+      // 玩家手动关闭的：不消耗，也不算“付不起”（不进报告、不弹提示）
+      if (this.isGarrisonManualOff(saveData, gridId, kind, key)) return;
       const cost = this.getGarrisonUpkeep(saveData, gridId, cfg);
       const ok = Object.entries(cost).every(([r, v]) => (res[r] ?? 0) >= v);
       if (ok) for (const [r, v] of Object.entries(cost)) res[r] = (res[r] ?? 0) - v;
@@ -346,6 +417,73 @@ export const game = {
       }
     }
     return report;
+  },
+
+  /**
+   * 计算“下回合收入”（回合结算第 4 步用；玩家手动开关驻扎后也会调用，让收入立刻反映）：
+   * 已建成区域 / 建筑的 effect.turn（驻扎没付起 / 被手动关闭的跳过） + 空闲人口人头税。
+   * @returns {{culture:number, food:number, magic:number, mine:number, wealth:number}}
+   */
+  computeTurnIncome(saveData) {
+    const keys = ['culture', 'food', 'magic', 'mine', 'wealth'];
+    const total = Object.fromEntries(keys.map(k => [k, 0]));
+    const grids = saveData?.map?.grids ?? {};
+
+    // 区域收入
+    for (const [gridKey, grid] of Object.entries(grids)) {
+      const region = grid.region;
+      if (!region) continue;
+      if (!this.isGarrisonActive(saveData, gridKey, 'region')) continue;
+      const effect = REGION?.[region]?.effect?.turn;
+      if (!effect) continue;
+      for (const [res, value] of Object.entries(effect)) {
+        if (!(res in total)) continue;
+        const result = typeof value === 'function' ? value({ grid }) : value;
+        if (typeof result !== 'number' || Number.isNaN(result)) continue;
+        total[res] += result;
+      }
+    }
+
+    // 建筑收入：已建成的建筑（grid.buildings = { [key]: true }）；建造中的不产出
+    for (const [gridKey, grid] of Object.entries(grids)) {
+      for (const [buildingKey, built] of Object.entries(grid.buildings ?? {})) {
+        if (!built) continue;
+        if (!this.isGarrisonActive(saveData, gridKey, 'building', buildingKey)) continue;
+        const effect = BUILDING?.[buildingKey]?.effect?.turn;
+        if (!effect) continue;
+        for (const [res, value] of Object.entries(effect)) {
+          if (!(res in total)) continue;
+          let result;
+          try {
+            result = typeof value === 'function' ? value({ grid }) : value;
+          } catch (err) {
+            console.error(`building.effect.turn [${buildingKey}.${res}] 执行出错:`, err);
+            continue;
+          }
+          if (typeof result !== 'number' || Number.isNaN(result)) continue;
+          total[res] += result;
+        }
+      }
+    }
+
+    // 人口收入：每个【空闲】人口（总人口 − 被驻扎锁定的人口）产生 1 财富。
+    // 驻扎人口依旧算城池总人口（住房、繁衍、荣耀之都按总人口加税等不受影响），只是自己不产生人头税。
+    // pending:false —— 回合结算时行动已经落到 createRegion / createBuilding，不能再算一遍行动列表（手动开关时行动列表里的待建项也不该影响收入）。
+    for (const [gridKey, grid] of Object.entries(grids)) {
+      if (grid.population) {
+        const locked = grid.isMain ? this.getGarrisonLocked(saveData, gridKey, { pending: false }).total : 0;
+        total.wealth += Math.max(0, grid.population - locked);
+      }
+    }
+    return total;
+  },
+
+  /** 重新计算并写入 saveData.resource.*_income（玩家手动开关驻扎后调用；回合结算有自己的写入流程） */
+  refreshTurnIncome(saveData) {
+    const total = this.computeTurnIncome(saveData);
+    saveData.resource ??= {};
+    for (const k of Object.keys(total)) saveData.resource[`${k}_income`] = total[k];
+    return total;
   },
 
   showTips(scene, tip) {

@@ -226,6 +226,8 @@ export class GameScene extends Phaser.Scene {
           this._handleTriggerComplete('region_destroy', regionKey, data);
           delete gn.region;
         }
+        // 区域和建筑都没了：清掉这个格点的“手动关闭驻扎”标记
+        if (data.garrison_off) delete data.garrison_off[param.gridId];
 
         // 3) 从 actionList 中移除该条目
         delete data.actionList.civil[actionKey];
@@ -386,72 +388,11 @@ export class GameScene extends Phaser.Scene {
       // *注：每个地块依次结算，增加和减少，然后全部挂进回合收入里，然后给下回合去结算（包括人头税）
       const grids = data.map.grids;
 
-      for (const [gridKey, grid] of Object.entries(grids)) {
-        const region = grid.region;
-        if (!region) continue;
-
-        // 驻扎消耗付不起：该区域本回合的回合资源全部失效
-        if (!game.isGarrisonActive(data, gridKey, 'region')) continue;
-
-        const effect = REGION?.[region]?.effect?.turn;
-        if (!effect) continue;
-
-        for (const [res, value] of Object.entries(effect)) {
-          if (!(res in total)) continue;
-
-          const result =
-            typeof value === 'function'
-              ? value({ grid })
-              : value;
-
-          if (typeof result !== 'number' || Number.isNaN(result)) continue;
-
-          total[res] += result;
-        }
-      }
-
-      // 建筑收入：已建成的建筑（grid.buildings = { [key]: true }）的 effect.turn 同区域一样汇总
-      // 支持数值，或 ({ grid }) => 数值 的函数写法；建造中的建筑（createBuilding）不产出
-      for (const [gridKey, grid] of Object.entries(grids)) {
-        const buildings = grid.buildings;
-        if (!buildings) continue;
-
-        for (const [buildingKey, built] of Object.entries(buildings)) {
-          if (!built) continue;
-          if (!game.isGarrisonActive(data, gridKey, 'building', buildingKey)) continue;
-
-          const effect = BUILDING?.[buildingKey]?.effect?.turn;
-          if (!effect) continue;
-
-          for (const [res, value] of Object.entries(effect)) {
-            if (!(res in total)) continue;
-
-            let result;
-            try {
-              result = typeof value === 'function' ? value({ grid }) : value;
-            } catch (err) {
-              console.error(`building.effect.turn [${buildingKey}.${res}] 执行出错:`, err);
-              continue;
-            }
-
-            if (typeof result !== 'number' || Number.isNaN(result)) continue;
-
-            total[res] += result;
-          }
-        }
-      }
-
+      // 收入计算（区域 / 建筑 effect.turn + 空闲人口人头税）抽到了 game.computeTurnIncome：
+      // 驻扎没付起或被玩家手动关闭的区域 / 建筑不产出。玩家手动开关驻扎时也会用它立刻刷新收入。
       data.resource ??= {};
-
-      // 人口收入：每个【空闲】人口（总人口 − 被驻扎锁定的人口）产生 1 财富，汇总后计入本回合收益。
-      // 驻扎人口依旧算城池总人口（住房、繁衍、荣耀之都按总人口加税等不受影响），只是自己不产生人头税。
-      // pending:false —— 此时本回合的行动已经落到 createRegion / createBuilding，不能再算一遍行动列表。
-      for (const [gridKey, grid] of Object.entries(grids)) {
-        if (grid.population) {
-          const locked = grid.isMain ? game.getGarrisonLocked(data, gridKey, { pending: false }).total : 0;
-          total.wealth += Math.max(0, grid.population - locked);
-        }
-      }
+      const incomeTotal = game.computeTurnIncome(data);
+      for (const k of keys) total[k] += incomeTotal[k];
 
       for (const k of keys) {
         data.resource[`${k}_income`] = total[k];
