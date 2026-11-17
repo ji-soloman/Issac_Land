@@ -598,6 +598,7 @@ export const REGION = {
     },
     category: {
       main: true,
+      capital: true,       // 王城标记（市政厅等建筑用 category.capital 限定只能建在首都王城）
     },
     round: 6,
     color: 'living',
@@ -629,6 +630,7 @@ export const REGION = {
     category: {
       main: true,
       academy: true,
+      capital: true,       // 王城标记（市政厅等建筑用 category.capital 限定只能建在首都王城）
     },
     round: 6,
     color: 'academy',
@@ -669,6 +671,7 @@ export const REGION = {
     category: {
       main: true,
       military: true,
+      capital: true,       // 王城标记（市政厅等建筑用 category.capital 限定只能建在首都王城）
     },
     round: 6,
     color: 'military',
@@ -697,6 +700,7 @@ export const REGION = {
     category: {
       main: true,
       holy: true,
+      capital: true,       // 王城标记（市政厅等建筑用 category.capital 限定只能建在首都王城）
     },
     round: 6,
     color: 'holy',

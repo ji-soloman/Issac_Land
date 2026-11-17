@@ -91,8 +91,20 @@ export const ERA = {
   },
   attila: {
     name: '阿提拉',
-    intro: '',
+    intro: '曾经辉煌的帝国已经建立起庞大的城市、完善的制度和强大的军团。\n然而，帝国的边疆正在发生变化。新的民族不断崛起，旧有的政治秩序受到冲击，曾经牢不可破的帝国体系也开始出现裂痕。\n一个新时代即将到来。',
     order: 5,
+    mission: {
+      1: {
+        info: '市政：在首都王城建造建筑【市政厅】',
+        // 已建成：任意一个王城（首都）区域的格点上，已有建成的【市政厅】（建造中的不算）
+        filter({ savedata }) {
+          return allGrids(savedata).some(([, gn]) => isCapitalRegion(gn?.region) && !!gn.buildings?.city_hall);
+        },
+      },
+      2: {
+        info: '待定...'
+      }
+    }
   },
   dark: {
     name: '黑暗时代',

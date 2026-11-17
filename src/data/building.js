@@ -1135,16 +1135,18 @@ export const BUILDING = {
 
   city_hall: {
     name: '市政厅',
-    effect_info: '财富+6，文化+2；住房+10；步兵人口+2；民生行动+1，城市唯一',
+    effect_info: '财富+6，文化+2；住房+10；步兵人口+2；民生行动+1',
     tech_info: '雕刻',
-    region_info: '主城区',
+    region_info: '首都王城',
+    // 只能建在【首都王城】（四个王城特区，REGION 里 category.capital = true）。
+    // 王城全存档永久限 1 座（见 region.js REGION_UPGRADE_GROUP.capital），所以市政厅天然只会有 1 座，
+    // 不再需要 unique（城市唯一）。
     require_region(category) {
-      return category.main;
+      return !!category.capital;
     },
     require_tech(tech) {
       return tech.art_1;
     },
-    unique: true, // 城市唯一：每座城市（主城+分城）最多建造一座
     cost: {
       mine: 20,
     },
