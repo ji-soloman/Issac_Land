@@ -4,6 +4,7 @@ import { game } from '../../system/function.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { terrain as TERRAIN } from '../../data/terrain.js';
 import { saveSystem } from '../../system/saveSystem.js';
+import { get } from '../../system/i18n.js';
 import {
   REGION,
   REGION_UPGRADE_GROUP,
@@ -197,6 +198,20 @@ export class GridMainOtherFunctions {
     return lines.join('\n');
   }
 
+  /**
+   * 驻扎人口说明（升级 / 建造弹窗用）。没有驻扎需求返回 null。
+   * @returns {{ count: number, free: number, block: string|null, upkeepText: string }|null}
+   */
+  _garrisonInfo(gridId, cfg) {
+    const count = game.getGarrisonCount(cfg);
+    if (!count) return null;
+    const free = game.getCityFreePopulation(this.saveData, gridId);
+    const block = game.getGarrisonBlockReason(this.saveData, gridId, cfg);
+    const upkeep = game.getGarrisonUpkeep(this.saveData, gridId, cfg);
+    const upkeepText = Object.entries(upkeep).map(([r, v]) => `${get.translation(r)}×${v}`).join('、') || '无';
+    return { count, free, block, upkeepText };
+  }
+
   _openUpgradeRegion() {
     const options = this._getUpgradeOptions();
     if (!options.length) return;
@@ -215,7 +230,15 @@ export class GridMainOtherFunctions {
         `${r.terrainInfo ? r.terrainInfo + '\n' : ''}${r.effect_info ?? ''}`.replace(/\n+$/, ''),
         W - PAD * 4 - 6, INFO_STYLE);
       const lineCnt = text.split('\n').length;
-      return { o, r, text, h: 40 + lineCnt * 18 + 14 };
+      // 驻扎人口：单独一行（空闲人口不足时整行置灰，不能选）
+      const gar = this._garrisonInfo(o.gridId, r);
+      const garText = gar
+        ? this._wrapText(
+          `驻扎${gar.count}人口（每回合消耗：${gar.upkeepText}）；需空闲人口多于${gar.count}，当前空闲${gar.free}`,
+          W - PAD * 4 - 6, INFO_STYLE)
+        : '';
+      const garLines = garText ? garText.split('\n').length : 0;
+      return { o, r, text, gar, garText, h: 40 + lineCnt * 18 + (garLines ? garLines * 18 + 6 : 0) + 14 };
     });
     const contentH = rows.reduce((a, r) => a + r.h + ROW_GAP, 0) - ROW_GAP;
     const HEAD_H = 56, FOOT_H = 64;
@@ -239,9 +262,10 @@ export class GridMainOtherFunctions {
     const colorOf = (r) => ({ living: 0x66bb6a, academy: 0x42a5f5, military: 0xef5350, holy: 0xffd54f })[r.color] ?? 0xffd700;
 
     let y = 0;
-    rows.forEach(({ o, r, text, h }) => {
-      const rowBg = this.scene.add.rectangle(0, y + h / 2, W - PAD * 2, h, 0x1e1d2e, 0.95)
-        .setStrokeStyle(1.5, colorOf(r), 0.8).setInteractive({ useHandCursor: true });
+    rows.forEach(({ o, r, text, gar, garText, h }) => {
+      const blocked = !!gar?.block;   // 空闲人口不足：整行置灰，点击只提示原因
+      const rowBg = this.scene.add.rectangle(0, y + h / 2, W - PAD * 2, h, blocked ? 0x14131c : 0x1e1d2e, blocked ? 0.7 : 0.95)
+        .setStrokeStyle(1.5, blocked ? 0x555555 : colorOf(r), 0.8).setInteractive({ useHandCursor: !blocked });
       const fromName = REGION[o.fromKey]?.name ?? o.fromKey;
       const gridName = this._gridName(o.gridId);
       const title = this.scene.add.text(-W / 2 + PAD * 2, y + 22,
@@ -254,10 +278,23 @@ export class GridMainOtherFunctions {
       const info = this.scene.add.text(-W / 2 + PAD * 2, y + 40, text, {
         ...INFO_STYLE, lineSpacing: 4,
       }).setOrigin(0, 0);
-      rowBg.on('pointerover', () => rowBg.setFillStyle(0x2a2960, 0.95));
-      rowBg.on('pointerout', () => rowBg.setFillStyle(0x1e1d2e, 0.95));
-      rowBg.on('pointerdown', () => this._confirmUpgradeRegion(o, () => closeAll()));
+      const baseFill = blocked ? 0x14131c : 0x1e1d2e;
+      const baseAlpha = blocked ? 0.7 : 0.95;
+      if (!blocked) {
+        rowBg.on('pointerover', () => rowBg.setFillStyle(0x2a2960, 0.95));
+        rowBg.on('pointerout', () => rowBg.setFillStyle(baseFill, baseAlpha));
+      }
+      rowBg.on('pointerdown', () => {
+        if (blocked) { game.showTips(this.scene, gar.block); return; }
+        this._confirmUpgradeRegion(o, () => closeAll());
+      });
       list.add([rowBg, title, roundTxt, info]);
+      if (garText) {
+        const infoLines = text ? text.split('\n').length : 0;
+        list.add(this.scene.add.text(-W / 2 + PAD * 2, y + 40 + infoLines * 18 + 4, garText, {
+          ...INFO_STYLE, color: blocked ? '#ff6b6b' : '#ffb74d', lineSpacing: 4,
+        }).setOrigin(0, 0));
+      }
       y += h + ROW_GAP;
     });
 
@@ -311,12 +348,14 @@ export class GridMainOtherFunctions {
   _confirmUpgradeRegion(opt, onDone) {
     const { width, height } = this.scene.scale;
     const DEPTH = 1400;
-    const W = 420, H = 260;
-    const cx = width / 2, cy = height / 2;
     const to = REGION[opt.toKey];
     const from = REGION[opt.fromKey];
     const group = to.upgrade_group;
     const gCfg = group ? REGION_UPGRADE_GROUP[group] : null;
+    const gar = this._garrisonInfo(opt.gridId, to);   // 驻扎人口说明（没有则 null）
+    // 有驻扎说明时弹窗加高，内容整体上移，给底部腾出空间
+    const W = 420, H = 260 + (gar ? 90 : 0), oy = gar ? -45 : 0;
+    const cx = width / 2, cy = height / 2;
 
     const overlay = this.scene.add.rectangle(cx, cy, width, height, 0x000000, 0.6)
       .setDepth(DEPTH).setInteractive();
@@ -325,19 +364,34 @@ export class GridMainOtherFunctions {
     modal.add(this.scene.add.text(0, -H / 2 + 24, '升级确认', {
       fontSize: '16px', color: '#ffd700', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5));
-    modal.add(this.scene.add.text(0, -40,
+    modal.add(this.scene.add.text(0, -40 + oy,
       `将${this._gridName(opt.gridId)}的【${from?.name ?? opt.fromKey}】\n升级为【${to.name}】？`, {
         fontSize: '17px', color: '#f5e6c8', align: 'center', lineSpacing: 6, padding: { top: 4 },
       }).setOrigin(0.5));
-    modal.add(this.scene.add.text(0, 8,
+    modal.add(this.scene.add.text(0, 8 + oy,
       `需要 ${to.round ?? 1} 回合，升级期间原区域继续生效`, {
         fontSize: '13px', color: '#aaaaaa', padding: { top: 4 },
       }).setOrigin(0.5));
     if (gCfg?.limit) {
-      modal.add(this.scene.add.text(0, 36,
+      modal.add(this.scene.add.text(0, 36 + oy,
         this._wrapText(`注意：${gCfg.name}升级永久限 ${gCfg.limit} 次，回合结算开始升级后不可再选择`, W - 90, {
           fontSize: '13px', color: '#ff8a65', padding: { top: 4 },
         }), { fontSize: '13px', color: '#ff8a65', align: 'center', lineSpacing: 4, padding: { top: 4 } }).setOrigin(0.5, 0));
+    }
+
+    if (gar) {
+      // 驻扎人口：确认后这部分人口立即锁定（不能训练士兵 / 给别的驻扎用 / 产生人头税），每回合还要付驻扎消耗
+      const garY = 36 + oy + (gCfg?.limit ? 52 : 0);
+      modal.add(this.scene.add.text(0, garY,
+        this._wrapText(
+          `驻扎${gar.count}人口：确认后锁定这部分人口（不能训练士兵、不产生人头税），每回合消耗 ${gar.upkeepText}；资源不足时该区域本回合增益失效`,
+          W - 60, { fontSize: '13px', color: '#ffb74d', padding: { top: 4 } }),
+        { fontSize: '13px', color: '#ffb74d', align: 'center', lineSpacing: 4, padding: { top: 4 } }).setOrigin(0.5, 0));
+      if (gar.block) {
+        modal.add(this.scene.add.text(0, garY + 62, gar.block, {
+          fontSize: '13px', color: '#ff6b6b', fontStyle: 'bold', padding: { top: 4 },
+        }).setOrigin(0.5, 0));
+      }
     }
 
     const destroy = () => { modal.destroy(true); overlay.destroy(); };
@@ -355,6 +409,9 @@ export class GridMainOtherFunctions {
     };
 
     addBtn(-65, 'common_btn_green', '确认', () => {
+      // 再校验一次驻扎人口（弹窗期间状态可能变化）
+      const block = game.getGarrisonBlockReason(this.saveData, opt.gridId, to);
+      if (block) { game.showTips(this.scene, block); return; }
       destroy();
       game.addAction('civil', 'upgrade_region_' + opt.gridId, {
         gridId: opt.gridId,

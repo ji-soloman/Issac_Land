@@ -583,7 +583,7 @@ export const REGION = {
   imperial_capital: {
     name: '荣耀之都',
     terrainInfo: '升级的主城区',
-    effect_info: '每回合财富+1，食物+1，文化+1，矿石+1；住房+5；所在的主城每有5人口，额外增加1财富税收',
+    effect_info: '每回合财富+1，食物+1，文化+1，矿石+1；住房+5；所在的主城每有5人口，额外增加1财富税收；驻扎4人口',
     effect: {
       normal: {
         housing: 5,
@@ -602,6 +602,10 @@ export const REGION = {
     },
     round: 6,
     color: 'living',
+    // 驻扎人口：升级时空闲人口须多于 4，确认后锁定 4 人口（不能训练士兵、不产生人头税），
+    // 每回合消耗 4×种族繁育单价（garrison_cost 额外消耗暂无）；资源不足时本回合增益失效，详见 function.js 的 settleGarrison
+    garrison: 4,
+    garrison_cost: {},
     update: 1,
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
@@ -612,7 +616,7 @@ export const REGION = {
   academy_capital: {
     name: '奥术之城',
     terrainInfo: '主城区和学院区融合的特区',
-    effect_info: '每回合财富+1，文化+2，魔石+1；住房+3；额外可选择1个学派；学院可选择数量+1；科技研究回合数-1（至少为1）',
+    effect_info: '每回合财富+1，文化+2，魔石+1；住房+3；额外可选择1个学派；学院可选择数量+1；科技研究回合数-1（至少为1）；驻扎4人口',
     effect: {
       normal: {
         housing: 3,
@@ -634,6 +638,10 @@ export const REGION = {
     },
     round: 6,
     color: 'academy',
+    // 驻扎人口：升级时空闲人口须多于 4，确认后锁定 4 人口（不能训练士兵、不产生人头税），
+    // 每回合消耗 4×种族繁育单价（garrison_cost 额外消耗暂无）；资源不足时本回合增益失效，详见 function.js 的 settleGarrison
+    garrison: 4,
+    garrison_cost: {},
     update: 1,
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
@@ -644,7 +652,7 @@ export const REGION = {
   military_capital: {
     name: '铁血要塞',
     terrainInfo: '主城区和军事区融合的特区',
-    effect_info: '每回合食物+2，矿石+2，魔石+1；住房+3；军事改革额外+1；所有兵组人口+2，训练兵组回合数-1',
+    effect_info: '每回合食物+2，矿石+2，魔石+1；住房+3；军事改革额外+1；所有兵组人口+2，训练兵组回合数-1；驻扎4人口',
     effect: {
       normal: {
         housing: 3,
@@ -675,6 +683,10 @@ export const REGION = {
     },
     round: 6,
     color: 'military',
+    // 驻扎人口：升级时空闲人口须多于 4，确认后锁定 4 人口（不能训练士兵、不产生人头税），
+    // 每回合消耗 4×种族繁育单价（garrison_cost 额外消耗暂无）；资源不足时本回合增益失效，详见 function.js 的 settleGarrison
+    garrison: 4,
+    garrison_cost: {},
     update: 1,
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
@@ -685,7 +697,7 @@ export const REGION = {
   holy_capital: {
     name: '天启之城',
     terrainInfo: '主城区和圣地融合的特区',
-    effect_info: '每回合财富+2，魔石+2；住房+5；科技研究消耗的文化-5（至少为1）；宗教信仰条目+1',
+    effect_info: '每回合财富+2，魔石+2；住房+5；科技研究消耗的文化-5（至少为1）；宗教信仰条目+1；驻扎4人口',
     effect: {
       normal: {
         housing: 5,
@@ -704,6 +716,10 @@ export const REGION = {
     },
     round: 6,
     color: 'holy',
+    // 驻扎人口：升级时空闲人口须多于 4，确认后锁定 4 人口（不能训练士兵、不产生人头税），
+    // 每回合消耗 4×种族繁育单价（garrison_cost 额外消耗暂无）；资源不足时本回合增益失效，详见 function.js 的 settleGarrison
+    garrison: 4,
+    garrison_cost: {},
     update: 1,
     // 王城：属于 capital 组（受 REGION_UPGRADE_GROUP.capital 约束：需科技、永久限1次），只能从主城区升级
     upgrade_group: 'capital',
@@ -725,6 +741,11 @@ export const REGION = {
 //                     x / y 是相对默认位置（底边中心对齐六边形下顶点）的偏移，单位是地图坐标。
 //                     参数用 GM 面板里的【调整都城图片】拖出来，点【复制参数】粘贴到这里。
 //   upgrade_from      白名单：只允许从这些区域 key 升级（王城只能从 main 升级）；缺省 = 不限
+//   garrison          驻扎人口数：建造 / 升级前所在城池【空闲人口】须多于该数；确认后锁定（不能训练士兵、不能给别的驻扎用、
+//                     不产生人头税，但仍占总人口）；每回合消耗 驻扎数×（种族繁育单价+garrison_cost）的资源，
+//                     付不起则本回合 effect.turn 和非永久 effect.normal（行动条、研究/训练回合、文化减免…）失效，
+//                     住房 / 各类槽位 / 兵种人口上限这类永久效果不受影响（规则见 function.js 顶部注释，建筑也可以写）
+//   garrison_cost     每个驻扎人口每回合的额外资源消耗，如 { magic: 1 }；缺省 = 无
 //
 // 升级判定规则（canUpgradeRegion）：
 //   1. 目标必须有 update 且 > 原区域 update

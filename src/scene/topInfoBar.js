@@ -1,5 +1,6 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { get } from '../system/i18n.js';
+import { game } from '../system/function.js';
 import { ERA, getNextEraMissions } from '../data/era.js';
 
 import { Settings } from '../view/settings.js';
@@ -48,7 +49,13 @@ export class TopInfoBar {
       fontSize: '14px', color: '#aaaaaa', fontFamily: 'Arial'
     }).setOrigin(0, 0);
 
-    this.tooltip.add([this.tooltipBg, this.tooltipIcon, this.tooltipTitle, this.tooltipValue, this.tooltipIncome]);
+    // 回合消耗（驻扎人口的每回合资源消耗；为 0 时整行不显示）
+    this.tooltipConsume = this.scene.add.text(60, 44, '回合消耗：0', {
+      fontSize: '14px', color: '#ff8a80', fontFamily: 'Arial'
+    }).setOrigin(0, 0);
+    this.tooltipConsume.setVisible(false);
+
+    this.tooltip.add([this.tooltipBg, this.tooltipIcon, this.tooltipTitle, this.tooltipValue, this.tooltipIncome, this.tooltipConsume]);
   }
 
   initUI() {
@@ -460,7 +467,15 @@ export class TopInfoBar {
     this.tooltipIcon.setScale(32 / maxDim);
 
     this.tooltipTitle.setText(get.translation(resKey));
-    this.tooltipValue.setText(`当前数量：${actualValue}`);
+    // 人口：额外显示被驻扎锁定的人口（它们依旧算在总人口里，只是不能被消耗、不产生人头税）
+    let lockedPop = 0;
+    if (resKey === 'population') {
+      const sd = this.scene.saveData;
+      for (const [gid, gn] of Object.entries(sd?.map?.grids ?? {})) {
+        if (gn?.isMain) lockedPop += game.getGarrisonLocked(sd, gid).total;
+      }
+    }
+    this.tooltipValue.setText(`当前数量：${actualValue}${lockedPop > 0 ? `（驻扎 ${lockedPop}）` : ''}`);
 
     let maxTextWidth = Math.max(this.tooltipTitle.width, this.tooltipValue.width);
     let bgHeight = 60;
@@ -468,6 +483,7 @@ export class TopInfoBar {
     // 判断是否为人口，人口不显示回合收入
     if (resKey === 'population') {
       this.tooltipIncome.setVisible(false);
+      this.tooltipConsume.setVisible(false);
       this.tooltipTitle.setY(-18);
       this.tooltipValue.setY(4);
       bgHeight = 60;
@@ -475,14 +491,31 @@ export class TopInfoBar {
       const incomeValue = this.getResourceValue(resKey + '_income');
       this.tooltipIncome.setText(`回合收入：${incomeValue}`);
       this.tooltipIncome.setVisible(true);
-
-      // 调整Y轴布局，让三行字整体居中显示
-      this.tooltipTitle.setY(-26);
-      this.tooltipValue.setY(-4);
-      this.tooltipIncome.setY(16);
-      bgHeight = 68; // 加大背景高度以容纳新的一行
-
       maxTextWidth = Math.max(maxTextWidth, this.tooltipIncome.width);
+
+      // 回合消耗：驻扎人口每回合要付的资源（和区域 / 建筑的回合收入同一套结算，见 gameScene 第 3.8 步）。
+      // 这种资源没有消耗（0）时不显示这一行。
+      const consume = game.getGarrisonUpkeepTotal(this.scene.saveData).total[resKey] ?? 0;
+      if (consume > 0) {
+        this.tooltipConsume.setText(`回合消耗：${consume}`);
+        this.tooltipConsume.setVisible(true);
+        maxTextWidth = Math.max(maxTextWidth, this.tooltipConsume.width);
+
+        // 四行字整体居中
+        this.tooltipTitle.setY(-40);
+        this.tooltipValue.setY(-18);
+        this.tooltipIncome.setY(4);
+        this.tooltipConsume.setY(26);
+        bgHeight = 92;
+      } else {
+        this.tooltipConsume.setVisible(false);
+
+        // 三行字整体居中显示
+        this.tooltipTitle.setY(-26);
+        this.tooltipValue.setY(-4);
+        this.tooltipIncome.setY(16);
+        bgHeight = 68;
+      }
     }
 
     // 动态计算悬浮窗宽度
@@ -497,6 +530,9 @@ export class TopInfoBar {
       this.tooltipBg.geom.height = bgHeight;
       this.tooltipBg.updateData();
     }
+    // 关键：矩形的原点偏移（origin 0, 0.5 → 高度的一半）是按旧高度缓存的，只改 height 不会刷新，
+    // 高度变大后背景会整体往下偏、文字就“歪”到边框外；这里手动刷新一次显示原点，让背景始终以 y=0 为垂直中心。
+    this.tooltipBg.updateDisplayOrigin?.();
   }
 
   showTooltip(resKey, pointer) {

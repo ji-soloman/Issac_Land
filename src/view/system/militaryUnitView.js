@@ -1915,8 +1915,9 @@ class UnitDetailPage {
     const otherCost = Object.entries(cost).filter(([k]) => k !== 'population');
 
     // population 是否满足：若已有恢复的选中主城，直接计算；否则视为不满足
+    // 只算【空闲人口】：被驻扎锁定的人口不能用于训练
     let popEnough = selectedMainGn
-      ? (grids[selectedMainGn]?.population ?? 0) >= popAmount
+      ? game.getCityFreePopulation(saveData, selectedMainGn) >= popAmount
       : false;
 
     // population 行（如果有）
@@ -1965,7 +1966,7 @@ class UnitDetailPage {
           selLabel.setText(gnName);
 
           // 重新判断人口是否足够
-          popEnough = (grids[gnId]?.population ?? 0) >= popAmount;
+          popEnough = game.getCityFreePopulation(saveData, gnId) >= popAmount;
           popText.setColor(popEnough ? '#3a7a3a' : '#c0392b');
 
           // 更新训练按钮状态
@@ -2072,7 +2073,13 @@ class UnitDetailPage {
     // 找出所有 isMain 的主城
     const mainCities = Object.entries(grids)
       .filter(([, gn]) => gn.isMain)
-      .map(([id, gn]) => ({ id, name: gn.name ?? id, pop: gn.population ?? 0 }));
+      .map(([id, gn]) => ({
+        id,
+        name: gn.name ?? id,
+        // 只显示 / 判断空闲人口（总人口 − 驻扎锁定）
+        pop: game.getCityFreePopulation(this.scene.saveData, id),
+        locked: game.getGarrisonLocked(this.scene.saveData, id).total,
+      }));
 
     const H = Math.max(160, 70 + mainCities.length * 46 + 56);
 
@@ -2119,7 +2126,7 @@ class UnitDetailPage {
     refreshConfirmBtn();
     modal.add([confirmBg, confirmTxt]);
 
-    mainCities.forEach(({ id, name, pop }, i) => {
+    mainCities.forEach(({ id, name, pop, locked }, i) => {
       const ry = -H / 2 + 56 + i * 46;
       const enough = pop >= popNeeded;
       const itemBg = this.scene.add.rectangle(0, ry, W - 24, 38,
@@ -2130,7 +2137,7 @@ class UnitDetailPage {
       const nameT = this.scene.add.text(-W / 2 + 20, ry, name, {
         fontSize: '15px', color: enough ? '#dddddd' : '#666666', padding: { top: 4 },
       }).setOrigin(0, 0.5);
-      const popT = this.scene.add.text(W / 2 - 20, ry, `人口：${pop}`, {
+      const popT = this.scene.add.text(W / 2 - 20, ry, `${locked > 0 ? '空闲人口' : '人口'}：${pop}${locked > 0 ? `（驻扎${locked}）` : ''}`, {
         fontSize: '13px', color: enough ? '#aaaaaa' : '#555555', padding: { top: 4 },
       }).setOrigin(1, 0.5);
 

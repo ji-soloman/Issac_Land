@@ -1436,8 +1436,9 @@ export class GridPanel {
     }).setOrigin(0.5);
     modal.add(title);
 
-    // 当前人口
-    const popLabel = this.scene.add.text(0, -H / 2 + 56, `当前人口：${curPop}/${housingCap}`, {
+    // 当前人口（被驻扎锁定的人口依旧算总人口，繁衍 / 住房照常；只是不产生人头税、不能被消耗）
+    const garrisonLocked = game.getGarrisonLocked(this.data, this.gridId).total;
+    const popLabel = this.scene.add.text(0, -H / 2 + 56, `当前人口：${curPop}/${housingCap}${garrisonLocked > 0 ? `（驻扎 ${garrisonLocked}）` : ''}`, {
       fontFamily: 'sans-serif', fontSize: '16px', color: '#f5e6c8',
     }).setOrigin(0.5);
     modal.add(popLabel);

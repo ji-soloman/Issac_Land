@@ -375,14 +375,23 @@ export class GameScene extends Phaser.Scene {
         military.addSoldier(unitKey, data, this);
       }
 
+      // 3.8【驻扎结算】每个已建成的驻扎区域 / 建筑支付 驻扎人数×（种族繁育单价+额外消耗）的资源；
+      // 付不起的整体失效，本回合不提供回合资源 / 额外行动条等增益（住房、槽位这类永久效果不受影响）。
+      // 放在区域 / 建筑倒计时（第 3 步）之后，新建成的当回合就开始计；放在第 4 步之前，第 4 步按结果汇总收益。
+      const garrisonReport = game.settleGarrison(data);
+      const garrisonFailed = garrisonReport.filter(r => !r.ok);
+
       // ToDo:
       // 4.计算目前收益给下回合加
       // *注：每个地块依次结算，增加和减少，然后全部挂进回合收入里，然后给下回合去结算（包括人头税）
       const grids = data.map.grids;
 
-      for (const grid of Object.values(grids)) {
+      for (const [gridKey, grid] of Object.entries(grids)) {
         const region = grid.region;
         if (!region) continue;
+
+        // 驻扎消耗付不起：该区域本回合的回合资源全部失效
+        if (!game.isGarrisonActive(data, gridKey, 'region')) continue;
 
         const effect = REGION?.[region]?.effect?.turn;
         if (!effect) continue;
@@ -403,12 +412,13 @@ export class GameScene extends Phaser.Scene {
 
       // 建筑收入：已建成的建筑（grid.buildings = { [key]: true }）的 effect.turn 同区域一样汇总
       // 支持数值，或 ({ grid }) => 数值 的函数写法；建造中的建筑（createBuilding）不产出
-      for (const grid of Object.values(grids)) {
+      for (const [gridKey, grid] of Object.entries(grids)) {
         const buildings = grid.buildings;
         if (!buildings) continue;
 
         for (const [buildingKey, built] of Object.entries(buildings)) {
           if (!built) continue;
+          if (!game.isGarrisonActive(data, gridKey, 'building', buildingKey)) continue;
 
           const effect = BUILDING?.[buildingKey]?.effect?.turn;
           if (!effect) continue;
@@ -433,10 +443,13 @@ export class GameScene extends Phaser.Scene {
 
       data.resource ??= {};
 
-      // 人口收入：每个人口（gn.population）产生 1 财富，汇总后计入本回合收益
-      for (const grid of Object.values(grids)) {
+      // 人口收入：每个【空闲】人口（总人口 − 被驻扎锁定的人口）产生 1 财富，汇总后计入本回合收益。
+      // 驻扎人口依旧算城池总人口（住房、繁衍、荣耀之都按总人口加税等不受影响），只是自己不产生人头税。
+      // pending:false —— 此时本回合的行动已经落到 createRegion / createBuilding，不能再算一遍行动列表。
+      for (const [gridKey, grid] of Object.entries(grids)) {
         if (grid.population) {
-          total.wealth += grid.population;
+          const locked = grid.isMain ? game.getGarrisonLocked(data, gridKey, { pending: false }).total : 0;
+          total.wealth += Math.max(0, grid.population - locked);
         }
       }
 
@@ -516,6 +529,11 @@ export class GameScene extends Phaser.Scene {
       this.mapView.refreshMap(data.map);
       if (this.topInfoBar) {
         this.topInfoBar.refresh();
+      }
+      // 13.驻扎消耗付不起的提示
+      if (garrisonFailed.length > 0) {
+        const names = [...new Set(garrisonFailed.map(r => r.source))].join('、');
+        game.showTips(this, `${names}的驻扎消耗不足，本回合增益失效`);
       }
     });
 
@@ -920,6 +938,13 @@ export class GameScene extends Phaser.Scene {
     this.events.on('build_region', (result) => {
       console.log('建造特区信息：', result);
 
+      // 驻扎人口：空闲人口必须多于驻扎数
+      const garrisonBlock = game.getGarrisonBlockReason(this.saveData, result.gridId, REGION[result.regionKey]);
+      if (garrisonBlock) {
+        game.showTips(this, garrisonBlock);
+        return;
+      }
+
       game.addAction('civil', 'build_region_' + result.gridId, result, {
         onFail: (info) => {
           if (info.reason === 'limit') {
@@ -957,6 +982,13 @@ export class GameScene extends Phaser.Scene {
           game.showTips(this, `每座城市只能建造一座【${BUILDING[result.buildingKey].name}】`);
           return;
         }
+      }
+
+      // 1.6) 驻扎人口：空闲人口必须多于驻扎数（确认后这部分人口锁定）
+      const garrisonBlock = game.getGarrisonBlockReason(data, result.gridId, BUILDING[result.buildingKey]);
+      if (garrisonBlock) {
+        game.showTips(this, garrisonBlock);
+        return;
       }
 
       // 2) 行动条是否还有空位
@@ -1013,6 +1045,12 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.events.on('train_soldier', ({ unitKey, cost, round, unitName, selectedMainGn }) => {
+      // 训练消耗的人口只能用【空闲人口】，被驻扎锁定的人口不能再被消耗
+      if (cost?.population && selectedMainGn
+        && game.getCityFreePopulation(this.saveData, selectedMainGn) < cost.population) {
+        game.showTips(this, '空闲人口不足（部分人口已驻扎锁定）');
+        return;
+      }
       const actionKey = 'train_soldier_' + unitKey + '_' + Date.now();
       game.addAction('military', actionKey, { unitKey, cost, round, unitName, selectedMainGn }, {
         onSuccess: () => {
