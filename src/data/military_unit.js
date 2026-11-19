@@ -2,6 +2,10 @@ export const MILITARY_UNIT = {
   scout: {
     name: "斥候",
     type: "scout",
+    // 普通斥候：除半人马、虚海渡人外的种族使用（用于兵种图鉴的种族过滤，GM 不受限）
+    special({ race }) {
+      return race !== 'centaur' && race !== 'voidwalker';
+    },
     image: "assets/military/soliders/scout.jpg",
     equipments: {},
     basic_stats: {
@@ -26,6 +30,10 @@ export const MILITARY_UNIT = {
   centaur_scout: {
     name: "半人马斥候",
     type: "scout",
+    // 半人马专属斥候
+    special({ race }) {
+      return race === 'centaur';
+    },
     image: "assets/military/soliders/centaur_scout.jpg",
     equipments: {},
     basic_stats: {
@@ -50,6 +58,10 @@ export const MILITARY_UNIT = {
   devil_scout: {
     name: "魔教哨探",
     type: "scout",
+    // 虚海渡人专属斥候
+    special({ race }) {
+      return race === 'voidwalker';
+    },
     image: "assets/military/soliders/devil_scout.jpg",
     equipments: {},
     basic_stats: {
@@ -223,9 +235,9 @@ export const MILITARY_UNIT = {
     },
     special_ability: {
       Inquisition_dark: true,
-      magic_fire_lv3_1: true,
-      magic_ice_lv1_1: true,
-      mutation_devil_lv2_1: true,
+      magic_fire_lv3_1:true,
+      magic_ice_lv1_1:true,
+      mutation_devil_lv2_1:true,
     },
     training: {
       cost: {
@@ -235,14 +247,16 @@ export const MILITARY_UNIT = {
     },
   },
   // 骷髅——由罗睺一斩（mutation_devil_lv3_1）等技能在战斗中途召唤，不参与正常的兵种训练/征募，
-  // 是一个基础数值很低的"填充型"召唤物（见 military_term.js 的 summon_1 词条说明）。
+  // 基础六维沿用被转化目标死亡时的数值（见 battleSystem.js 的 _summonTroop），此处 basic_stats
+  // 留空即可。canCreate:false 表示这个兵种不参与正常的兵种图鉴/训练系统：
+  // 不会出现在兵组图鉴里，玩家也无法训练它。
   skeleton: {
     name: "骷髅",
     type: "summon",
     image: "assets/military/soliders/skeleton.jpg",
     quality: 'normal',
     equipments: {},
-    canCreate: false,
+    canCreate:false,
     basic_stats: {
     },
     special_ability: {},

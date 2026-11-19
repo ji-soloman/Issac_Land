@@ -192,11 +192,15 @@ export class CreateBuilding {
     const gridData = this.currentData;
     const civilActions = this.data.actionList?.civil ?? {};
 
+    const isGm = this.data.gm === true;
     let index = 0;
     for (const [key, config] of Object.entries(BUILDING)) {
       // 不符合当前区域的建筑直接跳过，不显示在列表中
       const regionCheck = this.checkRegion(gridData, config);
       if (!regionCheck) continue;
+
+      // 种族专属建筑（require_race）：普通玩家只看到本种族的，GM 全部显示
+      if (!isGm && !this.checkRace(this.data.race, config)) continue;
 
       // 建造状态判断（优先级：建造中 > 已建造）
       const isBuilt = !!(gridData.buildings?.[key]);

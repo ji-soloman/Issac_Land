@@ -173,14 +173,40 @@ export class CreateRegion {
     this.scene.tweens.add({ targets: this.container, alpha: 1, duration: 250 });
   }
 
+  /**
+   * 区域是否出现在【创建区域】列表里。
+   * GM（saveData.gm === true）全部显示；普通玩家只看到"原始区域"里本种族能用的：
+   *   · 不显示主城区（只会随建城生成）
+   *   · 不显示带 update 等级的升级区域（荣耀之都、奥术之城等，只能走【升级区域】）
+   *   · 有 special({ race }) 的区域，种族不满足就不显示
+   *     （矿场 / 灵脉 / 养尸地、农田 / 灵田、原始部落等各族特区都按这条自动区分）
+   */
+  isRegionVisible(key, config, isGm) {
+    if (isGm) return true;
+    if (key === 'main') return false;
+    if (config.update != null) return false;
+    if (typeof config.special === 'function') {
+      try {
+        if (!config.special({ race: this.data.race })) return false;
+      } catch (e) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   renderRegionList(areaWidth, listAreaHeight) {
     const startX = areaWidth * 0.12;
     const colSpacing = (areaWidth * 0.76) / 3;
     const rowSpacing = 200;
     const cols = 4;
 
+    const isGm = this.data.gm === true;
     let index = 0;
     for (const [key, config] of Object.entries(REGION)) {
+      // 普通玩家看不到的区域直接跳过（index 只统计显示出来的，保证网格排布连续）
+      if (!this.isRegionVisible(key, config, isGm)) continue;
+
       const r = Math.floor(index / cols);
       const c = index % cols;
 

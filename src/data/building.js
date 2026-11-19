@@ -434,7 +434,7 @@ export const BUILDING = {
       return true;
     },
     require_race(race) {
-      return race == 'voidfolk';
+      return race == 'voidwalker';
     },
     cost: {
       magic: 1,

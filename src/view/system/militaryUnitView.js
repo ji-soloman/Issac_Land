@@ -203,7 +203,13 @@ export class MilitaryUnitViewer {
 
     // canCreate === false 的兵种（例如骷髅，只由技能在战斗中途召唤）不参与正常的
     // 兵种训练/征募，也不应该出现在兵组图鉴里，这里先过滤掉。
-    const units = Object.entries(MILITARY_UNIT).filter(([, unit]) => unit.canCreate !== false);
+    // 种族专属兵种（MILITARY_UNIT 里写了 special({ race }) 的，如三种斥候）：
+    // GM（saveData.gm === true）全部显示；普通玩家只看到本种族可用的。
+    const isGm = this.saveData?.gm === true;
+    const race = this.saveData?.race;
+    const units = Object.entries(MILITARY_UNIT)
+      .filter(([, unit]) => unit.canCreate !== false)
+      .filter(([, unit]) => isGm || typeof unit.special !== 'function' || !!unit.special({ race }));
 
     // 计算网格布局
     const availableWidth = width - sideMargin * 2;
