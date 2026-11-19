@@ -1,10 +1,10 @@
 export const DUNGEON = {
   1: {
-    name: '埃及侍女',
+    name: '初入玛雅',
     image:'assets/dungeon/select/1.png',
     units: {
       1: {
-        name: '埃及侍女',
+        name: '玛雅侍女',
         type: "ranged",
         image: "assets/dungeon/boss/1.png",
         equipments: {},
@@ -50,6 +50,12 @@ export const DUNGEON = {
       },
     },
     team:['2','2','1','1'],
-    position:'defend'
+    position:'defend',
+    // 通关奖励：{ [物品编号]: 数量 }，物品编号对应 data/item.js 的 ITEM
+    // 11 = 远古遗物（副本积分），101 = 祭祀符文
+    reward: {
+      11: 3,
+      101: 1,
+    },
   }
 }

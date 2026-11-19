@@ -1,5 +1,6 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { DUNGEON } from '../../data/dungeon.js';
+import { ITEM } from '../../data/item.js';
 import { DungeonSelector } from './dungeonSelector.js';
 import { game } from '../../system/function.js';
 
@@ -28,21 +29,28 @@ const BG_PATH = 'assets/background/dungeon.png';
  * 版式参考"选关 + 详情"的经典三栏布局：
  *   左栏：当前选中关卡的大图（固定宽3:高4）+ 关卡名
  *   中栏：关卡列表（外框内固定显示5个，超出时右侧滚动条/滚轮滚动；点击切换选中的关卡）
- *   右栏：关卡详情（名称/等级/简介/敌方阵容）+ "开始挑战"按钮
+ *   右栏：关卡详情（名称/等级/简介/敌方阵容/通关奖励）+ "开始挑战"按钮
  *
  * 暂时没有素材/功能的部分一律不做：队伍配置（点"开始挑战"后直接进入选兵出战面板
- * DungeonSelector，不再单独配置队伍）、掉落物、奖励。
+ * DungeonSelector，不再单独配置队伍）、掉落物。
  *
  * 关卡数据全部来自 data/dungeon.js 的 DUNGEON，以后往里加关卡会自动出现在列表里：
  *   - level（可选）：关卡等级，缺省时用在列表里的序号
  *   - des（可选）：关卡简介文字，缺省时不显示简介
+ *   - reward（可选）：通关奖励 { [物品编号]: 数量 }，物品定义见 data/item.js，缺省时不显示奖励栏
  */
 export class DungeonListView {
-  constructor(scene, saveData) {
+  /**
+   * @param {string|number} [selectedId] - 初始选中的关卡（从战斗返回时用来恢复到刚才的关卡），缺省选第一关
+   */
+  constructor(scene, saveData, selectedId = null) {
     this.scene = scene;
     this.saveData = saveData;
     this.entries = Object.entries(DUNGEON);
-    this.selectedId = this.entries.length > 0 ? this.entries[0][0] : null;
+    const wanted = selectedId != null ? String(selectedId) : null;
+    this.selectedId = this.entries.some(([k]) => k === wanted)
+      ? wanted
+      : (this.entries.length > 0 ? this.entries[0][0] : null);
     this.listScroll = 0; // 关卡列表当前滚动位置（像素）
     this._loadAndBuild();
   }
@@ -51,6 +59,11 @@ export class DungeonListView {
   _levelOf(id) {
     const idx = this.entries.findIndex(([k]) => k === id);
     return DUNGEON[id]?.level ?? (idx + 1);
+  }
+
+  /** 奖励物品图标的纹理 key（和其他界面共用同一份物品贴图缓存） */
+  _itemKey(itemId) {
+    return `item_${itemId}`;
   }
 
   /** 敌方单位头像的纹理 key——和 DungeonSelector/BattleSystem 里 boss 的 soldier_${name} 完全一致，可共用缓存 */
@@ -78,6 +91,10 @@ export class DungeonListView {
     this.entries.forEach(([id, data]) => {
       need(`dungeon_select_${id}`, data.image);
       Object.entries(data.units ?? {}).forEach(([unitKey, u]) => need(this._bossKey(id, unitKey), u.image));
+    });
+    // 通关奖励物品图标（物品定义见 data/item.js 的 ITEM[id].image）
+    this.entries.forEach(([, data]) => {
+      Object.keys(data.reward ?? {}).forEach(itemId => need(this._itemKey(itemId), ITEM[itemId]?.image));
     });
 
     if (keysToLoad.length === 0) {
@@ -180,6 +197,7 @@ export class DungeonListView {
 
   /** 整体重绘：切换选中关卡时调用（销毁动态子容器的全部内容后按 this.selectedId 重建） */
   _renderAll() {
+    this._hideItemTip();
     this.dynContainer.removeAll(true);
     const { width, height } = this.scene.scale;
 
@@ -434,6 +452,50 @@ export class DungeonListView {
       }).setOrigin(0.5));
     });
 
+    // 通关奖励：data.reward = { [物品编号]: 数量 }，在敌方阵容下方展示物品图标+名称，右下角是数量
+    const rewards = Object.entries(data.reward ?? {});
+    if (rewards.length > 0) {
+      const teamRows = Math.max(1, Math.ceil(team.length / perRow));
+      cy += teamRows * (iconSize + 40) + 6;
+
+      c.add(this.scene.add.text(x + pad, cy, '通关奖励', {
+        fontSize: '17px', color: '#8a4a10', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0, 0));
+      cy += 32;
+
+      const boxSize = 60, boxGap = 14;
+      rewards.forEach(([itemId, count], i) => {
+        const def = ITEM[itemId];
+        const bx = x + pad + i * (boxSize + boxGap);
+
+        c.add(this.scene.add.rectangle(bx, cy, boxSize, boxSize, 0x2a2418, 0.9).setOrigin(0, 0)
+          .setStrokeStyle(2, 0x8a6a2a, 1));
+
+        const key = this._itemKey(itemId);
+        if (this.scene.textures.exists(key)) {
+          c.add(game.addFittedImage(this.scene, bx + boxSize / 2, cy + boxSize / 2, key, boxSize - 8, boxSize - 8));
+        }
+        // 数量：图标右下角，黑字白边保证在任何图标上都看得清
+        c.add(this.scene.add.text(bx + boxSize - 4, cy + boxSize - 2, `×${count}`, {
+          fontSize: '14px', color: '#ffffff', fontStyle: 'bold', padding: { top: 2 },
+          stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(1, 1));
+        // 物品名称：图标下方
+        c.add(this.scene.add.text(bx + boxSize / 2, cy + boxSize + 14, def?.name ?? `物品${itemId}`, {
+          fontSize: '13px', color: '#3b2a10', align: 'center', padding: { top: 4 },
+          wordWrap: { width: boxSize + boxGap },
+        }).setOrigin(0.5));
+
+        // 透明命中区域：鼠标悬浮时显示物品浮窗（名称 + info + ref）
+        const hit = this.scene.add.rectangle(bx, cy, boxSize, boxSize, 0, 0).setOrigin(0, 0)
+          .setInteractive({ useHandCursor: false });
+        hit.on('pointerover', (ptr) => this._showItemTip(def, itemId, ptr));
+        hit.on('pointermove', (ptr) => this._moveItemTip(ptr));
+        hit.on('pointerout',  () => this._hideItemTip());
+        c.add(hit);
+      });
+    }
+
     // "开始挑战"按钮（面板右下角）：直接进入选兵出战面板
     this._renderStartButton(x + w - pad - 90, y + h - pad - 23);
   }
@@ -461,12 +523,65 @@ export class DungeonListView {
     c.add([hit, txt]);
   }
 
+  /**
+   * 物品浮窗：第一行物品名（金色加粗），其下依次是 info（说明）和 ref（获取途径），
+   * 空字段不显示。浮窗跟随鼠标，贴近屏幕边缘时自动翻到指针另一侧。
+   */
+  _showItemTip(def, itemId, ptr) {
+    this._hideItemTip();
+    const W = 240, pad = 10;
+    const tip = this.scene.add.container(0, 0).setDepth(DEPTH + 50);
+
+    const bg = this.scene.add.rectangle(0, 0, W, 10, 0x111122, 0.95).setOrigin(0, 0)
+      .setStrokeStyle(1, 0xb8963e, 1);
+    tip.add(bg);
+
+    let ty = pad;
+    const addLine = (text, style, gap) => {
+      const t = this.scene.add.text(pad, ty, text, {
+        padding: { top: 2 }, wordWrap: { width: W - pad * 2, useAdvancedWrap: true }, lineSpacing: 3, ...style,
+      }).setOrigin(0, 0);
+      tip.add(t);
+      ty += t.height + gap;
+    };
+
+    addLine(def?.name ?? `物品${itemId}`, { fontSize: '16px', color: '#ffcc44', fontStyle: 'bold' }, 6);
+    if (def?.info) addLine(def.info, { fontSize: '13px', color: '#dddddd' }, 6);
+    if (def?.ref)  addLine(def.ref,  { fontSize: '13px', color: '#9ec7ff' }, 6);
+
+    const H = ty - 6 + pad;
+    bg.setSize(W, H);
+    tip._w = W; tip._h = H;
+
+    this._itemTip = tip;
+    this._moveItemTip(ptr);
+  }
+
+  _moveItemTip(ptr) {
+    const tip = this._itemTip;
+    if (!tip) return;
+    const { width, height } = this.scene.scale;
+    let tx = ptr.x + 16, ty = ptr.y + 16;
+    if (tx + tip._w > width - 8) tx = ptr.x - 16 - tip._w;
+    if (ty + tip._h > height - 8) ty = ptr.y - 16 - tip._h;
+    tip.setPosition(Math.max(8, tx), Math.max(8, ty));
+  }
+
+  _hideItemTip() {
+    if (this._itemTip) { this._itemTip.destroy(true); this._itemTip = null; }
+  }
+
   _enterLevel(dungeonId) {
+    const { scene, saveData } = this;
     this.destroy();
-    new DungeonSelector(this.scene, this.saveData, dungeonId);
+    // 从选兵/战斗退出（含战斗结束）后回到副本选关界面，并保持刚才选中的关卡
+    new DungeonSelector(scene, saveData, dungeonId, {
+      onExit: () => new DungeonListView(scene, saveData, dungeonId),
+    });
   }
 
   destroy() {
+    this._hideItemTip();
     if (this._wheelHandler) { this.scene.input.off('wheel', this._wheelHandler); this._wheelHandler = null; }
     this._clearListMask();
     this.root?.destroy(true);

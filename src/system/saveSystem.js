@@ -31,6 +31,7 @@ const DEFAULT_SAVE_TEMPLATE = {
     grids: {}
   },
   buff: {},
+  item: {}, // 物品背包：{ [物品编号]: 数量 }，物品定义见 data/item.js
   tech_tree: {
     unlocked: {
       farming_1: true,
@@ -298,6 +299,9 @@ class SaveSystem {
    * @private
    */
   _migrateSaveData(saveData) {
+    // 兼容旧存档：补上物品背包字段
+    if (!saveData.item || typeof saveData.item !== 'object') saveData.item = {};
+
     const currentVersion = saveData.meta?.version || '1.0.0';
 
     // 如果已是最新版本，直接返回

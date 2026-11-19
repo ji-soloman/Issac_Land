@@ -154,6 +154,7 @@ function isOnBattlefield(troop) {
  *     revealEnemyHp: false // 可选，默认 false；为 true 时战斗记录会显示敌方体力实际值
  *     closeConfirm: '提示文字' | { message, confirmText?, cancelText? } // 可选，右上角关闭按钮的二级确认框，默认直接关闭
  *     onClose: ({ battle, battleEnded }) => {}  // 可选，通过 ✕ 退出战斗时的回调（销毁前调用）
+ *     onExit: ({ battle, battleEnded }) => {}   // 可选，战场销毁后的回调（✕ 退出/结算面板关闭都会触发，只触发一次）
  *   })
  *
  * 每个 troop 条目的字段结构和 saveData.military 里的兵组记录一致：
@@ -197,6 +198,9 @@ export class BattleSystem {
     //     （未分出胜负就退出，例如副本里放弃战斗，调用方可据此结算次数/奖励）。
     this.closeConfirm = this._normalizeCloseConfirm(battleConfig?.closeConfirm);
     this.onClose = typeof battleConfig?.onClose === 'function' ? battleConfig.onClose : null;
+    //   battleConfig.onExit — 战场被销毁（无论是点 ✕ 退出，还是战斗结算面板点"关闭"）后的回调，
+    //     只触发一次，在战场清理完毕之后调用，用于"战斗结束回到上一级界面"（例如副本回到选关界面）。
+    this.onExit = typeof battleConfig?.onExit === 'function' ? battleConfig.onExit : null;
 
     this._dragState = null; // 当前拖拽状态
     this._battleStarted = false; // 是否已点击开始战斗（决定卡牌是否可拖拽）
@@ -2980,6 +2984,8 @@ export class BattleSystem {
   // 销毁
   // ─────────────────────────────────────────────
   destroy() {
+    if (this._destroyed) return; // 幂等：结算面板关闭/✕退出等多条路径都会走到这里，只销毁并回调一次
+    this._destroyed = true;
     this._hideActionMenu();
     this._endTargeting();
     this._logMaskShape?.destroy();
@@ -2994,6 +3000,14 @@ export class BattleSystem {
     this._closeConfirmOverlay = null;
     this.root?.destroy(true);
     this.overlay?.destroy();
+
+    // 战场清理完毕后再通知外部（例如重新打开副本选关界面）
+    const cb = this.onExit;
+    this.onExit = null;
+    if (cb) {
+      try { cb({ battle: this, battleEnded: !!this._battleEnded }); }
+      catch (e) { console.error('BattleSystem onExit 回调出错', e); }
+    }
   }
 }
 

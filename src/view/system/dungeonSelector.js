@@ -20,7 +20,8 @@ const MAX_PICK    = 5;
  * 暂时不做选关UI——固定自动应用第一关（dungeonId 默认为 '1'）。
  */
 export class DungeonSelector {
-  constructor(scene, saveData, dungeonId = '1') {
+  constructor(scene, saveData, dungeonId = '1', opts = {}) {
+    this.onExit   = opts?.onExit ?? null; // 战斗结束/离开战斗后的回调（例如回到副本选关界面）
     this.scene    = scene;
     this.saveData = saveData;
     this.dungeonId = String(dungeonId);
@@ -60,7 +61,12 @@ export class DungeonSelector {
     const closeTxt = this.scene.add.text(width - 44, 34, '✕', {
       fontSize: '26px', color: '#ff4444', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5);
-    closeHit.on('pointerdown', () => this.destroy());
+    closeHit.on('pointerdown', () => {
+      // 还没开战就退出选兵：同样回到上一级界面（副本选关），而不是直接回到军事行动界面
+      const onExit = this.onExit;
+      this.destroy();
+      onExit?.();
+    });
     this.root.add([closeHit, closeTxt]);
 
     this._buildTroopGrid(width, height);
@@ -253,6 +259,7 @@ export class DungeonSelector {
     const bossPerson = this._buildBossPerson();
     const bossIsAttacker = this.dungeonData.position === 'attack';
 
+    const onExit = this.onExit;
     this.destroy();
 
     new BattleSystem(this.scene, this.saveData, {
@@ -260,6 +267,8 @@ export class DungeonSelector {
       defenders: bossIsAttacker ? [playerPerson] : [bossPerson],
       // 副本模式：点击右上角关闭时需要二级确认（战斗已分出胜负后关闭不再提示）
       closeConfirm: '离开战斗会消耗次数且失去奖励，是否继续？',
+      // 战斗结束（结算面板关闭）或确认离开战斗后，回到副本选关界面而不是直接回到军事行动界面
+      onExit,
     });
   }
 
