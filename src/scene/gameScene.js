@@ -11,6 +11,7 @@ import { get } from '../system/i18n.js';
 
 import { MAPS } from '../data/map/EWland/map.js';
 import { InfoSystem } from '../view/system/infoView.js';
+import { PackageSystem } from '../view/system/packageView.js';
 import { InitGame } from '../view/system/initGame.js';
 import { GridPanel } from '../view/system/gridPanel.js';
 import { CreateWonder } from '../view/system/createWonder.js';
@@ -556,13 +557,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ── GM 面板（调试用）────────────────────────────────
-  // 屏幕左下角的常驻小面板，两个按钮都可以【空行动】直接进入下个回合：
+  // 屏幕左下角的常驻小面板，前两个按钮都可以【空行动】直接进入下个回合：
   //   · 进入下个回合（计入回合）    完整结算，回合数 +1（等同玩家点“下一回合”，只是不要求有行动）
   //   · 进入下个回合（不计入回合）  完整结算（收入、各种倒计时、时代判定都照常），但回合数不 +1
   // 位置想调整只改 GM_PANEL_MARGIN；面板在各系统全屏界面（深度 1000+）之下，打开那些界面时点不到。
   createGmPanel() {
     const W = 220, BTN_H = 30, GAP = 8, PAD = 10, TITLE_H = 22, GM_PANEL_MARGIN = 12;
-    const H = PAD + TITLE_H + 3 * BTN_H + 2 * GAP + PAD;
+    const H = PAD + TITLE_H + 4 * BTN_H + 3 * GAP + PAD;
 
     const panel = this.add.container(0, 0).setDepth(900).setScrollFactor(0);
     const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.6)
@@ -592,10 +593,24 @@ export class GameScene extends Phaser.Scene {
       btn.on('pointerdown', () => btn.setAlpha(0.6));
       btn.on('pointerup', () => { btn.setAlpha(1); onClick(); });
       panel.add([btn, txt]);
+      return { btn, txt };
     };
     addBtn(0, '进入下个回合（计入回合）', 0x27ae60, () => this.gmNextTurn(true));
     addBtn(1, '进入下个回合（不计入回合）', 0x2980b9, () => this.gmNextTurn(false));
     addBtn(2, '调整都城图片（大小 / 偏移）', 0xd35400, () => this.toggleRegionImageAdjust());
+
+    // 成为GM / 移除GM：切换 saveData.gm。GM 模式下仓库会显示全部物品（未拥有的数量为0）。
+    // 按钮文字和颜色随当前 saveData.gm 状态切换。
+    const GM_ON_COLOR = 0x8e44ad, GM_OFF_COLOR = 0x7f8c8d;
+    const gmBtn = addBtn(3, this.saveData.gm === true ? '移除GM' : '成为GM',
+      this.saveData.gm === true ? GM_OFF_COLOR : GM_ON_COLOR, () => {
+        this.saveData.gm = !(this.saveData.gm === true);
+        const isGm = this.saveData.gm === true;
+        gmBtn.txt.setText(isGm ? '移除GM' : '成为GM');
+        gmBtn.btn.setFillStyle(isGm ? GM_OFF_COLOR : GM_ON_COLOR, 1);
+        saveSystem.save();
+        game.showTips(this, isGm ? '已成为GM' : '已移除GM');
+      });
 
     const place = (w, h) => panel.setPosition(GM_PANEL_MARGIN, h - H - GM_PANEL_MARGIN);
     place(this.scale.width, this.scale.height);
@@ -1154,11 +1169,7 @@ export class GameScene extends Phaser.Scene {
         break;
 
       case 'package':
-        // TODO: 创建仓库面板
-        // this.currentSystem = new PackageSystem(this, this.saveData);
-        console.log('TODO: 创建仓库面板');
-        this.systemOpen = false;
-        this.removeOverlay();
+        this.currentSystem = new PackageSystem(this, this.saveData);
         break;
 
       case 'tech_tree':
