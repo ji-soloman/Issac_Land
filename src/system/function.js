@@ -486,6 +486,91 @@ export const game = {
     return total;
   },
 
+  // ── 大图缩小显示去锯齿（mipmap 纹理） ──────────────────────────────
+
+  /**
+   * 为大尺寸素材生成“带 mipmap 的 2 的幂次尺寸纹理”，解决大图缩小显示时的锯齿 / 发糊
+   * （和 mapView.js 里都城立绘用的是同一个办法）。
+   * 原因：WebGL1 只有 2 的幂次尺寸的纹理才能用 mipmap，Phaser 默认又只用 LINEAR 过滤，
+   *       一张 1000+px 的图缩到 100~200px 时，双线性只会采到相邻 4 个像素，边缘必然出现锯齿 / 闪烁。
+   * 做法：用 canvas 逐级对半缩小到“刚好够显示用”的 2 的幂次尺寸，再把纹理缩小过滤改成 LINEAR_MIPMAP_LINEAR（三线性）。
+   * 只有真正缩小（显示尺寸 < 原图 80%）且 2 的幂次尺寸仍小于原图时才生成，否则返回 null，调用方继续用原图（放大 / 近 1:1 不需要）。
+   * @returns {string|null} mip 纹理 key（按目标尺寸缓存，同一张图同一档尺寸只生成一次）
+   */
+  ensureMipTexture(scene, srcKey, dispW, dispH) {
+    const textures = scene?.textures;
+    if (!textures || !textures.exists(srcKey)) return null;
+    const gl = scene.game?.renderer?.gl;
+    if (!gl) return null; // Canvas 渲染没有 mipmap
+    const srcImg = textures.get(srcKey).getSourceImage();
+    const srcW = srcImg?.width, srcH = srcImg?.height;
+    if (!srcW || !srcH || !(dispW > 0) || !(dispH > 0)) return null;
+    if (dispW >= srcW * 0.8 && dispH >= srcH * 0.8) return null;
+
+    const pow2Ceil = (n) => Math.pow(2, Math.ceil(Math.log2(Math.max(2, n))));
+    const texW = Math.min(1024, pow2Ceil(dispW));
+    const texH = Math.min(1024, pow2Ceil(dispH));
+    if (texW >= srcW || texH >= srcH) return null;
+
+    const mipKey = `${srcKey}__mip${texW}x${texH}`;
+    if (textures.exists(mipKey)) return mipKey;
+
+    // 逐级对半缩小，避免一步缩太多时 drawImage 丢像素
+    const drawTo = (img, w, h) => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0, w, h);
+      return c;
+    };
+    let cur = srcImg, cw = srcW, ch = srcH;
+    while (cw > texW * 2 || ch > texH * 2) {
+      const nw = Math.max(texW, Math.round(cw / 2));
+      const nh = Math.max(texH, Math.round(ch / 2));
+      cur = drawTo(cur, nw, nh);
+      cw = nw; ch = nh;
+    }
+    const tex = textures.addCanvas(mipKey, drawTo(cur, texW, texH));
+    if (!tex) return null;
+
+    const wrapper = tex.source?.[0]?.glTexture;
+    if (wrapper?.webGLTexture) {
+      gl.activeTexture(gl.TEXTURE0);
+      const prev = gl.getParameter(gl.TEXTURE_BINDING_2D);
+      gl.bindTexture(gl.TEXTURE_2D, wrapper.webGLTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const ext = gl.getExtension('EXT_texture_filter_anisotropic');
+      if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(4, gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      wrapper.minFilter = gl.LINEAR_MIPMAP_LINEAR;
+      wrapper.magFilter = gl.LINEAR;
+      if (prev) gl.bindTexture(gl.TEXTURE_2D, prev);
+    }
+    return mipKey;
+  },
+
+  /**
+   * 在 (x, y) 处放一张按 maxW × maxH 等比缩放“放进框里”的居中图片（Image，origin 0.5），缩小时自动用 mip 纹理去锯齿。
+   * 用来替换原来的  scene.add.image(...) + setScale(Math.min(maxW / img.width, maxH / img.height))  写法。
+   * 注意 mip 纹理是 2 的幂次尺寸（比例被拉伸过），所以用 setDisplaySize 按原图比例显示，不能再用 img.width / height 算缩放。
+   * 纹理不存在时返回 null（调用方原本就先判断了 textures.exists）。
+   * @returns {Phaser.GameObjects.Image|null}
+   */
+  addFittedImage(scene, x, y, srcKey, maxW, maxH) {
+    if (!scene?.textures?.exists(srcKey)) return null;
+    const src = scene.textures.get(srcKey).getSourceImage();
+    const srcW = src?.width || 1, srcH = src?.height || 1;
+    const s = Math.min(maxW / srcW, maxH / srcH);
+    const dw = srcW * s, dh = srcH * s;
+    const mipKey = this.ensureMipTexture(scene, srcKey, dw, dh);
+    const img = scene.add.image(x, y, mipKey ?? srcKey).setOrigin(0.5);
+    if (mipKey) img.setDisplaySize(dw, dh);
+    else img.setScale(s);
+    return img;
+  },
+
   showTips(scene, tip) {
     const { width, height } = scene.scale;
     const x = width / 2;

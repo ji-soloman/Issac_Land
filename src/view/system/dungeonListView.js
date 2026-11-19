@@ -1,9 +1,10 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { DUNGEON } from '../../data/dungeon.js';
 import { DungeonSelector } from './dungeonSelector.js';
+import { game } from '../../system/function.js';
 
 const DEPTH = 1800;
-const BG_COLOR = 0x0d0d1a;
+const BG_COLOR    = 0x0d0d1a;
 const THEME_COLOR = 0xb8963e;
 
 // UI 素材纹理 key
@@ -212,9 +213,8 @@ export class DungeonListView {
 
     const imgKey = `dungeon_select_${id}`;
     if (this.scene.textures.exists(imgKey)) {
-      const img = this.scene.add.image(x + w / 2, y + h / 2, imgKey);
-      img.setScale(Math.min(w / img.width, h / img.height)).setOrigin(0.5);
-      c.add(img);
+      // 大图缩小显示：走 mip 纹理去锯齿（见 function.js addFittedImage）
+      c.add(game.addFittedImage(this.scene, x + w / 2, y + h / 2, imgKey, w, h));
     } else {
       c.add(this.scene.add.rectangle(x + w / 2, y + h / 2, w, h, 0x333333, 1));
       c.add(this.scene.add.text(x + w / 2, y + h / 2, data.name, {
@@ -303,7 +303,7 @@ export class DungeonListView {
 
       if (!selected) {
         bg.on('pointerover', (p) => { if (inView(p)) bg.setStrokeStyle(2, 0xffd700, 1); });
-        bg.on('pointerout', () => bg.setStrokeStyle(2, 0x555544, 0.8));
+        bg.on('pointerout',  () => bg.setStrokeStyle(2, 0x555544, 0.8));
       }
       bg.on('pointerdown', (p) => {
         if (!inView(p)) return; // 行被滚出可视区（遮罩藏起来了）时忽略点击
@@ -326,7 +326,7 @@ export class DungeonListView {
       this.listThumb = this.scene.add.rectangle(trackX, viewY, barW, thumbH, 0xb8963e, 1).setOrigin(0, 0)
         .setInteractive({ useHandCursor: true, draggable: true });
       this.listThumb.on('pointerover', () => this.listThumb.setFillStyle(0xffd700, 1));
-      this.listThumb.on('pointerout', () => this.listThumb.setFillStyle(0xb8963e, 1));
+      this.listThumb.on('pointerout',  () => this.listThumb.setFillStyle(0xb8963e, 1));
       // 拖动：滑块在轨道内的位置比例 → 列表滚动位置
       this.listThumb.on('drag', (pointer, dragX, dragY) => {
         const range = viewH - thumbH;
@@ -426,9 +426,7 @@ export class DungeonListView {
 
       const key = this._bossKey(id, unitKey);
       if (this.scene.textures.exists(key)) {
-        const img = this.scene.add.image(ix + iconSize / 2, iy + iconSize / 2, key);
-        img.setScale(Math.min((iconSize - 6) / img.width, (iconSize - 6) / img.height)).setOrigin(0.5);
-        c.add(img);
+        c.add(game.addFittedImage(this.scene, ix + iconSize / 2, iy + iconSize / 2, key, iconSize - 6, iconSize - 6));
       }
       c.add(this.scene.add.text(ix + iconSize / 2, iy + iconSize + 14, unitDef?.name ?? '', {
         fontSize: '13px', color: '#3b2a10', align: 'center', padding: { top: 4 },
@@ -457,9 +455,9 @@ export class DungeonListView {
     }).setOrigin(0.5);
 
     hit.on('pointerover', () => hit.setAlpha(0.8));
-    hit.on('pointerout', () => hit.setAlpha(1));
+    hit.on('pointerout',  () => hit.setAlpha(1));
     hit.on('pointerdown', () => hit.setAlpha(0.6));
-    hit.on('pointerup', () => { hit.setAlpha(1); this._enterLevel(this.selectedId); });
+    hit.on('pointerup',   () => { hit.setAlpha(1); this._enterLevel(this.selectedId); });
     c.add([hit, txt]);
   }
 

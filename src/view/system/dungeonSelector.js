@@ -2,6 +2,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { DUNGEON } from '../../data/dungeon.js';
 import { BattleSystem } from './battleSystem.js';
+import { game } from '../../system/function.js';
 
 const DEPTH = 1800;
 const BG_COLOR    = 0x0d0d1a;
@@ -98,10 +99,8 @@ export class DungeonSelector {
 
     const imgKey = `soldier_${soldier.name}`;
     if (this.scene.textures.exists(imgKey)) {
-      const img = this.scene.add.image(0, -14, imgKey);
-      const scale = Math.min((w - 16) / img.width, (h - 50) / img.height);
-      img.setScale(scale).setOrigin(0.5);
-      container.add(img);
+      // 兵组大图缩小到卡片里：走 mip 纹理去锯齿（见 function.js addFittedImage）
+      container.add(game.addFittedImage(this.scene, 0, -14, imgKey, w - 16, h - 50));
     } else {
       container.add(this.scene.add.text(0, -14, tmpl.name ?? soldier.name, {
         fontSize: '13px', color: '#8a7a5a', align: 'center', padding: { top: 4 },

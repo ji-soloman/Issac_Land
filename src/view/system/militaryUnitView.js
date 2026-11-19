@@ -267,13 +267,9 @@ export class MilitaryUnitViewer {
 
     let imageObj;
     if (soldier.image && soldier.image !== "") {
-      imageObj = this.scene.add.image(0, imageCenterY, `soldier_${key}`);
-
-      const maxImgW = cardWidth - 10;
-      const maxImgH = imageAreaHeight - 10;
-
-      const scale = Math.min(maxImgW / imageObj.width, maxImgH / imageObj.height);
-      imageObj.setScale(scale);
+      // 兵组大图缩小到卡片里：走 mip 纹理去锯齿（见 function.js addFittedImage）
+      imageObj = game.addFittedImage(this.scene, 0, imageCenterY, `soldier_${key}`, cardWidth - 10, imageAreaHeight - 10)
+        ?? this.scene.add.text(0, imageCenterY, 'NO IMAGE', { fontSize: '12px', color: '#666' }).setOrigin(0.5);
     } else {
       imageObj = this.scene.add.text(0, imageCenterY, 'NO IMAGE', {
         fontSize: '12px', color: '#666'
@@ -332,13 +328,9 @@ export class MilitaryUnitViewer {
 
     let imageObj;
     if (unit.image && unit.image !== "") {
-      imageObj = this.scene.add.image(0, imageCenterY, `soldier_${key}`);
-
-      const maxImgW = cardWidth - 10;
-      const maxImgH = imageAreaHeight - 10;
-
-      const scale = Math.min(maxImgW / imageObj.width, maxImgH / imageObj.height);
-      imageObj.setScale(scale);
+      // 兵组大图缩小到卡片里：走 mip 纹理去锯齿（见 function.js addFittedImage）
+      imageObj = game.addFittedImage(this.scene, 0, imageCenterY, `soldier_${key}`, cardWidth - 10, imageAreaHeight - 10)
+        ?? this.scene.add.text(0, imageCenterY, 'NO IMAGE', { fontSize: '12px', color: '#666' }).setOrigin(0.5);
     } else {
       imageObj = this.scene.add.text(0, imageCenterY, 'NO IMAGE', {
         fontSize: '12px', color: '#666'

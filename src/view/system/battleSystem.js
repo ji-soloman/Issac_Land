@@ -2,6 +2,7 @@ import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.j
 import { MILITARY_UNIT } from '../../data/military_unit.js';
 import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { MILITARY_BUFF } from '../../data/military_buff.js';
+import { game } from '../../system/function.js';
 
 const DEPTH        = 1600;
 const BG_COLOR     = 0x0d0d1a;
@@ -869,11 +870,14 @@ export class BattleSystem {
 
     // 兵组图片（contain 缩放，保持比例，位于名字和等级之间）
     const imgKey = `soldier_${troop.unitKey}`;
-    if (this.scene.textures.exists(imgKey)) {
-      const img = this.scene.add.image(0, 4, imgKey);
-      const scale = Math.min((SLOT_W - 12) / img.width, (SLOT_H - 58) / img.height);
-      img.setScale(scale).setOrigin(0.5);
-      container.add(img);
+    // 用 game.addFittedImage 生成带 mipmap 的缩小纹理（大图缩小到卡牌尺寸时不再有锯齿，
+    // 见 function.js 的 ensureMipTexture）；注意 mip 纹理是拉伸过的，尺寸以原图比例换算的
+    // displaySize 为准，不能再用 img.width/img.height 自行算缩放。
+    const fittedImg = this.scene.textures.exists(imgKey)
+      ? game.addFittedImage(this.scene, 0, 4, imgKey, SLOT_W - 12, SLOT_H - 58)
+      : null;
+    if (fittedImg) {
+      container.add(fittedImg);
     } else {
       container.add(this.scene.add.text(0, 4, troop.displayName, {
         fontSize: '13px', color: '#8a7a5a', align: 'center', padding: { top: 4 },
