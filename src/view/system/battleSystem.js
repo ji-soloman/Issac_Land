@@ -150,7 +150,10 @@ function isOnBattlefield(troop) {
  *       },
  *       ...
  *     ],
- *     defenders: [ ... ]  // 结构同 attackers
+ *     defenders: [ ... ],  // 结构同 attackers
+ *     revealEnemyHp: false // 可选，默认 false；为 true 时战斗记录会显示敌方体力实际值
+ *     closeConfirm: '提示文字' | { message, confirmText?, cancelText? } // 可选，右上角关闭按钮的二级确认框，默认直接关闭
+ *     onClose: ({ battle, battleEnded }) => {}  // 可选，通过 ✕ 退出战斗时的回调（销毁前调用）
  *   })
  *
  * 每个 troop 条目的字段结构和 saveData.military 里的兵组记录一致：
@@ -177,6 +180,23 @@ export class BattleSystem {
     this.defenders = battleConfig?.defenders ?? [];
 
     this.round = 0;
+
+    // 是否允许玩家方在战斗记录里看到敌方的体力实际数值（battleConfig.revealEnemyHp，
+    // 默认 false）。默认情况下战斗记录对敌方只播报造成了多少伤害，不附带"当前剩余体力 x/y"，
+    // 避免暴露敌方隐藏数值；传 true 的战斗场景（例如模拟战斗/特殊副本）则会显示实际值。
+    // 己方兵组的体力数值不受这个参数影响，始终显示。
+    this.revealEnemyHp = battleConfig?.revealEnemyHp === true;
+
+    // 右上角关闭按钮（✕）的行为配置，默认直接关闭：
+    //   battleConfig.closeConfirm — 二级确认提示框。不传/falsy：点击 ✕ 直接退出；
+    //     传字符串：作为提示文字弹出二级确认框；传对象 { message, confirmText?, cancelText? }：
+    //     可自定义按钮文字。点击"确认"才退出战斗，点击"取消"只关闭提示框、战斗继续。
+    //     战斗已经结束（已出胜负）后点击 ✕ 不再弹确认，直接关闭。
+    //   battleConfig.onClose — 玩家通过 ✕ 退出战斗（含二级确认后确认退出）时的回调，
+    //     在战场销毁之前调用：onClose({ battle, battleEnded })，battleEnded 表示退出时战斗是否已分出胜负
+    //     （未分出胜负就退出，例如副本里放弃战斗，调用方可据此结算次数/奖励）。
+    this.closeConfirm = this._normalizeCloseConfirm(battleConfig?.closeConfirm);
+    this.onClose = typeof battleConfig?.onClose === 'function' ? battleConfig.onClose : null;
 
     this._dragState = null; // 当前拖拽状态
     this._battleStarted = false; // 是否已点击开始战斗（决定卡牌是否可拖拽）
@@ -1238,11 +1258,86 @@ export class BattleSystem {
     }).setOrigin(0.5);
     closeHit.on('pointerover', () => closeTxt.setColor('#ffaaaa'));
     closeHit.on('pointerout',  () => closeTxt.setColor('#ff4444'));
-    closeHit.on('pointerdown', () => {
-      // 不保存任何战斗记录，直接销毁战场
-      this.destroy();
-    });
+    closeHit.on('pointerdown', () => this._onCloseClicked());
     this.root.add([closeHit, closeTxt]);
+  }
+
+  /** 把 battleConfig.closeConfirm 的各种写法归一化成 { message, confirmText, cancelText } 或 null */
+  _normalizeCloseConfirm(cfg) {
+    if (!cfg) return null;
+    if (typeof cfg === 'string') return { message: cfg, confirmText: '确认', cancelText: '取消' };
+    if (typeof cfg === 'object') {
+      return {
+        message: cfg.message ?? '离开战斗，是否继续？',
+        confirmText: cfg.confirmText ?? '确认',
+        cancelText: cfg.cancelText ?? '取消',
+      };
+    }
+    return null;
+  }
+
+  /** 点击右上角 ✕：配置了二级确认且战斗尚未结束时先弹提示框，否则直接退出 */
+  _onCloseClicked() {
+    if (this._closeConfirmPanel) return; // 已经弹出提示框，忽略重复点击
+    if (this.closeConfirm && !this._battleEnded) {
+      this._showCloseConfirm();
+      return;
+    }
+    this._exitBattle();
+  }
+
+  /** 真正退出战斗：先触发 onClose 回调（战场销毁之前），再销毁战场；不保存任何战斗记录 */
+  _exitBattle() {
+    const cb = this.onClose;
+    this.onClose = null; // 防止重复触发
+    if (cb) {
+      try { cb({ battle: this, battleEnded: !!this._battleEnded }); }
+      catch (e) { console.error('BattleSystem onClose 回调出错', e); }
+    }
+    this.destroy();
+  }
+
+  /** 二级确认提示框：全屏遮罩拦截底下的点击，"确认"退出战斗，"取消"只关闭提示框 */
+  _showCloseConfirm() {
+    const { width, height } = this.scene.scale;
+    const { message, confirmText, cancelText } = this.closeConfirm;
+    const W = 380, H = 190;
+
+    const overlay = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.6)
+      .setDepth(4000).setInteractive();
+    const panel = this.scene.add.container(width / 2, height / 2).setDepth(4001);
+    panel.add(this._drawPanel(0, 0, W, H));
+
+    panel.add(this.scene.add.text(0, -34, message, {
+      fontSize: '17px', color: PANEL_TEXT_COLOR, align: 'center', padding: { top: 4 },
+      wordWrap: { width: W - 48, useAdvancedWrap: true },
+    }).setOrigin(0.5));
+
+    const closeDialog = () => {
+      overlay.destroy();
+      panel.destroy(true);
+      this._closeConfirmPanel = null;
+      this._closeConfirmOverlay = null;
+    };
+
+    const addBtn = (x, texKey, label, onClick) => {
+      const bg = this.scene.add.image(x, 52, texKey).setDisplaySize(140, 40)
+        .setInteractive({ useHandCursor: true });
+      const txt = this.scene.add.text(x, 52, label, {
+        fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      bg.on('pointerover', () => bg.setAlpha(0.8));
+      bg.on('pointerout',  () => bg.setAlpha(1));
+      bg.on('pointerdown', () => bg.setAlpha(0.6));
+      bg.on('pointerup',   () => { bg.setAlpha(1); onClick(); });
+      panel.add([bg, txt]);
+    };
+
+    addBtn(-80, 'common_btn_green', confirmText, () => { closeDialog(); this._exitBattle(); });
+    addBtn( 80, 'common_btn',       cancelText,  () => closeDialog());
+
+    this._closeConfirmPanel = panel;
+    this._closeConfirmOverlay = overlay;
   }
 
   // ─────────────────────────────────────────────
@@ -2704,7 +2799,13 @@ export class BattleSystem {
     // 其余目标的伤害已经在技能函数内部通过 player.dealDamage() 各自结算，飘字会分别显示
     const primaryTarget = useNormalAttack ? attackTarget : targetOrTargets?.[0];
     if (primaryTarget) {
-      this._logBattle(`${troop.displayName}使用了${actionName}对${primaryTarget.displayName}造成了${totalDmg}伤害，${primaryTarget.displayName}当前剩余体力${Math.max(0, primaryTarget.currentHp)}/${primaryTarget.maxHp}`);
+      // 目标是己方（owner.isPlayer）或本场战斗允许查看敌方体力（revealEnemyHp）时，
+      // 才在记录里附带"当前剩余体力"；否则只播报伤害数值
+      const showHp = !!primaryTarget.owner?.isPlayer || this.revealEnemyHp;
+      const hpSuffix = showHp
+        ? `，${primaryTarget.displayName}当前剩余体力${Math.max(0, primaryTarget.currentHp)}/${primaryTarget.maxHp}`
+        : '';
+      this._logBattle(`${troop.displayName}使用了${actionName}对${primaryTarget.displayName}造成了${totalDmg}伤害${hpSuffix}`);
     } else if (!useNormalAttack) {
       // 自动选择目标的技能（如秘术·回旋）没有外部传入的主目标，
       // 简单记录一条使用行为，详细的命中/伤害信息由技能函数内部通过 player.log() 自行记录
@@ -2887,6 +2988,10 @@ export class BattleSystem {
     this._logMeasureText?.destroy();
     this._battleEndPanel?.destroy(true);
     this._battleEndOverlay?.destroy();
+    this._closeConfirmPanel?.destroy(true);
+    this._closeConfirmOverlay?.destroy();
+    this._closeConfirmPanel = null;
+    this._closeConfirmOverlay = null;
     this.root?.destroy(true);
     this.overlay?.destroy();
   }

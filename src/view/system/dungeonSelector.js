@@ -258,6 +258,8 @@ export class DungeonSelector {
     new BattleSystem(this.scene, this.saveData, {
       attackers: bossIsAttacker ? [bossPerson] : [playerPerson],
       defenders: bossIsAttacker ? [playerPerson] : [bossPerson],
+      // 副本模式：点击右上角关闭时需要二级确认（战斗已分出胜负后关闭不再提示）
+      closeConfirm: '离开战斗会消耗次数且失去奖励，是否继续？',
     });
   }
 
