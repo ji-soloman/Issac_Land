@@ -32,6 +32,7 @@ const DEFAULT_SAVE_TEMPLATE = {
   },
   buff: {},
   item: {}, // 物品背包：{ [物品编号]: 数量 }，物品定义见 data/item.js
+  storage: {}, // 事件存储：用来保存部分事件的临时/持久数据（按事件自行约定 key）
   tech_tree: {
     unlocked: {
       farming_1: true,
@@ -301,6 +302,8 @@ class SaveSystem {
   _migrateSaveData(saveData) {
     // 兼容旧存档：补上物品背包字段
     if (!saveData.item || typeof saveData.item !== 'object') saveData.item = {};
+    // 兼容旧存档：补上事件存储字段
+    if (!saveData.storage || typeof saveData.storage !== 'object') saveData.storage = {};
 
     const currentVersion = saveData.meta?.version || '1.0.0';
 
