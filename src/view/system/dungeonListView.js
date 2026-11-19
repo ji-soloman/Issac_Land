@@ -1,7 +1,9 @@
 import * as Phaser from 'https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.esm.js';
 import { DUNGEON } from '../../data/dungeon.js';
 import { ITEM } from '../../data/item.js';
-import { DungeonSelector } from './dungeonSelector.js';
+import {
+  DungeonSelector, getDungeonLockReason, getDungeonChallengeBlockReason, getDungeonTurnLimit, getDungeonChallengedThisTurn,
+} from './dungeonSelector.js';
 import { game } from '../../system/function.js';
 
 const DEPTH = 1800;
@@ -14,6 +16,8 @@ const THEME_COLOR = 0xb8963e;
 //   这样学派界面已经加载过的话这里直接复用，不会重复加载
 // 关卡列表外框里一次显示的关卡数，超出部分通过滚动条查看
 const LIST_VISIBLE_ROWS = 5;
+// 详情面板里 intro 剧情介绍固定显示的行数，超出时出现滚动条
+const INTRO_VISIBLE_LINES = 3;
 
 const HEADER_KEY = 'dungeon_header';
 const HEADER_PATH = 'assets/ui_dungeon/header.png';
@@ -48,7 +52,8 @@ export class DungeonListView {
     this.saveData = saveData;
     this.entries = Object.entries(DUNGEON);
     const wanted = selectedId != null ? String(selectedId) : null;
-    this.selectedId = this.entries.some(([k]) => k === wanted)
+    // 初始选中的关卡必须存在且已解锁（未解锁的关卡不能被选中），否则退回第一关
+    this.selectedId = this.entries.some(([k]) => k === wanted) && !getDungeonLockReason(saveData, wanted)
       ? wanted
       : (this.entries.length > 0 ? this.entries[0][0] : null);
     this.listScroll = 0; // 关卡列表当前滚动位置（像素）
@@ -304,20 +309,26 @@ export class DungeonListView {
     this.entries.forEach(([id, data], i) => {
       const ry = viewY + i * (rowH + rowGap);
       const selected = id === this.selectedId;
+      // 未解锁（没通关上一关等）：灰显，不可点击，第二行显示解锁条件
+      const lockReason = getDungeonLockReason(this.saveData, id);
+      const locked = !!lockReason;
 
-      const bg = this.scene.add.rectangle(viewX, ry, rowW, rowH, selected ? 0x3a3320 : 0x1e1d2e, 0.95)
+      const bg = this.scene.add.rectangle(viewX, ry, rowW, rowH, selected ? 0x3a3320 : 0x1e1d2e, locked ? 0.6 : 0.95)
         .setOrigin(0, 0)
-        .setStrokeStyle(2, selected ? 0xffd700 : 0x555544, selected ? 1 : 0.8)
-        .setInteractive({ useHandCursor: true });
+        .setStrokeStyle(2, selected ? 0xffd700 : 0x555544, selected ? 1 : 0.8);
+      if (!locked) bg.setInteractive({ useHandCursor: true });
       this.listContainer.add(bg);
 
       this.listContainer.add(this.scene.add.text(viewX + 16, ry + rowH / 2 - 11, data.name, {
-        fontSize: '18px', color: selected ? '#ffd700' : '#f0e6cc', fontStyle: 'bold', padding: { top: 4 },
+        fontSize: '18px', color: locked ? '#6a6a60' : (selected ? '#ffd700' : '#f0e6cc'), fontStyle: 'bold', padding: { top: 4 },
         wordWrap: { width: rowW - 32 },
       }).setOrigin(0, 0.5));
-      this.listContainer.add(this.scene.add.text(viewX + 16, ry + rowH / 2 + 15, `Lv.${this._levelOf(id)}`, {
-        fontSize: '13px', color: '#b8963e', padding: { top: 4 },
+      this.listContainer.add(this.scene.add.text(viewX + 16, ry + rowH / 2 + 15, locked ? lockReason : `Lv.${this._levelOf(id)}`, {
+        fontSize: '13px', color: locked ? '#9a6a4a' : '#b8963e', padding: { top: 4 },
+        wordWrap: { width: rowW - 32 },
       }).setOrigin(0, 0.5));
+
+      if (locked) return; // 未解锁的关卡没有任何交互
 
       if (!selected) {
         bg.on('pointerover', (p) => { if (inView(p)) bg.setStrokeStyle(2, 0xffd700, 1); });
@@ -374,11 +385,35 @@ export class DungeonListView {
 
   /** 鼠标滚轮：指针在列表外框内时滚动列表 */
   _onWheel(pointer, objs, dx, dy) {
+    // 指针在 intro 区域内（含右侧滚动条）时，滚动 intro 文字
+    const iv = this._introView;
+    if (iv && pointer.x >= iv.x && pointer.x <= iv.x + iv.w + 20 && pointer.y >= iv.y && pointer.y <= iv.y + iv.h) {
+      this._setIntroScroll(iv.scroll + (dy > 0 ? 1 : -1) * 24);
+      return;
+    }
     const lv = this._listView;
     if (!lv || this._listMaxScroll <= 0) return;
     if (pointer.x < lv.x || pointer.x > lv.x + lv.w) return;
     if (pointer.y < lv.y || pointer.y > lv.viewY + lv.viewH + (lv.viewY - lv.y)) return;
     this._setListScroll(this.listScroll + (dy > 0 ? 1 : -1) * 48);
+  }
+
+  /** 设置 intro 滚动位置（像素）：同步移动文字和滚动条滑块 */
+  _setIntroScroll(v) {
+    const iv = this._introView;
+    if (!iv) return;
+    iv.scroll = Math.min(Math.max(0, v), iv.maxScroll);
+    iv.txt.y = iv.y - iv.scroll;
+    const range = iv.h - iv.thumbH;
+    iv.thumb.y = iv.y + (iv.maxScroll > 0 ? (iv.scroll / iv.maxScroll) * range : 0);
+  }
+
+  /** 销毁 intro 的遮罩（重绘详情前、关闭界面时调用，避免遮罩图形泄漏） */
+  _clearIntroMask() {
+    this.introMask?.destroy?.();
+    this.introMaskGfx?.destroy();
+    this.introMask = null;
+    this.introMaskGfx = null;
   }
 
   /** 销毁列表的遮罩（重绘列表前、关闭界面时调用，避免遮罩图形泄漏） */
@@ -413,11 +448,62 @@ export class DungeonListView {
     c.add(this.scene.add.rectangle(x + pad, cy, w - pad * 2, 2, 0x8a6a2a, 0.6).setOrigin(0, 0));
     cy += 14;
 
+    // 剧情介绍（可选字段 intro）：显示在最上方
+    // 固定占 INTRO_VISIBLE_LINES（3）行的高度：不足三行也留三行的位置；
+    // 超出三行时只显示前三行，右侧出现滚动条，可拖动滑块或在 intro 区域内用滚轮查看其余内容
+    this._clearIntroMask();
+    this._introView = null;
+    if (data.intro) {
+      const introStyle = {
+        fontSize: '15px', color: '#4a3a20', fontStyle: 'italic', padding: { top: 4 },
+        wordWrap: { width: w - pad * 2, useAdvancedWrap: true }, lineSpacing: 6,
+      };
+      // 用同样样式排出恰好 3 行文字，量出"三行"的实际高度（含行距/内边距），不写死像素
+      const probe = this.scene.add.text(0, 0, Array(INTRO_VISIBLE_LINES).fill('字').join('\n'), introStyle);
+      const viewH = probe.height;
+      probe.destroy();
+
+      const introTxt = this.scene.add.text(x + pad, cy, data.intro, introStyle).setOrigin(0, 0);
+      c.add(introTxt);
+
+      const maxScroll = Math.max(0, introTxt.height - viewH);
+      if (maxScroll > 0) {
+        const viewW = w - pad * 2;
+        this.introMaskGfx = this.scene.make.graphics({ x: 0, y: 0, add: false });
+        this.introMaskGfx.fillStyle(0xffffff, 1);
+        this.introMaskGfx.fillRect(x + pad, cy, viewW, viewH);
+        this.introMask = this.introMaskGfx.createGeometryMask();
+        introTxt.setMask(this.introMask);
+
+        // 滚动条：放在文字区右侧的留白里（不占用文字宽度）
+        const barW = 6;
+        const trackX = x + w - pad + 8;
+        c.add(this.scene.add.rectangle(trackX, cy, barW, viewH, 0x000000, 0.25).setOrigin(0, 0)
+          .setStrokeStyle(1, 0x8a6a2a, 0.8));
+        const thumbH = Math.max(20, viewH * viewH / introTxt.height);
+        const thumb = this.scene.add.rectangle(trackX, cy, barW, thumbH, 0x8a6a2a, 1).setOrigin(0, 0)
+          .setInteractive({ useHandCursor: true, draggable: true });
+        thumb.on('pointerover', () => thumb.setFillStyle(0xb8963e, 1));
+        thumb.on('pointerout',  () => thumb.setFillStyle(0x8a6a2a, 1));
+        c.add(thumb);
+        if (this.scene.input.setDraggable) this.scene.input.setDraggable(thumb);
+
+        const view = { x: x + pad, y: cy, w: viewW, h: viewH, txt: introTxt, thumb, thumbH, maxScroll, scroll: 0 };
+        this._introView = view;
+        thumb.on('drag', (pointer, dragX, dragY) => {
+          const range = viewH - thumbH;
+          const ratio = range > 0 ? Math.min(1, Math.max(0, (dragY - view.y) / range)) : 0;
+          this._setIntroScroll(ratio * maxScroll);
+        });
+      }
+      cy += viewH + 18;
+    }
+
     // 简介（可选字段 des）
     if (data.des) {
       const desTxt = this.scene.add.text(x + pad, cy, data.des, {
         fontSize: '16px', color: '#4a3a20', padding: { top: 4 },
-        wordWrap: { width: w - pad * 2 }, lineSpacing: 6,
+        wordWrap: { width: w - pad * 2, useAdvancedWrap: true }, lineSpacing: 6,
       }).setOrigin(0, 0);
       c.add(desTxt);
       cy += desTxt.height + 18;
@@ -497,14 +583,42 @@ export class DungeonListView {
     }
 
     // "开始挑战"按钮（面板右下角）：直接进入选兵出战面板
-    this._renderStartButton(x + w - pad - 90, y + h - pad - 23);
+    // 关卡还没有配置敌方队伍（team）时，按钮显示「敬请期待」，不能进入
+    this._renderStartButton(x + w - pad - 90, y + h - pad - 23, (data.team?.length ?? 0) > 0, x + pad);
   }
 
   /** 开始挑战按钮：优先用通用绿色按钮底板（和 DungeonSelector 的"确认出征"一致），缺失时退回矩形 */
-  _renderStartButton(cx, cy) {
+  _renderStartButton(cx, cy, enabled = true, hintX = null) {
     const c = this.dynContainer;
     const BW = 180, BH = 46;
     let hit;
+
+    // 按钮左侧的挑战说明：平时提示"当前回合剩余可挑战N次"；
+    // 当前不能挑战（本回合已挑战/军事行动已满）时改成红色的原因提示，按钮置灰不可点
+    const blockReason = enabled ? getDungeonChallengeBlockReason(this.saveData) : null;
+    if (enabled && hintX != null) {
+      const remain = Math.max(0, getDungeonTurnLimit(this.saveData) - getDungeonChallengedThisTurn(this.saveData));
+      c.add(this.scene.add.text(hintX, cy, blockReason ?? `当前回合剩余可挑战 ${remain} 次`, {
+        fontSize: '14px', color: blockReason ? '#a02010' : '#8a4a10', padding: { top: 4 },
+      }).setOrigin(0, 0.5));
+    }
+    if (blockReason) {
+      const bg = this.scene.add.rectangle(cx, cy, BW, BH, 0x777770, 0.8).setStrokeStyle(2, 0x555550, 1);
+      const t = this.scene.add.text(cx, cy, '开始挑战', {
+        fontSize: '20px', color: '#dddddd', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      c.add([bg, t]);
+      return;
+    }
+
+    if (!enabled) {
+      const bg = this.scene.add.rectangle(cx, cy, BW, BH, 0x777770, 0.8).setStrokeStyle(2, 0x555550, 1);
+      const t = this.scene.add.text(cx, cy, '敬请期待', {
+        fontSize: '20px', color: '#dddddd', fontStyle: 'bold', padding: { top: 4 },
+      }).setOrigin(0.5);
+      c.add([bg, t]);
+      return;
+    }
 
     if (this.scene.textures.exists('common_btn_green')) {
       hit = this.scene.add.image(cx, cy, 'common_btn_green').setDisplaySize(BW, BH);
@@ -573,6 +687,9 @@ export class DungeonListView {
 
   _enterLevel(dungeonId) {
     const { scene, saveData } = this;
+    if (getDungeonLockReason(saveData, dungeonId)) return; // 兜底：未解锁的关卡不能进入
+    const blockReason = getDungeonChallengeBlockReason(saveData);
+    if (blockReason) { game.showTips(scene, blockReason); return; } // 兜底：本回合已挑战/没有军事行动条
     this.destroy();
     // 从选兵/战斗退出（含战斗结束）后回到副本选关界面，并保持刚才选中的关卡
     new DungeonSelector(scene, saveData, dungeonId, {
@@ -584,6 +701,7 @@ export class DungeonListView {
     this._hideItemTip();
     if (this._wheelHandler) { this.scene.input.off('wheel', this._wheelHandler); this._wheelHandler = null; }
     this._clearListMask();
+    this._clearIntroMask();
     this.root?.destroy(true);
     this.overlay?.destroy();
   }

@@ -154,7 +154,8 @@ function isOnBattlefield(troop) {
  *     revealEnemyHp: false // 可选，默认 false；为 true 时战斗记录会显示敌方体力实际值
  *     closeConfirm: '提示文字' | { message, confirmText?, cancelText? } // 可选，右上角关闭按钮的二级确认框，默认直接关闭
  *     onClose: ({ battle, battleEnded }) => {}  // 可选，通过 ✕ 退出战斗时的回调（销毁前调用）
- *     onExit: ({ battle, battleEnded }) => {}   // 可选，战场销毁后的回调（✕ 退出/结算面板关闭都会触发，只触发一次）
+ *     onExit: ({ battle, battleEnded, playerWon }) => {}   // 可选，战场销毁后的回调（✕ 退出/结算面板关闭都会触发，只触发一次）
+ *     onEnd: ({ battle, playerWon }) => {}      // 可选，战斗分出胜负的瞬间触发一次（playerWon：玩家方是否获胜），用于结算通关记录；可返回一段字符串（如奖励），会显示在结算面板上
  *   })
  *
  * 每个 troop 条目的字段结构和 saveData.military 里的兵组记录一致：
@@ -201,6 +202,10 @@ export class BattleSystem {
     //   battleConfig.onExit — 战场被销毁（无论是点 ✕ 退出，还是战斗结算面板点"关闭"）后的回调，
     //     只触发一次，在战场清理完毕之后调用，用于"战斗结束回到上一级界面"（例如副本回到选关界面）。
     this.onExit = typeof battleConfig?.onExit === 'function' ? battleConfig.onExit : null;
+    //   battleConfig.onEnd — 战斗分出胜负的瞬间（_checkBattleEnd）触发一次：onEnd({ battle, playerWon })，
+    //     不依赖玩家之后是点结算面板还是点 ✕ 离开，适合用来记录通关/结算奖励。
+    this.onEnd = typeof battleConfig?.onEnd === 'function' ? battleConfig.onEnd : null;
+    this._playerWon = false; // 战斗结束后：玩家方是否获胜
 
     this._dragState = null; // 当前拖拽状态
     this._battleStarted = false; // 是否已点击开始战斗（决定卡牌是否可拖拽）
@@ -1295,7 +1300,7 @@ export class BattleSystem {
     const cb = this.onClose;
     this.onClose = null; // 防止重复触发
     if (cb) {
-      try { cb({ battle: this, battleEnded: !!this._battleEnded }); }
+      try { cb({ battle: this, battleEnded: !!this._battleEnded, playerWon: this._playerWon === true }); }
       catch (e) { console.error('BattleSystem onClose 回调出错', e); }
     }
     this.destroy();
@@ -1784,18 +1789,32 @@ export class BattleSystem {
 
     const playerIsAttacker = this.attackers.some(p => p.isPlayer);
     const playerAlive = playerIsAttacker ? attackersAlive : defendersAlive;
+    this._playerWon = !!playerAlive;
     const resultText = playerAlive ? '战斗结束：玩家方胜利！' : '战斗结束：玩家方失败！';
 
+    // 通知外部战斗结果（只触发一次）。回调可以返回一段字符串（例如副本获得的奖励），
+    // 会追加到战斗记录并显示在结算面板上；返回其他值则忽略。
+    let extraText = '';
+    const onEnd = this.onEnd;
+    this.onEnd = null;
+    if (onEnd) {
+      try {
+        const r = onEnd({ battle: this, playerWon: this._playerWon });
+        if (typeof r === 'string') extraText = r;
+      } catch (e) { console.error('BattleSystem onEnd 回调出错', e); }
+    }
+
     this._logBattle(resultText);
+    if (extraText) this._logBattle(extraText);
     this._titleText?.setText('战斗结束');
-    this._showBattleEndPanel(resultText);
+    this._showBattleEndPanel(resultText, extraText);
     return true;
   }
 
   /** 战斗结算面板：显示胜负结果，点击关闭按钮销毁整个战场 */
-  _showBattleEndPanel(resultText) {
+  _showBattleEndPanel(resultText, extraText = '') {
     const { width, height } = this.scene.scale;
-    const W = 360, H = 180;
+    const W = 360, H = extraText ? 240 : 180;
 
     const overlay = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.65).setDepth(3000);
     const panel = this.scene.add.container(width / 2, height / 2).setDepth(3001);
@@ -1803,14 +1822,23 @@ export class BattleSystem {
     const bg = this.scene.add.rectangle(0, 0, W, H, 0x12111e, 0.97).setStrokeStyle(2, THEME_COLOR, 0.9);
     panel.add(bg);
 
-    panel.add(this.scene.add.text(0, -40, resultText, {
+    panel.add(this.scene.add.text(0, extraText ? -70 : -40, resultText, {
       fontSize: '20px', color: '#f0e6cc', fontStyle: 'bold', align: 'center',
       wordWrap: { width: W - 40 }, padding: { top: 4 },
     }).setOrigin(0.5));
 
-    const btnBg = this.scene.add.image(0, 40, 'common_btn_green').setDisplaySize(140, 40)
+    // 额外信息（例如副本奖励）：金色小字，放在胜负文字下方
+    if (extraText) {
+      panel.add(this.scene.add.text(0, -10, extraText, {
+        fontSize: '16px', color: '#ffd700', align: 'center', lineSpacing: 4,
+        wordWrap: { width: W - 40, useAdvancedWrap: true }, padding: { top: 4 },
+      }).setOrigin(0.5));
+    }
+
+    const btnY = extraText ? 80 : 40;
+    const btnBg = this.scene.add.image(0, btnY, 'common_btn_green').setDisplaySize(140, 40)
       .setInteractive({ useHandCursor: true });
-    const btnTxt = this.scene.add.text(0, 40, '关闭', {
+    const btnTxt = this.scene.add.text(0, btnY, '关闭', {
       fontSize: '16px', color: '#1a1200', fontStyle: 'bold', padding: { top: 4 },
     }).setOrigin(0.5);
     btnBg.on('pointerover', () => btnBg.setAlpha(0.8));
@@ -3005,7 +3033,7 @@ export class BattleSystem {
     const cb = this.onExit;
     this.onExit = null;
     if (cb) {
-      try { cb({ battle: this, battleEnded: !!this._battleEnded }); }
+      try { cb({ battle: this, battleEnded: !!this._battleEnded, playerWon: this._playerWon === true }); }
       catch (e) { console.error('BattleSystem onExit 回调出错', e); }
     }
   }

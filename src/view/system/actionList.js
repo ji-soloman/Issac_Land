@@ -6,6 +6,7 @@ import { MILITARY_SKILL } from '../../data/military_skill.js';
 import { ERA } from '../../data/era.js';
 import { REGION } from '../../data/region.js';
 import { ACADEMY_SKILL } from '../../data/academy_skill.js';
+import { DUNGEON } from '../../data/dungeon.js';
 import { get } from '../../system/i18n.js';
 
 export class ActionListSystem {
@@ -443,6 +444,11 @@ export class ActionListSystem {
     if (key.startsWith('train_soldier_')) {
       const unitName = MILITARY_UNIT[actionData.unitKey]?.name ?? actionData.unitKey;
       markedIntro = `开始训练{{【${unitName}】}}`;
+    } else if (key.startsWith('dungeon_')) {
+      // actionData: { dungeonId, result? }，见 dungeonSelector.js _startBattle/onEnd
+      const dungeonName = DUNGEON[actionData.dungeonId]?.name ?? actionData.dungeonId;
+      const resultText = actionData.result === 'win' ? '（胜利）' : actionData.result === 'lose' ? '（失败）' : '（未分胜负）';
+      markedIntro = `挑战副本{{【${dungeonName}】}}${resultText}`;
     } else if (key.startsWith('academy_skill_learn_')) {
       // actionData: { soldierId, skillKey, schoolKey }，见 academyView.js
       // AcademySkillProgressViewer.showLearnUnitPicker 里的 game.addAction 调用。

@@ -9,6 +9,7 @@ import { AcademyViewer, countAcademyDistricts } from './academyView.js';
 import { MAPS } from '../../data/map/EWland/map.js';
 import { SimBattleSelector } from './simBattleSelector.js';
 import { DungeonListView } from './dungeonListView.js';
+import { ERA } from '../../data/era.js';
 
 // "技能图鉴""学派"菜单项：运行时补进 MILITARY 注册表，而不是直接改 data/military.js——
 // 项目里存在两份同名的 military.js 文档（system/military.js 工具类 和 data/military.js
@@ -32,14 +33,30 @@ if (!MILITARY.academy_school) {
 }
 // "副本"菜单项：紧跟在"学派"后面注册，让它在军事行动卡片网格里排在学派卡片
 // 的正后方（这里的注册顺序就是 Object.entries(MILITARY) 的遍历顺序，
-// 也就是 createScrollableContent 里卡片的排列顺序）。目前不设解锁条件，
-// 始终可点击——如果以后需要"通关xx后才解锁副本"之类的条件，在这个 filter 里补。
+// 也就是 createScrollableContent 里卡片的排列顺序）。
+// 解锁条件：时代达到【小亚细亚之战】（按 ERA 的 order 比较，之后的时代也算解锁）；
+// GM（saveData.gm === true）不受时代限制；未解锁时卡片显示 lockHint 里的提示文字。
+const DUNGEON_UNLOCK_ERA = 'asiaMinor';
 if (!MILITARY.dungeon) {
   MILITARY.dungeon = {
     name: '副本',
-    filter: () => true,
+    filter: ({ saveData }) => {
+      if (saveData?.gm === true) return true; // GM 不受时代限制
+      const cur = ERA[saveData?.process?.era ?? 'primitive']?.order ?? 0;
+      const need = ERA[DUNGEON_UNLOCK_ERA]?.order ?? Infinity;
+      return cur >= need;
+    },
+    lockHint: `进入【${ERA[DUNGEON_UNLOCK_ERA]?.name ?? '小亚细亚之战'}】后解锁`,
   };
 }
+
+// 军事行动卡片的显示开关（同样在这里运行时挂到 MILITARY 上，不直接改 data/military.js）：
+//   hidden     = true  不显示这张卡片（探索资源暂时隐藏）
+//   comingSoon = true  显示为灰色的"敬请期待"，不可点击（派遣军队、执行任务暂未开放）
+// 想恢复某个功能时，把对应的标记去掉即可。
+if (MILITARY.explore_resource) MILITARY.explore_resource.hidden = true;
+if (MILITARY.invasion) MILITARY.invasion.comingSoon = true;
+if (MILITARY.perform_mission) MILITARY.perform_mission.comingSoon = true;
 
 export class MilitarySystem {
   constructor(scene, saveData) {
@@ -111,7 +128,7 @@ export class MilitarySystem {
 
     const mapGrids  = MAPS.grids  || {};
     const saveGrids = this.saveData.map?.grids || {};
-    const actions = Object.entries(MILITARY);
+    const actions = this.getDisplayActions();
 
     this.scrollContainer = this.scene.add.container(0, 0);
     this.mainContainer.add(this.scrollContainer);
@@ -143,6 +160,25 @@ export class MilitarySystem {
     if (this.maxScroll > 0) {
       this.createScrollBar();
     }
+  }
+
+  /**
+   * 军事行动卡片的显示顺序：
+   *   · hidden 的行动不显示（探索资源）
+   *   · 【征集物产】挪到原来【探索资源】的位置，原位置不再重复显示
+   */
+  getDisplayActions() {
+    const out = [];
+    for (const [id, action] of Object.entries(MILITARY)) {
+      if (id === 'explore_resource') {
+        if (MILITARY.get_resource) out.push(['get_resource', MILITARY.get_resource]);
+        continue;
+      }
+      if (id === 'get_resource') continue;
+      if (action?.hidden) continue;
+      out.push([id, action]);
+    }
+    return out;
   }
 
   createScrollBar() {
@@ -235,6 +271,11 @@ export class MilitarySystem {
       statusMsg = '执行中';
       statusColor = '#00ccff';
       canInteract = false;       // 执行中不可再次点击
+    } else if (action.comingSoon) {
+      // 暂未开放：灰色"敬请期待"，不可点击
+      isAvailable = false;
+      statusMsg = '敬请期待';
+      statusColor = '#aaaaaa';
     } else if (isAvailable) {
       // 可用状态
       bgColor = 0x4a4a4a;
@@ -242,6 +283,10 @@ export class MilitarySystem {
       statusMsg = '可执行';
       statusColor = '#00ff00';
       canInteract = true;
+    } else if (action.lockHint) {
+      // 未解锁：显示解锁条件
+      statusMsg = action.lockHint;
+      statusColor = '#cc8844';
     }
 
     const bg = this.scene.add.rectangle(0, 0, cardWidth, cardHeight, bgColor, 0.9);
