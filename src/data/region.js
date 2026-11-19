@@ -727,6 +727,25 @@ export const REGION = {
     // 地图上显示的都城立绘：assets/region/map/<区域key>.png（见 gameScene 预加载、mapView.createHexagon）
     map_image: { scale: 1, x: 0.2, y: 7.4 },
   },
+  El_Castillo: {
+    name: '羽蛇神圣域',
+    terrainInfo: '玛雅金庙副本的特殊圣地',
+    effect_info: '每回合财富+1，文化+2，魔石+1；住房+3，奇观槽位+1；远程类单位解锁时额外获得技能【羽蛇神之怒】；城市唯一；驻扎3人口',
+    color: 'special',
+    update: 1,
+    category: {
+      holy: true,
+    }
+  },
+  El_Caracol: {
+    name: '玛雅天文台',
+    terrainInfo: '玛雅金庙副本的特殊学院',
+    effect_info: '每回合文化+4，魔石+1；加工品槽位+2；开启学派；城市唯一；驻扎3人口',
+    update: 1,
+    category: {
+      academy: true,
+    }
+  },
 }
 
 // ═══════════════════════════════════════════════════
